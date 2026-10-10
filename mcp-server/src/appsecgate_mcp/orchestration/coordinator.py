@@ -78,7 +78,9 @@ class ScanCoordinator:
                 meta.scanners_skipped.append(scanner.name)
         return available
 
-    async def _run_all(self, scanners: list, files: list[str], mode: str, meta: ScanMeta) -> list[RawFinding]:
+    async def _run_all(
+        self, scanners: list, files: list[str], mode: str, meta: ScanMeta
+    ) -> list[RawFinding]:
         """Параллельно запускает сканеры, изолируя исключения."""
         if not scanners:
             return []

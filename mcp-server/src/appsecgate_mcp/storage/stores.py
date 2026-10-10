@@ -304,7 +304,9 @@ class ScanCacheStore:
             """
         )
 
-    async def get(self, file_hash: str, scanner: str, scanner_version: str, ruleset_hash: str) -> str | None:
+    async def get(
+        self, file_hash: str, scanner: str, scanner_version: str, ruleset_hash: str
+    ) -> str | None:
         row = await self.db.fetchone(
             """
             SELECT result_json FROM scan_cache

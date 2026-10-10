@@ -54,9 +54,7 @@ class Normalizer:
         """Числовой ранг severity для сравнения с порогом (выше — серьёзнее)."""
         return SEVERITY_ORDER.get(severity, 0)
 
-    def filter_by_threshold(
-        self, findings: list[Finding], category: Category
-    ) -> list[Finding]:
+    def filter_by_threshold(self, findings: list[Finding], category: Category) -> list[Finding]:
         """Оставляет находки не ниже severity_threshold для своей категории.
 
         Порог берётся из config.scanners.<category>.severity_threshold

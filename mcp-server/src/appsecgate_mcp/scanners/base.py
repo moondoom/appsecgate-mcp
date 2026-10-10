@@ -102,9 +102,7 @@ class BaseScanner(ABC):
             return str(target)
         return self.project_path or "."
 
-    async def run(
-        self, cmd: list[str], *, timeout: float | int | None = None
-    ) -> CommandResult:
+    async def run(self, cmd: list[str], *, timeout: float | int | None = None) -> CommandResult:
         """Запускает внешнюю команду адаптера с настроенным таймаутом."""
         return await run_subprocess(
             cmd,

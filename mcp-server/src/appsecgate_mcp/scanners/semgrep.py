@@ -18,10 +18,34 @@ from appsecgate_mcp.scanners.runner import ScannerExecutionError
 # Расширения, которые имеет смысл отдавать Semgrep.
 _SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
     {
-        ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
-        ".java", ".kt", ".kts", ".go", ".rb", ".php", ".c", ".h",
-        ".cc", ".cpp", ".hpp", ".cs", ".rs", ".swift", ".scala",
-        ".tf", ".hcl", ".yaml", ".yml", ".json",
+        ".py",
+        ".pyi",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".java",
+        ".kt",
+        ".kts",
+        ".go",
+        ".rb",
+        ".php",
+        ".c",
+        ".h",
+        ".cc",
+        ".cpp",
+        ".hpp",
+        ".cs",
+        ".rs",
+        ".swift",
+        ".scala",
+        ".tf",
+        ".hcl",
+        ".yaml",
+        ".yml",
+        ".json",
     }
 )
 
@@ -44,8 +68,21 @@ class SemgrepAdapter(BaseScanner):
     category = Category.SAST
     supported_languages = frozenset(
         {
-            "python", "javascript", "typescript", "java", "go", "ruby", "php",
-            "c", "cpp", "csharp", "rust", "kotlin", "scala", "swift", "hcl",
+            "python",
+            "javascript",
+            "typescript",
+            "java",
+            "go",
+            "ruby",
+            "php",
+            "c",
+            "cpp",
+            "csharp",
+            "rust",
+            "kotlin",
+            "scala",
+            "swift",
+            "hcl",
         }
     )
     default_rulesets: tuple[str, ...] = ("p/security-audit",)

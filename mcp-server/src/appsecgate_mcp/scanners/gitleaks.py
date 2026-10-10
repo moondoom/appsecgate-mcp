@@ -44,13 +44,18 @@ class GitleaksAdapter(BaseScanner):
     async def scan(self, files: list[str], mode: str) -> list[RawFinding]:
         source = self.scan_source(files, mode)
         cmd = [
-            "gitleaks", "detect",
+            "gitleaks",
+            "detect",
             "--no-git",
             "--no-banner",
-            "--source", source,
-            "--report-format", "json",
-            "--report-path", "/dev/stdout",
-            "--exit-code", "0",
+            "--source",
+            source,
+            "--report-format",
+            "json",
+            "--report-path",
+            "/dev/stdout",
+            "--exit-code",
+            "0",
         ]
         result = await self.run(cmd)
         # Gitleaks: 0 — успех (независимо от находок при --exit-code 0).

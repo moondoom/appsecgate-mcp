@@ -105,9 +105,7 @@ class TestTrivyParse:
                             "CauseMetadata": {"StartLine": 1, "EndLine": 1},
                         }
                     ],
-                    "Licenses": [
-                        {"Name": "GPL-3.0", "Severity": "LOW", "Category": "restricted"}
-                    ],
+                    "Licenses": [{"Name": "GPL-3.0", "Severity": "LOW", "Category": "restricted"}],
                 }
             ]
         }

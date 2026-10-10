@@ -344,7 +344,11 @@ async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
 
     state.config_loader = ConfigLoader(state.config_loader.default_config_path)
     await state.initialize(state.project_path, force=True)
-    return {"status": "updated", "config_path": str(project_conf), "config": state.config.model_dump(mode="json")}
+    return {
+        "status": "updated",
+        "config_path": str(project_conf),
+        "config": state.config.model_dump(mode="json"),
+    }
 
 
 @mcp.tool()

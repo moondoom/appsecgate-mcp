@@ -36,15 +36,11 @@ async def git_changed_files(
     схлопываются через set; результат отсортирован для детерминизма.
     """
     paths: set[str] = set()
-    paths.update(
-        await _git_name_only_z(["git", "diff", "--cached", "--name-only", "-z"], cwd)
-    )
+    paths.update(await _git_name_only_z(["git", "diff", "--cached", "--name-only", "-z"], cwd))
     paths.update(await _git_name_only_z(["git", "diff", "--name-only", "-z"], cwd))
     if untracked:
         paths.update(
-            await _git_name_only_z(
-                ["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd
-            )
+            await _git_name_only_z(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd)
         )
     return sorted(paths)
 
@@ -71,11 +67,8 @@ async def git_diff(
 async def git_tracked_files(
     cwd: str | Path | None = None,
 ) -> list[str]:
-    """Возвращает список всех файлов, отслеживаемых git.
-    """
-    result = await run_subprocess(
-        ["git", "ls-files", "--cached", "-z"], cwd=cwd
-    )
+    """Возвращает список всех файлов, отслеживаемых git."""
+    result = await run_subprocess(["git", "ls-files", "--cached", "-z"], cwd=cwd)
     if result.returncode != 0:
         raise GitError(f"git ls-files failed: {result.stderr}")
     return [_ for _ in result.stdout.split("\x00") if _]

@@ -20,11 +20,24 @@ from appsecgate_mcp.scanners.runner import ScannerExecutionError
 # Целевые файлы для SCA/IaC, когда координатор передаёт конкретный список.
 _TARGET_NAMES: frozenset[str] = frozenset(
     {
-        "requirements.txt", "poetry.lock", "pipfile.lock", "pipfile",
-        "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-        "go.mod", "go.sum", "cargo.lock", "gemfile.lock",
-        "composer.lock", "pom.xml", "build.gradle", "build.gradle.kts",
-        "dockerfile", "docker-compose.yml", "docker-compose.yaml",
+        "requirements.txt",
+        "poetry.lock",
+        "pipfile.lock",
+        "pipfile",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "go.mod",
+        "go.sum",
+        "cargo.lock",
+        "gemfile.lock",
+        "composer.lock",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "dockerfile",
+        "docker-compose.yml",
+        "docker-compose.yaml",
     }
 )
 _TARGET_SUFFIXES: frozenset[str] = frozenset({".tf", ".yaml", ".yml"})
@@ -70,11 +83,15 @@ class TrivyAdapter(BaseScanner):
     async def scan(self, files: list[str], mode: str) -> list[RawFinding]:
         source = self.scan_source(files, mode)
         cmd = [
-            "trivy", "fs",
-            "--format", "json",
+            "trivy",
+            "fs",
+            "--format",
+            "json",
             "--quiet",
-            "--scanners", "vuln,misconfig,license",
-            "--cache-dir", self._cache_dir,
+            "--scanners",
+            "vuln,misconfig,license",
+            "--cache-dir",
+            self._cache_dir,
             "--skip-db-update",
             "--skip-java-db-update",
             source,
@@ -119,7 +136,9 @@ class TrivyAdapter(BaseScanner):
                     raw_severity=str(v.get("Severity") or "unknown"),
                     file_path=target,
                     scanner=self.name,
-                    message=str(v.get("Title") or v.get("Description") or v.get("VulnerabilityID") or ""),
+                    message=str(
+                        v.get("Title") or v.get("Description") or v.get("VulnerabilityID") or ""
+                    ),
                     category=Category.SCA,
                     metadata={
                         "package": v.get("PkgName"),

@@ -38,9 +38,7 @@ async def test_writes_and_reads_across_thread_pool(tmp_path):
     store.init_schema()
 
     # Параллельные записи → разные потоки default-экзекьютора.
-    await asyncio.gather(
-        *[store.record_shown(_make_finding(f"fp-{i}")) for i in range(20)]
-    )
+    await asyncio.gather(*[store.record_shown(_make_finding(f"fp-{i}")) for i in range(20)])
 
     rows = await store.get_all(limit=100)
     assert len(rows) == 20
