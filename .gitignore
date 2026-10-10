@@ -1,0 +1,73 @@
+# ============================================================
+# SecGate MCP — .gitignore
+# ============================================================
+
+# --- Python: байткод и кэши ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- Сборка и упаковка ---
+build/
+dist/
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# --- Виртуальные окружения ---
+# uv.lock и .python-version НЕ игнорируем — нужны для воспроизводимых сборок
+.venv/
+venv/
+env/
+ENV/
+
+# --- Тесты и линтеры ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Рантайм-данные SecGate (локальный контур) ---
+*.db
+*.sqlite
+*.sqlite3
+shown_findings.db
+feedback.db
+scan_cache.db
+
+# --- Секреты и локальная конфигурация ---
+.env
+.env.*
+!.env.example
+.secgate-mcp/
+*.pem
+*.key
+credentials
+*.token
+
+# --- IDE / редакторы ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.continue/
+
+# --- ОС ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Логи и временные файлы ---
+*.log
+*.tmp
+tmp/
+

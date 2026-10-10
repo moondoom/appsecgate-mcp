@@ -1,0 +1,59 @@
+# SecGate MCP — конфигурация по умолчанию (образ /etc/secgate/default.yaml).
+# Проект может переопределить любой блок в .secgate-mcp/config.yaml;
+# переменные окружения SECGATE_* перекрывают всё (см. config/loader.py).
+
+version: 2
+
+stack:
+  languages: []
+  frameworks: []
+
+scanners:
+  sast:
+    enabled: true
+    tool: semgrep
+    rulesets:
+      - p/security-audit
+    severity_threshold: medium
+  secrets:
+    enabled: true
+    tool: gitleaks
+    severity_threshold: medium
+  sca:
+    enabled: true
+    tool: trivy
+    severity_threshold: high
+  iac:
+    enabled: true
+    tool: trivy
+    severity_threshold: medium
+
+gates:
+  local:
+    warn_on: [critical, high, medium]
+    block_on: []
+    info_on: [low, info]
+  ci:
+    block_on: [critical, high]
+    warn_on: [medium]
+    info_on: [low, info]
+    block_on_unresolved_local: true
+
+auto_fix:
+  enabled: true
+  strategies: [patch, suggestion]
+  max_attempts: 1
+
+# Пример подавления (в проекте переопределяется при необходимости):
+# suppress:
+#   - rule: semgrep.generic.secrets
+#     paths: ["tests/**"]
+#     reason: "Тестовые фикстуры, не реальные секреты"
+#     scope: local
+suppress: []
+
+sla:
+  dev_response: 24h
+  dev_after_block: 48h
+  appsec_response: 5d
+  lead_response: 10d

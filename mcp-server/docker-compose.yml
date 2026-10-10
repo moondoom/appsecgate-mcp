@@ -1,0 +1,53 @@
+# SecGate MCP — docker-compose (Фаза 1).
+#
+# Модель безопасности (arch §5):
+#   • non-root 1000:1000, read_only rootfs, cap_drop ALL, no-new-privileges
+#   • bind-mount проекта :ro, конфиг :ro, named volume для кэша :rw
+#   • network_mode none — офлайн-первый
+#
+# Запуск: PROJECT_PATH=/abs/path/to/repo docker compose run --rm secgate-mcp
+
+services:
+  secgate-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: animage/secgate-mcp:0.1.0
+    container_name: secgate-mcp
+
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+
+    volumes:
+      # Проект — только для чтения.
+      - ${PROJECT_PATH:-.}:/workspace:ro
+      # Проектный конфиг — только для чтения.
+      - ${PROJECT_PATH:-.}/.secgate-mcp:/.secgate-mcp:ro
+      # Кэш сканеров и SQLite-базы — единственное место записи.
+      - secgate-cache:/home/secgate/.cache
+      - secgate-data:/home/secgate/.secgate-mcp
+
+    environment:
+      - HOME=/home/secgate
+      - SECGATE_MCP_HOME=/home/secgate/.secgate-mcp
+      - SECGATE_MCP_CACHE_DIR=/home/secgate/.cache
+      - SECGATE_PROJECT_PATH=/workspace
+      - TRIVY_CACHE_DIR=/home/secgate/.cache/trivy
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # Фаза 1: полностью офлайн. Раскомментируйте bridge для обновления баз.
+    network_mode: "none"
+    # network_mode: "bridge"
+
+    stdin_open: true
+    tty: false
+
+volumes:
+  secgate-cache:
+  secgate-data:

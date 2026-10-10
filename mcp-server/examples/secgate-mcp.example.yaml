@@ -1,0 +1,50 @@
+# Пример .secgate-mcp/config.yaml для проекта.
+# Скопируйте в <PROJECT>/.secgate-mcp/config.yaml (bind-mount :ro в контейнер).
+# Приоритет: этот файл -> /etc/secgate/default.yaml -> env SECGATE_*.
+
+version: 2
+
+stack:
+  languages: [python, typescript]
+  frameworks: [fastapi, react]
+
+scanners:
+  sast:
+    enabled: true
+    tool: semgrep
+    rulesets:
+      - p/security-audit
+      - p/python
+    severity_threshold: medium
+  secrets:
+    enabled: true
+    tool: gitleaks
+    severity_threshold: medium
+  sca:
+    enabled: true
+    tool: trivy
+    severity_threshold: high
+  iac:
+    enabled: true
+    tool: trivy
+    severity_threshold: medium
+
+gates:
+  local:
+    warn_on: [critical, high, medium]
+    block_on: []            # локально не блокируем никогда
+  ci:
+    block_on: [critical, high]
+    warn_on: [medium]
+    block_on_unresolved_local: true   # killer-feature: "знал и не починил"
+
+auto_fix:
+  enabled: true
+  strategies: [patch, suggestion]
+  max_attempts: 1
+
+suppress:
+  - rule: generic.secrets
+    paths: ["tests/**", "**/*.test.ts"]
+    reason: "Тестовые фикстуры"
+    scope: local

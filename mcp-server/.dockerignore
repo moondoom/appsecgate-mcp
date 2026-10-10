@@ -1,0 +1,17 @@
+"# Исключаем из контекста сборки всё, что не нужно образу.
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.uv-cache
+tests/
+docs/
+*.md
+!README.md
+docker-compose.yml
+.env
+*.db
+"
