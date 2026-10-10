@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from secgate_mcp.models.finding import Category
-from secgate_mcp.orchestration.coordinator import ScanCoordinator
-from secgate_mcp.scanners.base import BaseScanner, RawFinding
-from secgate_mcp.scanners.registry import ScannerRegistry
+from appsecgate_mcp.models.finding import Category
+from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
+from appsecgate_mcp.scanners.base import BaseScanner, RawFinding
+from appsecgate_mcp.scanners.registry import ScannerRegistry
 
 
 class FakeScanner(BaseScanner):

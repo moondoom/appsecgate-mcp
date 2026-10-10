@@ -12,9 +12,9 @@ import asyncio
 
 import pytest
 
-from secgate_mcp.models.finding import Category, Finding, Severity
-from secgate_mcp.storage.db import Database
-from secgate_mcp.storage.stores import ShownFindingsStore
+from appsecgate_mcp.models.finding import Category, Finding, Severity
+from appsecgate_mcp.storage.db import Database
+from appsecgate_mcp.storage.stores import ShownFindingsStore
 
 pytestmark = pytest.mark.asyncio
 

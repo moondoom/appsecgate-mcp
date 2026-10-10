@@ -1,6 +1,6 @@
-# SecGate MCP — конфигурация по умолчанию (образ /etc/secgate/default.yaml).
-# Проект может переопределить любой блок в .secgate-mcp/config.yaml;
-# переменные окружения SECGATE_* перекрывают всё (см. config/loader.py).
+# AppSecGate MCP — конфигурация по умолчанию (образ /etc/appsecgate/default.yaml).
+# Проект может переопределить любой блок в .appsecgate-mcp/config.yaml;
+# переменные окружения APPSECGATE_* перекрывают всё (см. config/loader.py).
 
 version: 2
 

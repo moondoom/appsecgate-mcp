@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from secgate_mcp.config.models import Config
-from secgate_mcp.models.finding import Category, Finding, Severity
-from secgate_mcp.normalization.dedup import Deduplicator
-from secgate_mcp.normalization.normalizer import Normalizer, normalize_severity
+from appsecgate_mcp.config.models import Config
+from appsecgate_mcp.models.finding import Category, Finding, Severity
+from appsecgate_mcp.normalization.dedup import Deduplicator
+from appsecgate_mcp.normalization.normalizer import Normalizer, normalize_severity
 
 
 def make_finding(**kwargs) -> Finding:

@@ -1,19 +1,19 @@
-# SecGate MCP — docker-compose (Фаза 1).
+# AppSecGate MCP — docker-compose (Фаза 1).
 #
 # Модель безопасности (arch §5):
 #   • non-root 1000:1000, read_only rootfs, cap_drop ALL, no-new-privileges
 #   • bind-mount проекта :ro, конфиг :ro, named volume для кэша :rw
 #   • network_mode none — офлайн-первый
 #
-# Запуск: PROJECT_PATH=/abs/path/to/repo docker compose run --rm secgate-mcp
+# Запуск: PROJECT_PATH=/abs/path/to/repo docker compose run --rm appsecgate-mcp
 
 services:
-  secgate-mcp:
+  appsecgate-mcp:
     build:
       context: .
       dockerfile: Dockerfile
-    image: animage/secgate-mcp:0.1.0
-    container_name: secgate-mcp
+    image: animage/appsecgate-mcp:0.1.0
+    container_name: appsecgate-mcp
 
     user: "1000:1000"
     read_only: true
@@ -24,17 +24,17 @@ services:
       # Проект — только для чтения.
       - ${PROJECT_PATH:-.}:/workspace:ro
       # Проектный конфиг — только для чтения.
-      - ${PROJECT_PATH:-.}/.secgate-mcp:/.secgate-mcp:ro
+      - ${PROJECT_PATH:-.}/.appsecgate-mcp:/.appsecgate-mcp:ro
       # Кэш сканеров и SQLite-базы — единственное место записи.
-      - secgate-cache:/home/secgate/.cache
-      - secgate-data:/home/secgate/.secgate-mcp
+      - appsecgate-cache:/home/appsecgate/.cache
+      - appsecgate-data:/home/appsecgate/.appsecgate-mcp
 
     environment:
-      - HOME=/home/secgate
-      - SECGATE_MCP_HOME=/home/secgate/.secgate-mcp
-      - SECGATE_MCP_CACHE_DIR=/home/secgate/.cache
-      - SECGATE_PROJECT_PATH=/workspace
-      - TRIVY_CACHE_DIR=/home/secgate/.cache/trivy
+      - HOME=/home/appsecgate
+      - APPSECGATE_MCP_HOME=/home/appsecgate/.appsecgate-mcp
+      - APPSECGATE_MCP_CACHE_DIR=/home/appsecgate/.cache
+      - APPSECGATE_PROJECT_PATH=/workspace
+      - TRIVY_CACHE_DIR=/home/appsecgate/.cache/trivy
 
     security_opt:
       - no-new-privileges:true
@@ -49,5 +49,5 @@ services:
     tty: false
 
 volumes:
-  secgate-cache:
-  secgate-data:
+  appsecgate-cache:
+  appsecgate-data:

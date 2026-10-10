@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 
-from secgate_mcp.models.finding import Category
-from secgate_mcp.scanners.gitleaks import GitleaksAdapter
-from secgate_mcp.scanners.semgrep import SemgrepAdapter
-from secgate_mcp.scanners.trivy import TrivyAdapter
-from secgate_mcp.scanners.trufflehog import TruffleHogAdapter
+from appsecgate_mcp.models.finding import Category
+from appsecgate_mcp.scanners.gitleaks import GitleaksAdapter
+from appsecgate_mcp.scanners.semgrep import SemgrepAdapter
+from appsecgate_mcp.scanners.trivy import TrivyAdapter
+from appsecgate_mcp.scanners.trufflehog import TruffleHogAdapter
 
 
 class TestSemgrepParse:

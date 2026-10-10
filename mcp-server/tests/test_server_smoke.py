@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from secgate_mcp import server
+from appsecgate_mcp import server
 
 
 def test_all_tools_registered():
@@ -63,7 +63,7 @@ def test_sse_transport_emits_deprecation_warning(monkeypatch):
 
     monkeypatch.setattr(server.mcp, "run", fake_run)
     monkeypatch.setattr(server, "_configure_http", lambda *a, **k: None)
-    monkeypatch.setattr("sys.argv", ["secgate-mcp", "--transport", "sse"])
+    monkeypatch.setattr("sys.argv", ["appsecgate-mcp", "--transport", "sse"])
 
     with pytest.warns(DeprecationWarning):
         server.main()
@@ -86,7 +86,7 @@ def test_streamable_http_configures_host_port(monkeypatch):
     monkeypatch.setattr(server, "_configure_http", fake_configure)
     monkeypatch.setattr(
         "sys.argv",
-        ["secgate-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8123"],
+        ["appsecgate-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8123"],
     )
 
     server.main()

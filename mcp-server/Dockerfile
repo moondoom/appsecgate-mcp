@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# SecGate MCP — multi-stage образ.
+# AppSecGate MCP — multi-stage образ.
 # non-root (1000:1000), read-only rootfs friendly, без docker.sock.
 
 # ----------------------------------------------------------------------
@@ -10,7 +10,7 @@ FROM python:3.12-slim AS builder
 
 ENV UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
-    UV_PROJECT_ENVIRONMENT=/opt/secgate-venv
+    UV_PROJECT_ENVIRONMENT=/opt/appsecgate-venv
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -19,8 +19,8 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 
 # Устанавливаем только runtime-зависимости в изолированный venv.
-RUN uv venv /opt/secgate-venv && \
-    uv pip install --python /opt/secgate-venv/bin/python . semgrep
+RUN uv venv /opt/appsecgate-venv && \
+    uv pip install --python /opt/appsecgate-venv/bin/python . semgrep
 
 # ----------------------------------------------------------------------
 # Stage 2: runtime — сканеры + venv
@@ -36,18 +36,18 @@ ARG TRUFFLEHOG_ARCH=amd64
 ARG TRIVY_ARCH=64bit
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    HOME=/home/secgate \
-    PATH="/opt/secgate-venv/bin:${PATH}" \
+    HOME=/home/appsecgate \
+    PATH="/opt/appsecgate-venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    TRIVY_CACHE_DIR=/home/secgate/.cache/trivy \
-    SECGATE_MCP_HOME=/home/secgate/.secgate-mcp
+    TRIVY_CACHE_DIR=/home/appsecgate/.cache/trivy \
+    APPSECGATE_MCP_HOME=/home/appsecgate/.appsecgate-mcp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl git gnupg tar \
     && rm -rf /var/lib/apt/lists/*
 # Semgrep (pip image) — самодостаточный бинарник в venv.
-COPY --from=builder /opt/secgate-venv /opt/secgate-venv
+COPY --from=builder /opt/appsecgate-venv /opt/appsecgate-venv
 
 # Gitleaks
 RUN curl -fsSL -o /tmp/gitleaks.tar.gz \
@@ -68,13 +68,13 @@ RUN curl -fsSL -o /tmp/trivy.tar.gz \
     && rm /tmp/trivy.tar.gz
 
 # non-root пользователь 1000:1000
-RUN groupadd --gid 1000 secgate \
-    && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/secgate --shell /usr/sbin/nologin secgate \
-    && mkdir -p /home/secgate/.cache /home/secgate/.secgate-mcp /workspace \
-    && chown -R 1000:1000 /home/secgate /workspace
+RUN groupadd --gid 1000 appsecgate \
+    && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/appsecgate --shell /usr/sbin/nologin appsecgate \
+    && mkdir -p /home/appsecgate/.cache /home/appsecgate/.appsecgate-mcp /workspace \
+    && chown -R 1000:1000 /home/appsecgate /workspace
 
 # Конфиг по умолчанию
-COPY config/default.yaml /etc/secgate/default.yaml
+COPY config/default.yaml /etc/appsecgate/default.yaml
 
 USER 1000:1000
 WORKDIR /workspace
@@ -82,5 +82,5 @@ WORKDIR /workspace
 # Обновление баз сканеров — только на этапе сборки/через volume.
 # Сканеры проверяются адаптерами через is_available(); отсутствие — не фатально.
 
-ENTRYPOINT ["secgate-mcp"]
+ENTRYPOINT ["appsecgate-mcp"]
 CMD ["--transport", "stdio"]

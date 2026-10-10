@@ -1,4 +1,4 @@
-"""Общие фикстуры тестов SecGate MCP."""
+"""Общие фикстуры тестов AppSecGate MCP."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from secgate_mcp.config.models import Config
+from appsecgate_mcp.config.models import Config
 
 
 @pytest.fixture()

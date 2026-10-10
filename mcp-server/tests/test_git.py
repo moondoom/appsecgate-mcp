@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from secgate_mcp.git import (
+from appsecgate_mcp.git import (
     GitError,
     git_changed_files,
     git_diff,

@@ -1,5 +1,5 @@
 # ============================================================
-# SecGate MCP — .gitignore
+# AppSecGate MCP — .gitignore
 # ============================================================
 
 # --- Python: байткод и кэши ---
@@ -35,7 +35,7 @@ ENV/
 coverage.xml
 htmlcov/
 
-# --- Рантайм-данные SecGate (локальный контур) ---
+# --- Рантайм-данные AppSecGate (локальный контур) ---
 *.db
 *.sqlite
 *.sqlite3
@@ -47,7 +47,7 @@ scan_cache.db
 .env
 .env.*
 !.env.example
-.secgate-mcp/
+.appsecgate-mcp/
 *.pem
 *.key
 credentials

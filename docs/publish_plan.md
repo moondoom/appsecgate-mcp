@@ -1,4 +1,4 @@
-# План публикации SecGate MCP в Docker Hub
+# План публикации AppSecGate MCP в Docker Hub
 
 > Версия: 1.1
 > Дата: 2026-10-09
@@ -10,8 +10,8 @@
 
 ### 1.1. Пространство имён (namespace)
 
-В `session-handoff.md` образ собирается как `secgate/mcp:0.1.0`.
-Здесь `secgate` — namespace. На Docker Hub namespace может быть:
+В `session-handoff.md` образ собирается как `appsecgate/mcp:0.1.0`.
+Здесь `appsecgate` — namespace. На Docker Hub namespace может быть:
 
 - твоим **username**;
 - названием **организации**, где ты owner/editor.
@@ -19,7 +19,7 @@
 Для pet-проекта проще всего использовать свой username:
 
 ```bash
-<username>/secgate-mcp:0.1.0
+<username>/appsecgate-mcp:0.1.0
 ```
 
 Требования к имени репозитория:
@@ -53,13 +53,13 @@ echo $DOCKER_HUB_TOKEN | docker login -u $DOCKER_HUB_USERNAME --password-stdin
 
 ```bash
 cd mcp-server
-docker build -t secgate/mcp:0.1.0 .
+docker build -t appsecgate/mcp:0.1.0 .
 ```
 
 ### 2.2. Перетегирование под свой namespace
 
 ```bash
-docker tag secgate/mcp:0.1.0 <username>/secgate-mcp:0.1.0
+docker tag appsecgate/mcp:0.1.0 <username>/appsecgate-mcp:0.1.0
 ```
 
 `docker tag` не копирует образ, а создаёт новый указатель на те же слои.
@@ -67,7 +67,7 @@ docker tag secgate/mcp:0.1.0 <username>/secgate-mcp:0.1.0
 ### 2.3. Push
 
 ```bash
-docker push <username>/secgate-mcp:0.1.0
+docker push <username>/appsecgate-mcp:0.1.0
 ```
 
 Проверка: Docker Hub → репозиторий → вкладка **Tags**.
@@ -99,7 +99,7 @@ Docker Hub позволяет хранить несколько тегов дл�
 
 Как минимум заполни **short description** — оно отображается в поиске:
 
-> SecGate MCP — локальный сканер безопасности для AI-агентов (Semgrep, Gitleaks, Trivy).
+> AppSecGate MCP — локальный сканер безопасности для AI-агентов (Semgrep, Gitleaks, Trivy).
 > Работает офлайн, non-root, read-only rootfs.
 
 Для автоматической синхронизации README можно использовать GitHub Action:
@@ -112,14 +112,14 @@ Docker Hub позволяет хранить несколько тегов дл�
 
 ### 5.1. Создание репозитория
 
-1. Создай **приватный** репозиторий на GitHub (например, `secgate-mcp`).
+1. Создай **приватный** репозиторий на GitHub (например, `appsecgate-mcp`).
 2. Залей код.
 3. Добавь `LICENSE`, `README.md`, `.gitignore`.
 4. Убедись, что CI зелёный (см. раздел 6).
 5. Переведи репозиторий в **public**.
 
 Приватный старт нужен, чтобы случайно не закоммитить секреты:
-`.secgate-mcp/config.yaml`, `shown_findings.db`, `*.sqlite`, `.env`.
+`.appsecgate-mcp/config.yaml`, `shown_findings.db`, `*.sqlite`, `.env`.
 
 ### 5.2. Secrets и Variables
 
@@ -316,8 +316,8 @@ jobs:
           context: ./mcp-server
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/secgate-mcp:${{ github.ref_name }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/secgate-mcp:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/appsecgate-mcp:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/appsecgate-mcp:latest
 ```
 
 **Как это работает**:
@@ -408,7 +408,7 @@ docker images
 
 - [ ] Создать PAT в Docker Hub (Read & Write).
 - [ ] Создать репозиторий на Docker Hub под своим username или организацией.
-- [ ] Перетегировать локальный образ под `<username>/secgate-mcp:0.1.0`.
+- [ ] Перетегировать локальный образ под `<username>/appsecgate-mcp:0.1.0`.
 - [ ] Залогиниться через `docker login` с PAT.
 - [ ] Запушить образ.
 - [ ] Заполнить описание репозитория вручную (или настроить синхронизацию через GitHub Action).
@@ -437,15 +437,15 @@ docker images
 echo $DOCKER_HUB_TOKEN | docker login -u $DOCKER_HUB_USERNAME --password-stdin
 
 # Сборка
-cd mcp-server && docker build -t secgate/mcp:0.1.0 .
+cd mcp-server && docker build -t appsecgate/mcp:0.1.0 .
 
 # Тег
-docker tag secgate/mcp:0.1.0 <username>/secgate-mcp:0.1.0
-docker tag secgate/mcp:0.1.0 <username>/secgate-mcp:latest
+docker tag appsecgate/mcp:0.1.0 <username>/appsecgate-mcp:0.1.0
+docker tag appsecgate/mcp:0.1.0 <username>/appsecgate-mcp:latest
 
 # Push
-docker push <username>/secgate-mcp:0.1.0
-docker push <username>/secgate-mcp:latest
+docker push <username>/appsecgate-mcp:0.1.0
+docker push <username>/appsecgate-mcp:latest
 
 # Git tag
 git tag v0.1.0

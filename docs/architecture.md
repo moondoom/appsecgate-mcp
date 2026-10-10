@@ -1,4 +1,4 @@
-# Архитектура локального сканера SecGate MCP
+# Архитектура локального сканера AppSecGate MCP
 
 > **Версия:** 1.0 (draft)
 > **Статус:** Architecture Design
@@ -34,7 +34,7 @@
 │          │ MCP Protocol (stdio, HTTP)                                    │
 │          │                                                               │
 │  ┌───────▼──────────────────────────────────────────────────────────┐   │
-│  │                     DOCKER CONTAINER: secgate-mcp                 │   │
+│  │                     DOCKER CONTAINER: appsecgate-mcp                 │   │
 │  │                     user: 1000:1000, read_only: true              │   │
 │  │  ┌────────────────────────────────────────────────────────────┐  │   │
 │  │  │                    MCP SERVER LAYER                        │  │   │
@@ -72,8 +72,8 @@
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                                                          │
 │  Bind-mount (ro):          Named volume (rw):                            │
-│  • ./project → /workspace  • secgate-cache → ~/.cache                    │
-│  • ./.secgate-mcp → /config                                              │
+│  • ./project → /workspace  • appsecgate-cache → ~/.cache                    │
+│  • ./.appsecgate-mcp → /config                                              │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -113,7 +113,7 @@
 # Псевдокод регистрации инструментов
 from fastmcp import FastMCP
 
-mcp = FastMCP("secgate-mcp")
+mcp = FastMCP("appsecgate-mcp")
 
 @mcp.tool()
 async def scan_diff() -> ScanResult:
@@ -284,7 +284,7 @@ semgrep --json --baseline <commit> --config p/security-audit .
 ```python
 class TrivyAdapter(BaseScanner):
     def __init__(self):
-        self.cache_dir = os.environ.get("TRIVY_CACHE_DIR", "/home/secgate/.cache/trivy")
+        self.cache_dir = os.environ.get("TRIVY_CACHE_DIR", "/home/appsecgate/.cache/trivy")
     
     async def scan(self, files, mode):
         # Сканируем только релевантные файлы: lock-файлы, *.tf, k8s/*.yaml, Dockerfile
@@ -353,7 +353,7 @@ class FingerprintGenerator:
 
 ### 3.5. Storage Layer
 
-Три SQLite-базы. Все — в `~/.secgate-mcp/` (внутри контейнера это named volume).
+Три SQLite-базы. Все — в `~/.appsecgate-mcp/` (внутри контейнера это named volume).
 
 #### `shown_findings.db`
 
@@ -416,18 +416,18 @@ CREATE TABLE scan_cache (
 
 ### 3.6. Configuration Layer
 
-Конфигурация читается из `.secgate-mcp/config.yaml` (bind-mount `:ro`).
+Конфигурация читается из `.appsecgate-mcp/config.yaml` (bind-mount `:ro`).
 
 **Приоритет**: 
 1. Значения из `config.yaml` в проекте
-2. Значения по умолчанию из образа (`/etc/secgate/default.yaml`)
+2. Значения по умолчанию из образа (`/etc/appsecgate/default.yaml`)
 3. Переменные окружения (перекрывают всё)
 
 ```python
 class ConfigLoader:
     def load(self, project_path: str) -> Config:
-        default = yaml.safe_load(open("/etc/secgate/default.yaml"))
-        project = yaml.safe_load(open(f"{project_path}/.secgate-mcp/config.yaml"))
+        default = yaml.safe_load(open("/etc/appsecgate/default.yaml"))
+        project = yaml.safe_load(open(f"{project_path}/.appsecgate-mcp/config.yaml"))
         merged = deep_merge(default, project)
         return Config.model_validate(merged)
 ```
@@ -505,19 +505,19 @@ AI-агент           Hook Handler        Auto-Fixer       Gate Engine
 
 ```yaml
 services:
-  secgate-mcp:
-    image: secgate/mcp:0.1.0
+  appsecgate-mcp:
+    image: appsecgate/mcp:0.1.0
     user: "1000:1000"
     read_only: true
     tmpfs:
       - /tmp:size=100M,mode=1777
     volumes:
       - ${PROJECT_PATH}:/workspace:ro
-      - secgate-config:/.secgate-mcp:ro
-      - secgate-cache:/home/secgate/.cache:rw
+      - appsecgate-config:/.appsecgate-mcp:ro
+      - appsecgate-cache:/home/appsecgate/.cache:rw
     environment:
-      - HOME=/home/secgate
-      - TRIVY_CACHE_DIR=/home/secgate/.cache/trivy
+      - HOME=/home/appsecgate
+      - TRIVY_CACHE_DIR=/home/appsecgate/.cache/trivy
 
     security_opt:
       - no-new-privileges:true
@@ -620,7 +620,7 @@ services:
 
 ## 10. Итог
 
-Архитектура локального MCP-сервера SecGate — это **пять слоёв** (MCP → Orchestration → Scanner Adapters → Normalization → Storage), работающих в **непривилегированном Docker-контейнере** с **read-only bind-mount** проекта. Ключевые инженерные решения:
+Архитектура локального MCP-сервера AppSecGate — это **пять слоёв** (MCP → Orchestration → Scanner Adapters → Normalization → Storage), работающих в **непривилегированном Docker-контейнере** с **read-only bind-mount** проекта. Ключевые инженерные решения:
 
 1. **Параллельный запуск сканеров** — для соблюдения SLA `< 5 сек`.
 2. **Fingerprint** — для сопоставления находок между локальным и CI-сканом.

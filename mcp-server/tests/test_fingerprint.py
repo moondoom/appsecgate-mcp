@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from secgate_mcp.normalization.fingerprint import (
+from appsecgate_mcp.normalization.fingerprint import (
     FingerprintGenerator,
     normalize_snippet,
 )

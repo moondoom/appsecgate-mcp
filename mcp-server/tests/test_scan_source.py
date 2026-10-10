@@ -6,9 +6,9 @@
 
 from __future__ import annotations
 
-from secgate_mcp.scanners.gitleaks import GitleaksAdapter
-from secgate_mcp.scanners.trivy import TrivyAdapter
-from secgate_mcp.scanners.trufflehog import TruffleHogAdapter
+from appsecgate_mcp.scanners.gitleaks import GitleaksAdapter
+from appsecgate_mcp.scanners.trivy import TrivyAdapter
+from appsecgate_mcp.scanners.trufflehog import TruffleHogAdapter
 
 
 def test_project_mode_absolute_dir(tmp_path):

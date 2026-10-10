@@ -1,6 +1,6 @@
-# SecGate MCP
+# AppSecGate MCP
 
-Локальный MCP-сервер безопасности для AI-агентов (SecGate Phase 1).
+Локальный MCP-сервер безопасности для AI-агентов (AppSecGate Phase 1).
 
 Запускает Semgrep, Gitleaks, TruffleHog и Trivy параллельно, нормализует
 находки в единый формат `Finding`, ведёт журнал показанного (`shown_findings.db`),
@@ -27,10 +27,10 @@ uv run ruff format src tests
 
 ```bash
 # stdio (основной режим)
-secgate-mcp --transport stdio --project /workspace
+appsecgate-mcp --transport stdio --project /workspace
 
 # streamable-http (HTTP-демон)
-secgate-mcp --transport streamable-http --host 0.0.0.0 --port 8765
+appsecgate-mcp --transport streamable-http --host 0.0.0.0 --port 8765
 ```
 
 ## Режимы транспорта
@@ -44,8 +44,8 @@ secgate-mcp --transport streamable-http --host 0.0.0.0 --port 8765
 
 ## Конфигурация
 
-Приоритет: `.secgate-mcp/config.yaml` в проекте → `/etc/secgate/default.yaml`
-в образе → переменные окружения `SECGATE_*`.
+Приоритет: `.appsecgate-mcp/config.yaml` в проекте → `/etc/appsecgate/default.yaml`
+в образе → переменные окружения `APPSECGATE_*`.
 
 ## Инструменты MCP
 

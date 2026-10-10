@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from secgate_mcp.config.models import Config
-from secgate_mcp.models.finding import Category, Finding, Severity
-from secgate_mcp.orchestration.gate import GateEngine
+from appsecgate_mcp.config.models import Config
+from appsecgate_mcp.models.finding import Category, Finding, Severity
+from appsecgate_mcp.orchestration.gate import GateEngine
 
 
 class FakeShownStore:

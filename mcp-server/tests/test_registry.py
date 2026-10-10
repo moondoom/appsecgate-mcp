@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from secgate_mcp.config.models import Config
-from secgate_mcp.scanners.registry import ScannerRegistry
+from appsecgate_mcp.config.models import Config
+from appsecgate_mcp.scanners.registry import ScannerRegistry
 
 
 def test_all_categories_built(default_config: Config):

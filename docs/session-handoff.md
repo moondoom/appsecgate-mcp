@@ -1,4 +1,4 @@
-# SecGate MCP — Handoff
+# AppSecGate MCP — Handoff
 
 ## ТЕКУЩАЯ СЕССИЯ: «Docker + Continue MCP» (MCP работает end-to-end ✅)
 
@@ -8,18 +8,18 @@
 
 ### 0. Окружение (проверено)
 
-- Репо: `/home/animage/projects/secgate-mcp`, пакет — `mcp-server/`.
+- Репо: `/home/animage/projects/appsecgate-mcp`, пакет — `mcp-server/`.
 - Docker: client/server 29.8.2, linux/amd64.
-- Образ собран в этой сессии: `cd mcp-server && docker build -t secgate/mcp:0.1.0 .`
+- Образ собран в этой сессии: `cd mcp-server && docker build -t appsecgate/mcp:0.1.0 .`
 - Контейнер, поднятый Continue: `objective_swanson`
-  (mount `/home/animage/projects/secgate-mcp -> /workspace:ro`;
-  named volumes `secgate-cache -> /home/secgate/.cache`,
-  `secgate-data -> /home/secgate/.secgate-mcp`).
+  (mount `/home/animage/projects/appsecgate-mcp -> /workspace:ro`;
+  named volumes `appsecgate-cache -> /home/appsecgate/.cache`,
+  `appsecgate-data -> /home/appsecgate/.appsecgate-mcp`).
 - Сканеры в образе: gitleaks `8.21.2`, trufflehog `3.82.13`, trivy `0.75.0`, semgrep `1.180.0`, git `2.47.3`.
 
 ### 1. Конфиг Continue (готов, переносимый)
 
-`.continue/mcpServers/secgate.yaml` — stdio через docker, без абсолютных путей:
+`.continue/mcpServers/appsecgate.yaml` — stdio через docker, без абсолютных путей:
 
 - `command: docker`
 - `cwd: "${workspaceFolder}"` — ключевой момент: относительный путь в args разрешается от cwd
@@ -30,19 +30,19 @@
 - `--transport stdio --project /workspace`
 
 **Подтверждено:** `${workspaceFolder}` в `cwd` Continue **подставляет** (проверено через
-`docker inspect objective_swanson` -> Source `/home/animage/projects/secgate-mcp`).
+`docker inspect objective_swanson` -> Source `/home/animage/projects/appsecgate-mcp`).
 Гипотеза «stdio не переносим, только streamable-http» — **опровергнута**.
 
 ### 2. Что работает ✅
 
 - `session_start` / `scan_file` / `scan_diff` отвечают корректным JSON-RPC.
 - `scan_diff` обошёл весь репозиторий; trivy стартует, локальный гейт отрабатывает, ошибок нет.
-- Оркестрация, storage (SQLite в `secgate-data`), нормализация — без падений.
+- Оркестрация, storage (SQLite в `appsecgate-data`), нормализация — без падений.
 
 ### 3. Найденные баги
 
 **БАГ 1 (критичный): Gitleaks молча теряет ВСЕ находки.**
-Файл `mcp-server/src/secgate_mcp/scanners/gitleaks.py`, метод `_norm`:
+Файл `mcp-server/src/appsecgate_mcp/scanners/gitleaks.py`, метод `_norm`:
 
 ```python
 @staticmethod
@@ -74,15 +74,15 @@ def _rel_to_project(self, path: str) -> str:
 Нужен регресс-тест на фильтрацию с абсолютными путями.
 
 **БАГ 2: Semgrep всегда в scanners_skipped.**
-Причина: `OSError: [Errno 30] Read-only file system: '/home/secgate/.semgrep'`
-(`read_only: true`, а semgrep пишет в `$HOME/.semgrep`; writable только `~/.cache` и `~/.secgate-mcp`).
+Причина: `OSError: [Errno 30] Read-only file system: '/home/appsecgate/.semgrep'`
+(`read_only: true`, а semgrep пишет в `$HOME/.semgrep`; writable только `~/.cache` и `~/.appsecgate-mcp`).
 `is_available()` -> `semgrep --version` падает -> адаптер выключен.
 Проверено: `docker exec -e HOME=/tmp objective_swanson semgrep --version` -> `1.180.0`.
-Фикс — writable HOME volume в `.continue/mcpServers/secgate.yaml`:
+Фикс — writable HOME volume в `.continue/mcpServers/appsecgate.yaml`:
 
 ```yaml
       - -v
-      - secgate-home:/home/secgate
+      - appsecgate-home:/home/appsecgate
 ```
 
 **БАГ 3: ruleset `p/security-audit` требует сеть при `--network=none`.**
@@ -104,7 +104,7 @@ def _rel_to_project(self, path: str) -> str:
 
 ```bash
 # Сборка
-cd mcp-server && docker build -t secgate/mcp:0.1.0 .
+cd mcp-server && docker build -t appsecgate/mcp:0.1.0 .
 
 # Интерфейс работающего контейнера Continue
 docker inspect objective_swanson --format '{{json .Mounts}}'
@@ -120,7 +120,7 @@ docker exec -e HOME=/tmp objective_swanson semgrep --version
 
 ### Окружение
 
-- Репо: `/home/animage/projects/secgate-mcp`, рабочий каталог пакета — `mcp-server/`.
+- Репо: `/home/animage/projects/appsecgate-mcp`, рабочий каталог пакета — `mcp-server/`.
 - Python 3.12; `uv` — `~/.local/bin/uv`. Команды из `mcp-server/`:
 
 ```bash
@@ -143,7 +143,7 @@ uv run ruff check src tests
 - `models/finding.py`: `Severity`/`Category` переведены на `enum.StrEnum` (UP042).
 - `orchestration/coordinator.py`: `zip(scanners, results, strict=True)` (B905).
 
-**Entrypoints — работают.** `python -m secgate_mcp --help` и `uv run secgate-mcp --help` -> OK.
+**Entrypoints — работают.** `python -m appsecgate_mcp --help` и `uv run appsecgate-mcp --help` -> OK.
 Регистрируются все 11 MCP-tools (8 tools + 3 hook-хендлера).
 
 **Docker — образ собирается и работает.** Исправлено в `Dockerfile`:
@@ -156,7 +156,7 @@ uv run ruff check src tests
 Заведены ARG: `GITLEAKS_ARCH=x64`, `TRUFFLEHOG_ARCH=amd64`, `TRIVY_ARCH=64bit`.
 
 Проверено в контейнере: сканеры gitleaks `8.21.2`, trufflehog `3.82.13`, trivy `0.75.0`,
-semgrep `1.180.0`; `id` -> `uid=1000(secgate) gid=1000(secgate)`; `session_start()` -> `status: ready`;
+semgrep `1.180.0`; `id` -> `uid=1000(appsecgate) gid=1000(appsecgate)`; `session_start()` -> `status: ready`;
 `mcp.list_tools()` -> 11 tools.
 
 > Примечание: `trufflehog` отсутствует в дефолтном списке сканеров, потому что в
@@ -170,7 +170,7 @@ semgrep `1.180.0`; `id` -> `uid=1000(secgate) gid=1000(secgate)`; `session_start
 
 ### Осталось на будущее (не блокеры)
 
-- `update_config` при невалидном YAML в `.secgate-mcp/config.yaml` молча теряет
+- `update_config` при невалидном YAML в `.appsecgate-mcp/config.yaml` молча теряет
   старый конфиг (`except yaml.YAMLError: existing = {}`). Стоит вернуть предупреждение.
 - `scan_diff` при пустом diff мутирует `ScanResult().meta` — покрытия нет (тест проходит).
 - Hook-контракт (`session_start`/`pre_tool_use`/`post_tool_use`) зарегистрирован как
