@@ -28,6 +28,7 @@ import os
 import sys
 import tempfile
 import warnings
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -122,7 +123,7 @@ class SessionState:
         self.suppression_store: SuppressionStore | None = None
         self.scan_cache_store: ScanCacheStore | None = None
 
-        self.findings: dict[str, Finding] = {}
+        self.findings: OrderedDict[str, Finding] = OrderedDict()
         self.config_loader = ConfigLoader()
         self.trivy_db: TrivyDbStatus | None = None
         self._lock = asyncio.Lock()
@@ -223,12 +224,12 @@ class SessionState:
     # In-memory реестр находок
     # ------------------------------------------------------------------
     def register(self, result: ScanResult) -> None:
+        """Регистрирует находки; при переполнении вытесняются самые старые."""
         for finding in result.findings:
             self.findings[finding.fingerprint] = finding
-        overflow = len(self.findings) - _MAX_IN_MEMORY_FINDINGS
-        if overflow > 0:
-            for key in list(self.findings.keys())[:overflow]:
-                del self.findings[key]
+            self.findings.move_to_end(finding.fingerprint)
+        while len(self.findings) > _MAX_IN_MEMORY_FINDINGS:
+            self.findings.popitem(last=False)
 
     def get_finding(self, finding_id: str) -> Finding | None:
         return self.findings.get(finding_id)
@@ -408,6 +409,12 @@ def _restore_config(path: Path, previous_text: str | None) -> None:
         _atomic_write(path, previous_text)
 
 
+async def _reinitialize(state: SessionState) -> None:
+    """Пересоздаёт ConfigLoader и переинициализирует сессию под текущий проект."""
+    state.config_loader = ConfigLoader(state.config_loader.default_config_path)
+    await state.initialize(state.project_path, force=True)
+
+
 @mcp.tool()
 async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
     """Глубоко мёржит updates в .appsecgate-mcp/config.yaml проекта и перезагружает сессию.
@@ -436,14 +443,12 @@ async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
     project_conf.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write(project_conf, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 
-    state.config_loader = ConfigLoader(state.config_loader.default_config_path)
     try:
-        await state.initialize(state.project_path, force=True)
+        await _reinitialize(state)
     except Exception as exc:
         _restore_config(project_conf, previous_text)
         try:
-            state.config_loader = ConfigLoader(state.config_loader.default_config_path)
-            await state.initialize(state.project_path, force=True)
+            await _reinitialize(state)
         except Exception:
             pass
         return {
