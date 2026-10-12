@@ -80,17 +80,6 @@ def _resolve_default_project() -> str:
     return str(Path.cwd().resolve())
 
 
-def _relpath(path: str, project: str) -> str:
-    """Приводит путь к относительному от корня проекта, если возможно."""
-    p = Path(path)
-    if not p.is_absolute():
-        return str(p)
-    try:
-        return str(p.resolve().relative_to(Path(project).resolve()))
-    except ValueError:
-        return str(p)
-
-
 def _resolve_inside_project(path: str, project: str) -> Path:
     """Разрешает путь и проверяет, что он лежит внутри корня проекта.
 

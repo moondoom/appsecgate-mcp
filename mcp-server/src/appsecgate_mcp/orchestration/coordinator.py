@@ -51,11 +51,16 @@ class ScanCoordinator:
         """Сканирует файлы в режиме `file` | `diff` | `project`."""
         started = datetime.now(UTC)
         t0 = time.perf_counter()
+        rel_files = [self._to_relative(f) for f in files]
+        scanned = [rel for rel in rel_files if rel is not None]
         meta = ScanMeta(
             mode=mode,
-            scanned_files=list(files),
+            scanned_files=scanned,
             started_at=started.isoformat(),
         )
+        outside = len(rel_files) - len(scanned)
+        if outside:
+            meta.warnings.append(f"excluded {outside} file(s) outside project root")
 
         available = await self._select_available(meta)
         raw_findings = await self._run_all(available, files, mode, meta)
@@ -136,6 +141,9 @@ class ScanCoordinator:
         if not candidate.is_absolute():
             return os.path.normpath(candidate.as_posix())
         root = self.project_root
+        if root is None:
+            # Без корня проекта относительность не определить: путь не трогаем.
+            return path
         try:
             return candidate.relative_to(root).as_posix()
         except ValueError:
