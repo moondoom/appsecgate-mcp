@@ -22,7 +22,6 @@ def test_all_tools_registered():
         "scan_file",
         "scan_diff",
         "scan_project",
-        "auto_fix",
         "get_config",
         "update_config",
         "submit_feedback",
@@ -30,7 +29,7 @@ def test_all_tools_registered():
         "suppress_finding",
     }
     assert names == expected
-    assert len(tools) == 9
+    assert len(tools) == 8
 
 
 def test_extract_touched_files(tmp_path):

@@ -37,6 +37,48 @@ class TestSemgrepParse:
         assert f.category is Category.SAST
         assert f.line_start == 3 and f.line_end == 4
 
+    def test_metadata_patch_from_fix(self):
+        payload = {
+            "results": [
+                {
+                    "check_id": "python.lang.security.audit.exec",
+                    "path": "app.py",
+                    "start": {"line": 3},
+                    "end": {"line": 4},
+                    "extra": {
+                        "severity": "ERROR",
+                        "message": "exec used",
+                        "lines": "exec(x)",
+                        "metadata": {"fix": "subprocess.run(...)"},
+                    },
+                }
+            ]
+        }
+        findings = SemgrepAdapter()._parse(json.dumps(payload))
+        assert len(findings) == 1
+        assert findings[0].metadata["patch"] == "subprocess.run(...)"
+
+    def test_metadata_patch_none_without_fix(self):
+        payload = {
+            "results": [
+                {
+                    "check_id": "python.lang.security.audit.exec",
+                    "path": "app.py",
+                    "start": {"line": 3},
+                    "end": {"line": 4},
+                    "extra": {
+                        "severity": "ERROR",
+                        "message": "exec used",
+                        "lines": "exec(x)",
+                        "metadata": {},
+                    },
+                }
+            ]
+        }
+        findings = SemgrepAdapter()._parse(json.dumps(payload))
+        assert len(findings) == 1
+        assert findings[0].metadata["patch"] is None
+
     def test_bad_json_returns_empty(self):
         assert SemgrepAdapter()._parse("not json") == []
 

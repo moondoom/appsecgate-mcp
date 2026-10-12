@@ -59,7 +59,7 @@ WONTFIX (принятие риска)
 
 Цель — мгновенная обратная связь для разработчика и AI-агента.
 
-- **MCP-инструменты (9):** `scan_file`, `scan_diff`, `scan_project`, `auto_fix`, `get_config`, `update_config`, `submit_feedback`, `get_scan_history`, `suppress_finding`.
+- **MCP-инструменты (8):** `scan_file`, `scan_diff`, `scan_project`, `get_config`, `update_config`, `submit_feedback`, `get_scan_history`, `suppress_finding`.
 - **Хуки для AI-агентов:** не MCP-инструменты, а подкоманда CLI `appsecgate-mcp hook <name>` с `<name>` из `session_start`, `pre_tool_use`, `post_tool_use`. JSON-событие читается из stdin, результат JSON пишется в stdout. Опция `--project <путь>` задаёт корень проекта.
 - **Сканеры (реализованы):**
   - SAST: Semgrep

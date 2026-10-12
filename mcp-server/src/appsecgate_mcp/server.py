@@ -1,21 +1,21 @@
 """MCP Server Layer — FastMCP-сервер AppSecGate (Фаза 1).
 
 
-Регистрирует 9 MCP-инструментов, обслуживает stdio и
+Регистрирует 8 MCP-инструментов, обслуживает stdio и
 streamable-http транспорты (SSE оставлен как deprecated-алиас). Состояние
 сессии (конфиг, реестр сканеров, оркестратор, сторы,
 in-memory реестр находок) живёт в одном объекте ``SessionState`` и
 инициализируется лениво при первом обращении.
 
-  scan_file, scan_diff, scan_project, auto_fix, get_config, update_config,
+  scan_file, scan_diff, scan_project, get_config, update_config,
   submit_feedback, get_scan_history, suppress_finding
 
 Hook-хендлеры (session_start, pre_tool_use, post_tool_use) не являются
 MCP-инструментами: они живут в hooks.py и вызываются через CLI
 `appsecgate-mcp hook <name>`.
 
-Поскольку постоянного ``FindingStore`` в Фазе 1 нет, ``auto_fix`` /
-``submit_feedback`` / ``suppress_finding`` оперируют ``finding_id``, который
+Поскольку постоянного ``FindingStore`` в Фазе 1 нет, ``submit_feedback`` /
+``suppress_finding`` оперируют ``finding_id``, который
 совпадает с ``fingerprint`` находки. Находки последних сканов держатся в
 памяти процесса (``SessionState.findings``).
 """
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import os
 import sys
 import tempfile
@@ -40,7 +41,6 @@ from appsecgate_mcp.config.loader import PROJECT_CONFIG_REL, ConfigLoader, deep_
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.git import GitError, git_changed_files
 from appsecgate_mcp.models.finding import Finding, ScanResult, Suppression
-from appsecgate_mcp.orchestration.autofixer import AutoFixer
 from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
 from appsecgate_mcp.orchestration.gate import GateEngine, GateSummary
 from appsecgate_mcp.rules import (
@@ -53,6 +53,9 @@ from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.storage.db import Database, init_databases
 from appsecgate_mcp.storage.stores import (
     FeedbackStore,
+    FindingContextStore,
+    FindingIdentityStore,
+    ProjectsStore,
     ScanCacheStore,
     ShownFindingsStore,
     SuppressionStore,
@@ -86,6 +89,16 @@ def _resolve_default_project() -> str:
     return str(Path.cwd().resolve())
 
 
+def _compute_project_id(project_path: str) -> str:
+    """Стабильная проектная идентичность: ``sha256(realpath(project_path))[:16]``.
+
+    Проект определяется физическим путём (симлинки раскрываются через
+    ``resolve()``), поэтому два разных представления одного и того же каталога
+    дают одинаковый ``project_id`` (arch §4.10).
+    """
+    return hashlib.sha256(str(Path(project_path).resolve()).encode()).hexdigest()[:16]
+
+
 def _resolve_inside_project(path: str, project: str) -> Path:
     """Разрешает путь и проверяет, что он лежит внутри корня проекта.
 
@@ -111,17 +124,21 @@ class SessionState:
     def __init__(self) -> None:
         self.initialized = False
         self.project_path = _resolve_default_project()
+        self.project_id: str | None = None
+        self.project_alias: str | None = None
         self.config: Config | None = None
         self.registry: ScannerRegistry | None = None
         self.coordinator: ScanCoordinator | None = None
         self.gate_engine: GateEngine | None = None
-        self.auto_fixer: AutoFixer | None = None
 
         self.databases: dict[str, Database] = {}
         self.shown_store: ShownFindingsStore | None = None
         self.feedback_store: FeedbackStore | None = None
         self.suppression_store: SuppressionStore | None = None
         self.scan_cache_store: ScanCacheStore | None = None
+        self.projects_store: ProjectsStore | None = None
+        self.finding_identity_store: FindingIdentityStore | None = None
+        self.finding_context_store: FindingContextStore | None = None
 
         self.findings: OrderedDict[str, Finding] = OrderedDict()
         self.config_loader = ConfigLoader()
@@ -144,6 +161,15 @@ class SessionState:
             await self.close()
 
         project = str(Path(project_path).resolve()) if project_path else self.project_path
+        project_id = _compute_project_id(project)
+
+        if self.project_id is not None and self.project_id != project_id:
+            raise ValueError(
+                f"project_path изменился в рамках сессии: "
+                f"зафиксирован {self.project_id}, получен {project_id}"
+            )
+        self.project_id = project_id
+        self.project_alias = Path(project).name
         self.project_path = project
 
         config = self.config_loader.load(project)
@@ -160,10 +186,11 @@ class SessionState:
             self.registry,
             suppression_store=self.suppression_store,
             shown_store=self.shown_store,
+            identity_store=self.finding_identity_store,
+            context_store=self.finding_context_store,
             project_root=project,
         )
         self.gate_engine = GateEngine(config, shown_store=self.shown_store)
-        self.auto_fixer = AutoFixer(config)
         self.initialized = True
 
     async def _init_storage(self, config: Config) -> None:
@@ -176,7 +203,9 @@ class SessionState:
         }
         self.databases = await init_databases(paths)
 
-        self.shown_store = ShownFindingsStore(self.databases["shown"])
+        project_id = self.project_id
+        assert project_id is not None  # фиксируется в initialize() до _init_storage
+        self.shown_store = ShownFindingsStore(self.databases["shown"], project_id)
         self.shown_store.init_schema()
         self.feedback_store = FeedbackStore(self.databases["feedback"])
         self.feedback_store.init_schema()
@@ -184,6 +213,15 @@ class SessionState:
         self.suppression_store.init_schema()
         self.scan_cache_store = ScanCacheStore(self.databases["scan_cache"])
         self.scan_cache_store.init_schema()
+
+        self.projects_store = ProjectsStore(self.databases["shown"])
+        self.projects_store.init_schema()
+        self.finding_identity_store = FindingIdentityStore(self.databases["shown"])
+        self.finding_identity_store.init_schema()
+        self.finding_context_store = FindingContextStore(self.databases["shown"])
+        self.finding_context_store.init_schema()
+
+        await self.projects_store.upsert(project_id, self.project_alias or "", self.project_path)
 
     async def _sync_trivy_db(self, config: Config) -> None:
         """Seed + (опц.) онлайн-синхронизация Trivy DB, затем статус (дизайн v1 §2.3).
@@ -344,29 +382,6 @@ async def scan_project(path: str = ".") -> dict[str, Any]:
     result = await state.coordinator.scan([rel], mode="project")
     state.register(result)
     return await _build_scan_output(state, result)
-
-
-@mcp.tool()
-async def auto_fix(finding_id: str, strategy: str = "patch") -> dict[str, Any]:
-    """Пытается автоматически исправить находку по её finding_id (fingerprint).
-
-    strategy: "patch" (готовый патч из метаданных) | "suggestion" (заглушка Фазы 1).
-    """
-    state = await _ensure_session()
-    finding = state.get_finding(finding_id)
-    if finding is None:
-        return {
-            "status": "failed",
-            "finding_id": finding_id,
-            "reason": "unknown finding_id — выполните scan_file/scan_diff сначала",
-        }
-    result = await state.auto_fixer.fix(finding, strategy)
-    if result.status == "patched" and state.shown_store is not None:
-        try:
-            await state.shown_store.mark_fixed(finding_id)
-        except Exception:
-            pass
-    return result.model_dump(mode="json")
 
 
 @mcp.tool()

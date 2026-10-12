@@ -2,7 +2,6 @@
 
 from appsecgate_mcp.models.finding import (
     Finding,
-    FixResult,
     ScanMeta,
     ScanResult,
     Severity,
@@ -11,7 +10,6 @@ from appsecgate_mcp.models.finding import (
 
 __all__ = [
     "Finding",
-    "FixResult",
     "ScanMeta",
     "ScanResult",
     "Severity",

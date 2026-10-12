@@ -4,10 +4,13 @@
 Отдельные файлы появятся при росте (Фаза 2), если понадобятся.
 
 Хранилища:
-  * ShownFindingsStore — журнал показанных находок (shown_findings.db)
-  * FeedbackStore      — обратная связь разработчика (feedback.db)
-  * SuppressionStore   — локальные suppression
-  * ScanCacheStore     — кэш результатов сканирования (минимальный, возможно уйдёт)
+  * ProjectsStore        — реестр проектов (projects)
+  * FindingIdentityStore — стабильная идентичность находки
+  * FindingContextStore  — персистентный контекст находки
+  * ShownFindingsStore   — журнал показанных находок (shown_findings.db)
+  * FeedbackStore        — обратная связь разработчика (feedback.db)
+  * SuppressionStore     — локальные suppression
+  * ScanCacheStore       — кэш результатов сканирования (минимальный, возможно уйдёт)
 """
 
 from __future__ import annotations
@@ -24,22 +27,39 @@ def _now_iso() -> str:
 
 
 class ShownFindingsStore:
-    """Журнал находок, показанных разработчику (arch §3.5)."""
+    """Журнал находок, показанных разработчику (arch §3.5).
 
-    def __init__(self, db: Database) -> None:
+    Привязан к одному ``project_id``: каждая запись несёт проектную ось.
+    Схема «воссоздаётся с нуля», если существующая таблица не содержит
+    ``project_id`` (No-migration, см. AGENTS.md).
+    """
+
+    def __init__(self, db: Database, project_id: str) -> None:
         self.db = db
+        self.project_id = project_id
+
+    def _table_columns(self, table: str) -> set[str]:
+        rows = self.db._fetchall(f"PRAGMA table_info({table})")
+        return {r["name"] for r in rows}
 
     def init_schema(self) -> None:
+        columns = self._table_columns("shown_findings")
+        if columns and "project_id" not in columns:
+            # Старая схема (без проектной оси) — пересоздаём, не мигрируем.
+            self.db._execute_ddl("DROP TABLE shown_findings")
         self.db._execute_ddl(
             """
             CREATE TABLE IF NOT EXISTS shown_findings (
                 fingerprint TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
                 rule_id TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 severity TEXT NOT NULL,
                 scanner TEXT NOT NULL,
+                logical_id TEXT,
                 first_shown_at TIMESTAMP NOT NULL,
                 last_shown_at TIMESTAMP NOT NULL,
+                status_updated_at TIMESTAMP,
                 show_count INTEGER DEFAULT 1,
                 status TEXT NOT NULL,
                 fixed_at TIMESTAMP,
@@ -54,63 +74,99 @@ class ShownFindingsStore:
         self.db._execute_ddl(
             "CREATE INDEX IF NOT EXISTS idx_shown_status ON shown_findings(status)"
         )
+        self.db._execute_ddl(
+            "CREATE INDEX IF NOT EXISTS idx_shown_project ON shown_findings(project_id)"
+        )
+        self.db._execute_ddl(
+            "CREATE INDEX IF NOT EXISTS idx_shown_logical ON shown_findings(logical_id)"
+        )
+        self.db._execute_ddl(
+            "CREATE INDEX IF NOT EXISTS idx_shown_rule_file ON shown_findings(project_id, rule_id, file_path)"
+        )
 
-    async def record_shown(self, finding: Finding) -> None:
+    async def record_shown(self, finding: Finding, logical_id: str | None = None) -> None:
         now = _now_iso()
         await self.db.execute(
             """
-            INSERT INTO shown_findings (fingerprint, rule_id, file_path, severity, scanner,
-                                        first_shown_at, last_shown_at, show_count, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'SHOWN')
+            INSERT INTO shown_findings (fingerprint, project_id, rule_id, file_path, severity, scanner,
+                                        logical_id,
+                                        first_shown_at, last_shown_at, status_updated_at, show_count, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SHOWN')
             ON CONFLICT(fingerprint) DO UPDATE SET
+                logical_id = COALESCE(excluded.logical_id, shown_findings.logical_id),
                 last_shown_at = excluded.last_shown_at,
+                status_updated_at = excluded.status_updated_at,
                 show_count = show_count + 1
             """,
             (
                 finding.fingerprint,
+                self.project_id,
                 finding.rule_id,
                 finding.file_path,
                 finding.severity.value,
                 finding.scanner,
+                logical_id,
+                now,
                 now,
                 now,
             ),
         )
 
-    async def record_shown_batch(self, findings: list[Finding]) -> None:
+    async def record_shown_batch(
+        self,
+        findings: list[Finding],
+        logical_ids: dict[str, str] | None = None,
+    ) -> None:
         now = _now_iso()
+        logical_ids = logical_ids or {}
         rows = [
-            (f.fingerprint, f.rule_id, f.file_path, f.severity.value, f.scanner, now, now)
+            (
+                f.fingerprint,
+                self.project_id,
+                f.rule_id,
+                f.file_path,
+                f.severity.value,
+                f.scanner,
+                logical_ids.get(f.fingerprint),
+                now,
+                now,
+                now,
+            )
             for f in findings
         ]
         if not rows:
             return
         await self.db.execute_many(
             """
-            INSERT INTO shown_findings (fingerprint, rule_id, file_path, severity, scanner,
-                                        first_shown_at, last_shown_at, show_count, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'SHOWN')
+            INSERT INTO shown_findings (fingerprint, project_id, rule_id, file_path, severity, scanner,
+                                        logical_id,
+                                        first_shown_at, last_shown_at, status_updated_at, show_count, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SHOWN')
             ON CONFLICT(fingerprint) DO UPDATE SET
+                logical_id = COALESCE(excluded.logical_id, shown_findings.logical_id),
                 last_shown_at = excluded.last_shown_at,
+                status_updated_at = excluded.status_updated_at,
                 show_count = show_count + 1
             """,
             rows,
         )
 
     async def mark_fixed(self, fingerprint: str) -> None:
+        now = _now_iso()
         await self.db.execute(
-            "UPDATE shown_findings SET status = 'FIXED', fixed_at = ? WHERE fingerprint = ?",
-            (_now_iso(), fingerprint),
+            "UPDATE shown_findings SET status = 'FIXED', fixed_at = ?, status_updated_at = ? WHERE fingerprint = ?",
+            (now, now, fingerprint),
         )
 
     async def mark_suppressed(self, fingerprint: str, reason: str) -> None:
+        now = _now_iso()
         await self.db.execute(
             """
             UPDATE shown_findings
-            SET status = 'SUPPRESSED', suppressed_at = ?, suppress_reason = ?
+            SET status = 'SUPPRESSED', suppressed_at = ?, suppress_reason = ?, status_updated_at = ?
             WHERE fingerprint = ?
             """,
-            (_now_iso(), reason, fingerprint),
+            (now, reason, now, fingerprint),
         )
 
     async def was_shown(self, fingerprint: str) -> bool:
@@ -338,3 +394,166 @@ class ScanCacheStore:
             await self.db.execute("DELETE FROM scan_cache WHERE scanner = ?", (scanner,))
         else:
             await self.db.execute("DELETE FROM scan_cache")
+
+
+class ProjectsStore:
+    """Реестр известных проектов (arch §4.10).
+
+    ``first_seen_at`` фиксируется один раз, ``last_seen_at`` обновляется при
+    каждом старте сессии. ``project_path`` меняться не может — ``project_id``
+    выводится из физического пути, а смена пути запрещена инвариантом №6.
+    """
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def init_schema(self) -> None:
+        self.db._execute_ddl(
+            """
+            CREATE TABLE IF NOT EXISTS projects (
+                project_id    TEXT PRIMARY KEY,
+                project_alias TEXT NOT NULL,
+                project_path  TEXT NOT NULL,
+                first_seen_at TIMESTAMP NOT NULL,
+                last_seen_at  TIMESTAMP NOT NULL
+            );
+            """
+        )
+
+    async def upsert(self, project_id: str, project_alias: str, project_path: str) -> None:
+        now = _now_iso()
+        await self.db.execute(
+            """
+            INSERT INTO projects (project_id, project_alias, project_path, first_seen_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+                project_alias = excluded.project_alias,
+                project_path  = excluded.project_path,
+                last_seen_at  = excluded.last_seen_at
+            """,
+            (project_id, project_alias, project_path, now, now),
+        )
+
+    async def get(self, project_id: str) -> dict[str, Any] | None:
+        row = await self.db.fetchone("SELECT * FROM projects WHERE project_id = ?", (project_id,))
+        return dict(row) if row else None
+
+
+class FindingIdentityStore:
+    """Стабильная идентичность находки (arch §4.7).
+
+    Живёт дольше ``fingerprint``: связывает ``logical_id`` с текущим
+    fingerprint. ``first_seen_at`` фиксируется при первом появлении пары
+    ``(project_id, logical_id)`` и не обновляется; ``last_fingerprint`` и
+    ``last_seen_at`` обновляются при каждом повторном показе.
+    """
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def init_schema(self) -> None:
+        self.db._execute_ddl(
+            """
+            CREATE TABLE IF NOT EXISTS finding_identity (
+                logical_id       TEXT NOT NULL,
+                project_id       TEXT NOT NULL,
+                rule_id          TEXT NOT NULL,
+                file_path        TEXT NOT NULL,
+                first_seen_at    TIMESTAMP NOT NULL,
+                last_fingerprint TEXT NOT NULL,
+                last_seen_at     TIMESTAMP NOT NULL,
+                PRIMARY KEY (project_id, logical_id)
+            );
+            """
+        )
+
+    async def upsert(
+        self,
+        project_id: str,
+        logical_id: str,
+        rule_id: str,
+        file_path: str,
+        fingerprint: str,
+    ) -> None:
+        now = _now_iso()
+        await self.db.execute(
+            """
+            INSERT INTO finding_identity
+                (logical_id, project_id, rule_id, file_path, first_seen_at, last_fingerprint, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id, logical_id) DO UPDATE SET
+                last_fingerprint = excluded.last_fingerprint,
+                last_seen_at     = excluded.last_seen_at
+            """,
+            (logical_id, project_id, rule_id, file_path, now, fingerprint, now),
+        )
+
+
+class FindingContextStore:
+    """Персистентный контекст находки (arch §4.7).
+
+    Хранит (уже redacted) snippet/message/metadata для страницы находки.
+    Данные пишутся после ``Redactor`` — см. инвариант №4 в AGENTS.md.
+    """
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def init_schema(self) -> None:
+        self.db._execute_ddl(
+            """
+            CREATE TABLE IF NOT EXISTS finding_context (
+                fingerprint      TEXT NOT NULL,
+                project_id       TEXT NOT NULL,
+                logical_id       TEXT NOT NULL,
+                rule_id          TEXT NOT NULL,
+                file_path        TEXT NOT NULL,
+                snippet          TEXT,
+                message          TEXT,
+                metadata_json    TEXT,
+                remediation      TEXT,
+                scanner_version  TEXT,
+                captured_at      TIMESTAMP NOT NULL,
+                PRIMARY KEY (project_id, fingerprint)
+            );
+            """
+        )
+
+    async def upsert(
+        self,
+        project_id: str,
+        logical_id: str,
+        finding: Finding,
+        *,
+        snippet: str,
+        message: str,
+        metadata_json: str,
+    ) -> None:
+        now = _now_iso()
+        await self.db.execute(
+            """
+            INSERT INTO finding_context
+                (fingerprint, project_id, logical_id, rule_id, file_path,
+                 snippet, message, metadata_json, remediation, captured_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id, fingerprint) DO UPDATE SET
+                logical_id  = excluded.logical_id,
+                snippet     = excluded.snippet,
+                message     = excluded.message,
+                metadata_json = excluded.metadata_json,
+                remediation = excluded.remediation,
+                captured_at = excluded.captured_at
+            """,
+            (
+                finding.fingerprint,
+                project_id,
+                logical_id,
+                finding.rule_id,
+                finding.file_path,
+                snippet,
+                message,
+                metadata_json,
+                finding.remediation,
+                now,
+            ),
+        )

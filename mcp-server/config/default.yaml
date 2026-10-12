@@ -55,11 +55,6 @@ gates:
     info_on: [low, info]
     block_on_unresolved_local: true
 
-auto_fix:
-  enabled: true
-  strategies: [patch, suggestion]
-  max_attempts: 1
-
 # Пример подавления (в проекте переопределяется при необходимости):
 # suppress:
 #   - rule: semgrep.generic.secrets

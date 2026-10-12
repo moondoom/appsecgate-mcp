@@ -77,14 +77,6 @@ class GatesConfig(BaseModel):
     ci: CiGateConfig = Field(default_factory=CiGateConfig)
 
 
-class AutoFixConfig(BaseModel):
-    """Настройки автофикса (уровень 0 воронки эскалации)."""
-
-    enabled: bool = True
-    strategies: list[str] = Field(default_factory=lambda: ["patch", "suggestion"])
-    max_attempts: int = 1
-
-
 class SuppressRuleConfig(BaseModel):
     """Одно правило подавления из config.yaml."""
 
@@ -142,7 +134,6 @@ class Config(BaseModel):
     stack: StackConfig = Field(default_factory=StackConfig)
     scanners: ScannersConfig = Field(default_factory=ScannersConfig)
     gates: GatesConfig = Field(default_factory=GatesConfig)
-    auto_fix: AutoFixConfig = Field(default_factory=AutoFixConfig)
     suppress: list[SuppressRuleConfig] = Field(default_factory=list)
     sla: SLAConfig = Field(default_factory=SLAConfig)
     rules: RulesConfig = Field(default_factory=RulesConfig)

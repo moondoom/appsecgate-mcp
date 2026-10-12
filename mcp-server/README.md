@@ -53,7 +53,7 @@ appsecgate-mcp --transport streamable-http --host 0.0.0.0 --port 8765
 
 ## Инструменты MCP
 
-`scan_file`, `scan_diff`, `auto_fix`, `get_config`, `update_config`,
+`scan_file`, `scan_diff`, `get_config`, `update_config`,
 `submit_feedback`, `get_scan_history`, `suppress_finding`.
 
 ## Хуки

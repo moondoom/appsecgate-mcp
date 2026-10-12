@@ -45,6 +45,21 @@ class TestDeduplicator:
         b = make_finding(line_start=2, fingerprint="b")
         assert len(Deduplicator().deduplicate([a, b])) == 2
 
+    def test_higher_severity_wins(self):
+        a = make_finding(severity=Severity.LOW, scanner="gitleaks", fingerprint="a")
+        b = make_finding(severity=Severity.CRITICAL, scanner="trufflehog", fingerprint="b")
+        result = Deduplicator().deduplicate([a, b])
+        assert len(result) == 1
+        assert result[0].severity is Severity.CRITICAL
+        assert result[0].scanner == "trufflehog"
+
+    def test_equal_severity_keeps_first(self):
+        a = make_finding(severity=Severity.HIGH, scanner="gitleaks", fingerprint="a")
+        b = make_finding(severity=Severity.HIGH, scanner="trufflehog", fingerprint="b")
+        result = Deduplicator().deduplicate([a, b])
+        assert len(result) == 1
+        assert result[0].scanner == "gitleaks"
+
 
 class TestNormalizer:
     def test_threshold_filters_low(self):

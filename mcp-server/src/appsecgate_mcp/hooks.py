@@ -66,6 +66,8 @@ async def session_start(state: SessionState, project_path: str | None = None) ->
     return {
         "status": "ready",
         "project_path": state.project_path,
+        "project_id": state.project_id,
+        "project_alias": state.project_alias,
         "data_dir": config.data_dir,
         "enabled_categories": config.enabled_scanner_categories(),
         "scanners": state.registry.names(),
@@ -98,7 +100,7 @@ async def post_tool_use(
     tool_input: dict[str, Any] | None = None,
     tool_response: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Хук PostToolUse: сканирует изменённые файлы и пробует автофикс."""
+    """Хук PostToolUse: сканирует изменённые файлы."""
     await state.initialize()
     try:
         files = extract_touched_files(state, tool_name, tool_input)
@@ -110,13 +112,7 @@ async def post_tool_use(
     result = await state.coordinator.scan(files, mode="file")
     state.register(result)
 
-    autofixes: list[dict[str, Any]] = []
-    for finding in result.findings[:3]:
-        fix_result = await state.auto_fixer.fix(finding, "patch")
-        autofixes.append(fix_result.model_dump(mode="json"))
-
     output = await _build_scan_output(state, result)
-    output["autofixes"] = autofixes
     output["files"] = files
     return output
 

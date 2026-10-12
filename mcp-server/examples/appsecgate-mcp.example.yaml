@@ -38,11 +38,6 @@ gates:
     warn_on: [medium]
     block_on_unresolved_local: true   # killer-feature: "знал и не починил"
 
-auto_fix:
-  enabled: true
-  strategies: [patch, suggestion]
-  max_attempts: 1
-
 suppress:
   - rule: generic.secrets
     paths: ["tests/**", "**/*.test.ts"]

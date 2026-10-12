@@ -363,6 +363,7 @@ class SemgrepAdapter(BaseScanner):
                         "cwe": meta.get("cwe"),
                         "owasp": meta.get("owasp"),
                         "confidence": meta.get("confidence"),
+                        "patch": meta.get("fix"),
                     },
                     remediation=meta.get("fix"),
                 )

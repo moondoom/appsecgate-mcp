@@ -34,7 +34,7 @@ async def test_writes_and_reads_across_thread_pool(tmp_path):
     """Запись/чтение через to_thread из разных потоков не должна падать."""
     db = Database(tmp_path / "shown.db")
     db.connect()
-    store = ShownFindingsStore(db)
+    store = ShownFindingsStore(db, "project-1")
     store.init_schema()
 
     # Параллельные записи → разные потоки default-экзекьютора.
@@ -51,7 +51,7 @@ async def test_history_query_does_not_raise(tmp_path):
     """Прямая проверка сценария get_scan_history (пустая БД)."""
     db = Database(tmp_path / "shown.db")
     db.connect()
-    store = ShownFindingsStore(db)
+    store = ShownFindingsStore(db, "project-1")
     store.init_schema()
 
     rows = await store.get_all(limit=10)  # раньше падало с cross-thread

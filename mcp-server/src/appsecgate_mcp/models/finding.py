@@ -2,7 +2,7 @@
 
 Единый формат `Finding`, в который нормализуются выводы всех сканеров
 (Semgrep, Gitleaks, TruffleHog, Trivy), плюс вспомогательные структуры:
-результаты скана, автофикса и локальных suppression.
+результаты скана и локальных suppression.
 """
 
 from __future__ import annotations
@@ -79,14 +79,6 @@ class Finding(BaseModel):
         """Короткий идентификатор для показа разработчику."""
         return self.fingerprint or f"{self.scanner}:{self.rule_id}:{self.file_path}"
 
-    def has_known_patch(self) -> bool:
-        """Есть ли готовый патч (метаданные от сканера или правила)."""
-        return bool(self.metadata.get("patch"))
-
-    def generate_patch(self) -> str | None:
-        """Возвращает готовый патч, если он есть."""
-        return self.metadata.get("patch")
-
 
 class ScannerError(BaseModel):
     """Информация о сканере, который не смог отработать."""
@@ -135,15 +127,6 @@ class ScanResult(BaseModel):
             "warnings": self.meta.warnings,
             "duration_ms": self.meta.duration_ms,
         }
-
-
-class FixResult(BaseModel):
-    """Результат попытки автофикса находки."""
-
-    finding_id: str
-    status: str  # patched | suggested | failed | skipped
-    patch: str | None = None
-    reason: str | None = None
 
 
 class Suppression(BaseModel):
