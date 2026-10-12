@@ -175,9 +175,7 @@ class RuleResolver:
         """
         default_root = getattr(config, "rules_path", None) or DEFAULT_RULES_ROOT
         project_path = getattr(config, "project_path", None)
-        project_root = (
-            Path(project_path) / PROJECT_RULES_REL if project_path else None
-        )
+        project_root = Path(project_path) / PROJECT_RULES_REL if project_path else None
         user_root = Path.home() / USER_RULES_REL
         return cls(
             default_root=default_root,
@@ -205,9 +203,7 @@ class RuleResolver:
         default_manifest = manifests[0] if manifests else None
 
         mode = distribution_mode or (
-            default_manifest.distribution_mode
-            if default_manifest
-            else DistributionMode.MIT
+            default_manifest.distribution_mode if default_manifest else DistributionMode.MIT
         )
         version = default_manifest.version if default_manifest else "0.0.0"
 
@@ -243,9 +239,7 @@ class RuleResolver:
     def _load_manifests(self, warnings: list[str]) -> list[RulesManifest]:
         """Загружает default-манифест и overlay-манифесты (fail-soft)."""
         manifests: list[RulesManifest] = []
-        default_manifest, warning = load_manifest_soft(
-            self.default_root / MANIFEST_NAME
-        )
+        default_manifest, warning = load_manifest_soft(self.default_root / MANIFEST_NAME)
         if warning:
             warnings.append(f"rules default manifest ignored: {warning}")
         if default_manifest is not None:
@@ -275,9 +269,7 @@ class RuleResolver:
                 merged[bundle.id] = bundle
         return merged
 
-    def _resolve_bundle(
-        self, bundle: BundleEntry, warnings: list[str]
-    ) -> ResolvedBundle | None:
+    def _resolve_bundle(self, bundle: BundleEntry, warnings: list[str]) -> ResolvedBundle | None:
         """Разрешает один бандл по overlay-слоям.
 
         Возвращает `None`, если ни один слой не дал файлов на диске.
@@ -296,9 +288,7 @@ class RuleResolver:
                 sources.append(candidate)
 
         if not sources:
-            warnings.append(
-                f"rules bundle '{bundle.id}' not found on disk: {bundle.path}"
-            )
+            warnings.append(f"rules bundle '{bundle.id}' not found on disk: {bundle.path}")
             return None
 
         # Файлы для хэша/подсчёта — всегда с учётом всех слоёв.

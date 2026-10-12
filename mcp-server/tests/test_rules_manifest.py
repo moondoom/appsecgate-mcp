@@ -84,9 +84,10 @@ overrides:
     assert manifest.overrides is not None
     semgrep = manifest.overrides.for_scanner("semgrep")
     assert "python.lang.security.audit.exec-use" in semgrep.disable
-    assert semgrep.replace[
-        "python.lang.security.audit.subprocess-shell-true"
-    ] == "~/my-subprocess.yaml"
+    assert (
+        semgrep.replace["python.lang.security.audit.subprocess-shell-true"]
+        == "~/my-subprocess.yaml"
+    )
     # Неизвестный сканер → пустой блок, без падения.
     assert manifest.overrides.for_scanner("gitleaks").disable == []
 

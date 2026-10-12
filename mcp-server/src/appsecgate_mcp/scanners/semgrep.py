@@ -81,9 +81,7 @@ _LANG_TAGS: dict[str, set[str]] = {
 
 # Объединение всех языковых тегов — для отделения языковых бандлов
 # от generic/owasp-бандлов, которые не фильтруются по профилю.
-_ALL_LANG_TAGS: frozenset[str] = frozenset(
-    tag for tags in _LANG_TAGS.values() for tag in tags
-)
+_ALL_LANG_TAGS: frozenset[str] = frozenset(tag for tags in _LANG_TAGS.values() for tag in tags)
 
 
 def _is_placeholder_snippet(text: str) -> bool:
@@ -182,9 +180,7 @@ class SemgrepAdapter(BaseScanner):
         if listed is None:
             # Не git-репозиторий: .gitignore недоступен, обходим дерево целиком.
             listed = [str(p) for p in root.rglob("*") if p.is_file()]
-        return sorted(
-            p for p in listed if Path(p).suffix.lower() in _SUPPORTED_EXTENSIONS
-        )
+        return sorted(p for p in listed if Path(p).suffix.lower() in _SUPPORTED_EXTENSIONS)
 
     async def _git_listed_files(self, root: Path) -> list[str] | None:
         """Файлы из git (tracked + untracked, без игнорируемых).
@@ -261,9 +257,7 @@ class SemgrepAdapter(BaseScanner):
         except ScannerExecutionError as exc:
             # Таймаут или отсутствие бинарника: пакет пропущен, скан продолжается.
             self.warnings.append(
-                self.redact_project_root(
-                    f"semgrep: пакет из {len(batch)} файлов пропущен ({exc})"
-                )
+                self.redact_project_root(f"semgrep: пакет из {len(batch)} файлов пропущен ({exc})")
             )
             return []
         # Semgrep возвращает 0 (нет находок) или 1 (есть находки). Прочее — ошибка.
@@ -314,9 +308,7 @@ class SemgrepAdapter(BaseScanner):
         if not target_path.is_absolute():
             target_path = Path(self.project_path) / target_path
         try:
-            return target_path.resolve().is_relative_to(
-                (Path(self.project_path) / base).resolve()
-            )
+            return target_path.resolve().is_relative_to((Path(self.project_path) / base).resolve())
         except (OSError, ValueError):
             return False
 

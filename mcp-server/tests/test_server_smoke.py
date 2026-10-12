@@ -206,9 +206,7 @@ async def test_sync_trivy_db_seeds_from_seed_dir(tmp_path, monkeypatch):
 async def test_scan_output_includes_missing_db_warning(tmp_path):
     """Отсутствующая Trivy DB → warning попадает в meta.warnings, скан не падает."""
     state = server.SessionState()
-    state.trivy_db = trivy_db.trivy_db_status(
-        cache_dir=tmp_path / "missing", max_age_days=30
-    )
+    state.trivy_db = trivy_db.trivy_db_status(cache_dir=tmp_path / "missing", max_age_days=30)
 
     output = await server._build_scan_output(state, ScanResult())
 
@@ -232,9 +230,7 @@ async def test_scan_output_includes_stale_db_warning(tmp_path):
 
 async def test_session_start_reports_trivy_db(tmp_path, monkeypatch):
     """`session_start` отдаёт `trivy_db` со статусом и warnings (дизайн v1 §4.4)."""
-    cache = _write_trivy_cache(
-        tmp_path / "trivy", updated_at=datetime.now(UTC) - timedelta(days=9)
-    )
+    cache = _write_trivy_cache(tmp_path / "trivy", updated_at=datetime.now(UTC) - timedelta(days=9))
     monkeypatch.setenv("TRIVY_CACHE_DIR", str(cache))
     monkeypatch.setenv("APPSECGATE_MCP_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(server, "_session", server.SessionState())

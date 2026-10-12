@@ -258,9 +258,7 @@ async def test_semgrep_profiled_scan_runs_per_profile(tmp_path: Path, monkeypatc
         return _R()
 
     monkeypatch.setattr(adapter, "run", _fake_run)
-    await adapter.scan(
-        ["backend/app.py", "frontend/app.js"], "file"
-    )
+    await adapter.scan(["backend/app.py", "frontend/app.js"], "file")
     # Два прогона: профиль backend + остаток (frontend) полным набором.
     assert len(runs) == 2
     assert str(backend) in runs[0] or "backend/app.py" in runs[0]

@@ -134,10 +134,7 @@ class TrivyAdapter(BaseScanner):
                     scanner=self.name,
                     message=self.redact_project_root(
                         str(
-                            v.get("Title")
-                            or v.get("Description")
-                            or v.get("VulnerabilityID")
-                            or ""
+                            v.get("Title") or v.get("Description") or v.get("VulnerabilityID") or ""
                         )
                     ),
                     category=Category.SCA,

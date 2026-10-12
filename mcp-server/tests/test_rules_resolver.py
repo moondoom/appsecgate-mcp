@@ -164,9 +164,7 @@ overrides:
     resolved = RuleResolver(default_root=root, project_root=project_root).resolve()
     assert "python.lang.security.audit.exec-use" in resolved.disable_for_scanner("semgrep")
     # `~` раскрыт в абсолютный путь.
-    replaced = resolved.replace["semgrep"][
-        "python.lang.security.audit.subprocess-shell-true"
-    ]
+    replaced = resolved.replace["semgrep"]["python.lang.security.audit.subprocess-shell-true"]
     assert replaced.endswith("my-subprocess.yaml")
     assert "~" not in replaced
 

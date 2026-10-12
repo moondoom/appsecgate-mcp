@@ -120,9 +120,7 @@ def test_load_config_file_resolves_rules(tmp_path: Path):
     default = _write_default_config(tmp_path / "default.yaml")
     rules_root = _write_manifest(tmp_path / "rules")
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        yaml.safe_dump({"rules": {"path": str(rules_root)}}), encoding="utf-8"
-    )
+    config_file.write_text(yaml.safe_dump({"rules": {"path": str(rules_root)}}), encoding="utf-8")
 
     loader = ConfigLoader(default_config_path=default)
     config = loader.load_config_file(config_file)
