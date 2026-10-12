@@ -33,6 +33,7 @@ lint: ## Проверить код ruff'ом
 	cd $(SERVER_DIR) && uv run ruff check src tests
 
 format: ## Отформатировать код ruff'ом
+	cd $(SERVER_DIR) && uv run ruff check --fix src tests
 	cd $(SERVER_DIR) && uv run ruff format src tests
 
 check: lint test ## Полная проверка перед коммитом

@@ -394,13 +394,17 @@ async def get_config() -> dict[str, Any]:
     return state.config.model_dump(mode="json")
 
 
+# Шов для тестов: подменяется точечно, не трогая os.replace глобально.
+_replace_file = os.replace
+
+
 def _atomic_write(path: Path, text: str) -> None:
-    """Атомарная запись: временный файл в той же директории, затем os.replace."""
+    """Атомарная запись: временный файл в той же директории, затем _replace_file (os.replace)."""
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
-        os.replace(tmp, path)
+        _replace_file(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
@@ -444,7 +448,7 @@ async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
     merged = deep_merge(existing, updates)
 
     try:
-        Config.model_validate(state.config_loader.merged_layers(merged))
+        Config.model_validate(state.config_loader.validation_layers(merged))
     except ValidationError as exc:
         return {"status": "invalid", "errors": _format_validation_errors(exc)}
 

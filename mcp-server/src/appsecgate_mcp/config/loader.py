@@ -142,6 +142,10 @@ class ConfigLoader:
         """Собирает default + project-слой тем же порядком, что и load()."""
         return deep_merge(self._load_default_dict(), project_data)
 
+    def validation_layers(self, project_data: dict[str, Any]) -> dict[str, Any]:
+        """Слои для проверки схемы: default + project + env, как в load()."""
+        return _apply_env_overrides(self.merged_layers(project_data))
+
     def _load_default_dict(self) -> dict[str, Any]:
         if self.default_config_path.exists():
             try:

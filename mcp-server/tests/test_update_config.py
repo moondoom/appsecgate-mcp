@@ -124,7 +124,7 @@ async def test_write_failure_leaves_no_temp_file(project, monkeypatch):
     def failing_replace(src, dst):
         raise OSError("disk full")
 
-    monkeypatch.setattr(server.os, "replace", failing_replace)
+    monkeypatch.setattr(server, "_replace_file", failing_replace)
 
     with pytest.raises(OSError, match="disk full"):
         await server.update_config({"scanners": {"sast": {"severity_threshold": "high"}}})
