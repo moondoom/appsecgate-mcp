@@ -209,6 +209,39 @@ async def test_query_rejects_non_view_table(tmp_path):
     db.close()
 
 
+async def test_query_rejects_comma_join_to_raw_table(tmp_path):
+    """Запятая в FROM не должна обходить allowlist (shown_findings — не view)."""
+    db, path = _setup_db(tmp_path)
+    with pytest.raises(ReadOnlyQueryError, match="not an allowed view"):
+        run_query(path, "SELECT * FROM v_findings, shown_findings", None, "pid-1")
+    db.close()
+
+
+async def test_query_rejects_subquery_from(tmp_path):
+    db, path = _setup_db(tmp_path)
+    with pytest.raises(ReadOnlyQueryError, match="subqueries in FROM/JOIN"):
+        run_query(path, "SELECT * FROM (SELECT * FROM v_findings)", None, "pid-1")
+    db.close()
+
+
+async def test_query_or_does_not_leak_other_project(tmp_path):
+    """Автофильтр project_id не должен ослабляться оператором OR."""
+    db, path = _setup_db(tmp_path)
+    await ShownFindingsStore(db, "pid-1").record_shown(_make_finding("fp-1"))
+    await ShownFindingsStore(db, "pid-2").record_shown(_make_finding("fp-2"))
+
+    result = run_query(
+        path,
+        "SELECT fingerprint FROM v_findings WHERE severity='high' OR severity='low'",
+        None,
+        "pid-1",
+    )
+    fps = [row["fingerprint"] for row in result["rows"]]
+    assert fps == ["fp-1"]
+    assert "severity='high' OR severity='low')" in result["sql"]
+    db.close()
+
+
 async def test_query_rejects_non_select(tmp_path):
     db, path = _setup_db(tmp_path)
     with pytest.raises(ReadOnlyQueryError, match="only SELECT"):
@@ -417,9 +450,14 @@ async def test_export_snapshot_unsupported_format(tmp_path, monkeypatch):
 # _finalize project-filter injection
 # ---------------------------------------------------------------------------
 def test_finalize_injects_where():
-    assert _finalize("SELECT * FROM v_findings WHERE severity='high'", "abc") == (
-        "SELECT * FROM v_findings WHERE project_id = 'abc' AND severity='high' LIMIT 1000"
-    )
+    out = _finalize("SELECT * FROM v_findings WHERE severity='high'", "abc")
+    assert "WHERE project_id = 'abc' AND (severity='high')" in out
+    assert out.endswith("LIMIT 1000")
+
+
+def test_finalize_wraps_where_with_or():
+    out = _finalize("SELECT * FROM v_findings WHERE severity='high' OR severity='low'", "abc")
+    assert "WHERE project_id = 'abc' AND (severity='high' OR severity='low')" in out
 
 
 def test_finalize_appends_where_before_limit():

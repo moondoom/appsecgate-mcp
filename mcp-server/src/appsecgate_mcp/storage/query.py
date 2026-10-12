@@ -35,7 +35,12 @@ _FORBIDDEN_RE = re.compile(
     re.IGNORECASE,
 )
 _LIMIT_RE = re.compile(r"\bLIMIT\b", re.IGNORECASE)
-_TABLE_RE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
+_TABLE_RE = re.compile(r"\b(?:FROM|JOIN)\b", re.IGNORECASE)
+_TABLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# Ключевые слова, после которых список таблиц во FROM/JOIN гарантированно
+# заканчивается — их учитываем при извлечении имён через запятую.
+_CLAUSE_STOP_RE = re.compile(r"\b(WHERE|GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|ON|USING)\b",
+                             re.IGNORECASE)
 
 
 class ReadOnlyQueryError(Exception):
@@ -52,7 +57,7 @@ def _validate(sql: str) -> None:
         raise ReadOnlyQueryError("only SELECT statements are allowed")
     if _FORBIDDEN_RE.search(sql):
         raise ReadOnlyQueryError("statement contains a forbidden keyword")
-    tables = _TABLE_RE.findall(sql)
+    tables = _extract_tables(sql)
     if not tables:
         raise ReadOnlyQueryError("no FROM/JOIN clause found (views only)")
     allowed = {name.lower() for name in PUBLIC_VIEWS}
@@ -63,17 +68,47 @@ def _validate(sql: str) -> None:
             )
 
 
+def _extract_tables(sql: str) -> list[str]:
+    """Извлекает имена таблиц из FROM/JOIN, включая списки через запятую.
+
+    Подзапросы (``FROM (SELECT ...)``) отклоняются: их содержимое проверять
+    в одиночном SELECT нельзя, поэтому политика «только публичные views»
+    их не допускает.
+    """
+    tables: list[str] = []
+    for kw in _TABLE_RE.finditer(sql):
+        tail = sql[kw.end():]
+        tail_stripped = tail.lstrip()
+        # FROM/JOIN с подзапросом: `FROM (` / `JOIN (`.
+        if tail_stripped.startswith("("):
+            raise ReadOnlyQueryError("subqueries in FROM/JOIN are not allowed (views only)")
+        m = _TABLE_NAME_RE.match(tail_stripped)
+        if not m:
+            continue
+        tables.append(m.group(0))
+        # Разбираем список через запятую, останавливаясь на ключевых словах.
+        rest = tail_stripped[m.end():]
+        pos = _CLAUSE_STOP_RE.search(rest)
+        head = rest if pos is None else rest[: pos.start()]
+        for part in head.split(","):
+            part = part.strip()
+            pm = _TABLE_NAME_RE.match(part)
+            if pm:
+                tables.append(pm.group(0))
+    return tables
+
+
 def _finalize(sql: str, project_id: str) -> str:
     """Добавляет автофильтр ``project_id`` и ``LIMIT 1000`` (если нет)."""
     result = sql.strip().rstrip(";")
-    if not _LIMIT_RE.search(result):
-        result += " LIMIT 1000"
     # project_id — sha256-hexdigest[:16], безопасен для инъекции как literal.
     literal = f"'{project_id}'"
     where = re.search(r"\bWHERE\b", result, re.IGNORECASE)
     if where:
         pos = where.end()
-        result = result[:pos] + f" project_id = {literal} AND" + result[pos:]
+        # Пользовательский WHERE оборачиваем в скобки: `AND` приоритетнее `OR`,
+        # иначе автофильтр project_id ослабляется в условиях вида `a OR b`.
+        result = result[:pos] + f" project_id = {literal} AND (" + result[pos:].lstrip() + ")"
     else:
         tail = re.search(r"\b(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING)\b", result, re.IGNORECASE)
         if tail:
@@ -82,6 +117,8 @@ def _finalize(sql: str, project_id: str) -> str:
             )
         else:
             result += f" WHERE project_id = {literal}"
+    if not _LIMIT_RE.search(result):
+        result += " LIMIT 1000"
     return result
 
 
