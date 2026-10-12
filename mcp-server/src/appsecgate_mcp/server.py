@@ -424,18 +424,52 @@ async def submit_feedback(finding_id: str, type: str, reason: str = "") -> dict[
     return {"status": "recorded", "finding_id": finding_id, "feedback_id": feedback_id}
 
 
+def _relative_project_path(path: str, project: str) -> str:
+    """Приводит путь (абсолютный или относительный) к виду от корня проекта.
+
+    Результат всегда с прямыми слэшами и без ведущего './'. Путь вне проекта
+    поднимает ValueError (см. _resolve_inside_project).
+    """
+    resolved = _resolve_inside_project(path, project)
+    return resolved.relative_to(Path(project).resolve()).as_posix()
+
+
+def _normalize_history_item(item: dict[str, Any], project: str) -> dict[str, Any] | None:
+    """Приводит file_path строки журнала к виду от корня проекта.
+
+    Возвращает None, если путь лежит вне проекта: такая строка не попадает в ответ.
+    """
+    raw = item.get("file_path")
+    if not isinstance(raw, str) or not raw:
+        return item
+    try:
+        rel = _relative_project_path(raw, project)
+    except ValueError:
+        return None
+    return {**item, "file_path": rel}
+
+
 @mcp.tool()
 async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dict[str, Any]:
-    """Возвращает журнал показанных находок (shown_findings.db)."""
+    """Возвращает журнал показанных находок (shown_findings.db).
+
+    Пути в items всегда относительные от корня проекта. Строки с путями вне
+    проекта исключаются из ответа.
+    """
     state = await _ensure_session()
     try:
         if file_path:
-            rows = await state.shown_store.get_by_file(file_path)
+            rel = _relative_project_path(file_path, state.project_path)
+            rows = await state.shown_store.get_by_file(rel)
         else:
             rows = await state.shown_store.get_all(limit)
     except Exception as exc:
         return {"status": "error", "reason": str(exc), "items": []}
-    return {"count": len(rows[:limit]), "items": rows[:limit]}
+    items = [
+        n for row in rows if (n := _normalize_history_item(row, state.project_path)) is not None
+    ]
+    items = items[:limit]
+    return {"count": len(items), "items": items}
 
 
 @mcp.tool()
