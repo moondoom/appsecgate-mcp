@@ -79,10 +79,6 @@ class TruffleHogAdapter(BaseScanner):
             return []
         return self._parse(result.stdout)
 
-    @staticmethod
-    def _norm(path: str) -> str:
-        return str(Path(path)).lstrip("./")
-
     def _parse(self, stdout: str) -> list[RawFinding]:
         findings: list[RawFinding] = []
         for line in stdout.splitlines():

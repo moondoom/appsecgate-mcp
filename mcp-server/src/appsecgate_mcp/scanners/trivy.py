@@ -102,12 +102,8 @@ class TrivyAdapter(BaseScanner):
         findings = self._parse(result.stdout)
         if mode == "project" or not files:
             return findings
-        allowed = {self._norm(f) for f in files}
-        return [f for f in findings if self._norm(f.file_path) in allowed]
-
-    @staticmethod
-    def _norm(path: str) -> str:
-        return str(Path(path)).lstrip("./")
+        allowed = {self.normalize_path(f) for f in files}
+        return [f for f in findings if self.normalize_path(f.file_path) in allowed]
 
     def _parse(self, stdout: str) -> list[RawFinding]:
         if not stdout.strip():

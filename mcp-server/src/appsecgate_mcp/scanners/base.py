@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -113,6 +114,27 @@ class BaseScanner(ABC):
                 target = Path(self.project_path) / target
             return str(target)
         return self.project_path or "."
+
+    def normalize_path(self, path: str) -> str:
+        """Приводит путь к относительному от корня проекта, с прямыми слэшами.
+
+        Абсолютный путь внутри `project_path` превращается в относительный.
+        Путь вне проекта возвращается без изменений (его отсечёт фильтр вызывающего).
+        Ведущие `./` удаляются, ведущие точки в именах (`.github/...`) сохраняются.
+        """
+        if not path:
+            return ""
+        candidate = Path(path)
+        if candidate.is_absolute():
+            root = Path(self.project_path).resolve()
+            try:
+                candidate = candidate.relative_to(root)
+            except ValueError:
+                try:
+                    candidate = candidate.resolve().relative_to(root)
+                except (OSError, ValueError):
+                    return candidate.as_posix()
+        return os.path.normpath(candidate.as_posix())
 
     async def run(self, cmd: list[str], *, timeout: float | int | None = None) -> CommandResult:
         """Запускает внешнюю команду адаптера с настроенным таймаутом."""
