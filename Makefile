@@ -6,7 +6,7 @@ TAG            ?= animage/appsecgate-mcp:$(VERSION)
 PROJECT_PATH   ?= $(CURDIR)
 WITH_JAVA_DB   ?= false
 
-.PHONY: help setup test lint format check \
+.PHONY: help setup test test-file lint format check \
         docker-build docker-run docker-down docker-push \
         clean
 
@@ -14,6 +14,7 @@ help: ## Показать список основных команд
 	@echo "Основные цели:"
 	@echo "  setup        Установить зависимости через uv (включая dev)"
 	@echo "  test         Запустить тесты"
+	@echo "  test-file    Запустить один файл (make test-file FILE=tests/test_server_smoke.py)"
 	@echo "  lint         Проверить код ruff'ом"
 	@echo "  format       Отформатировать код ruff'ом"
 	@echo "  check        Полная проверка перед коммитом (lint + test)"
@@ -35,6 +36,10 @@ lint: ## Проверить код ruff'ом
 format: ## Отформатировать код ruff'ом
 	cd $(SERVER_DIR) && uv run ruff check --fix src tests
 	cd $(SERVER_DIR) && uv run ruff format src tests
+
+test-file: ## Запустить один тестовый файл (FILE=tests/test_server_smoke.py)
+	@test -n "$(FILE)" || (echo "Укажите FILE=путь/к/тесту.py" && exit 1)
+	cd $(SERVER_DIR) && uv run pytest $(FILE)
 
 check: lint test ## Полная проверка перед коммитом
 
