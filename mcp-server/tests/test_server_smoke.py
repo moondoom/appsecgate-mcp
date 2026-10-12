@@ -24,6 +24,8 @@ def test_all_tools_registered():
         "scan_project",
         "get_fix_context",
         "get_fix_context_batch",
+        "verify_fix",
+        "verify_fix_batch",
         "query_findings_db",
         "export_snapshot",
         "get_config",
@@ -33,7 +35,7 @@ def test_all_tools_registered():
         "suppress_finding",
     }
     assert names == expected
-    assert len(tools) == 12
+    assert len(tools) == 14
 
 
 def test_extract_touched_files(tmp_path):

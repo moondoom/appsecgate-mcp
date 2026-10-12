@@ -8,8 +8,8 @@ in-memory реестр находок) живёт в одном объекте `
 инициализируется лениво при первом обращении.
 
   scan_file, scan_diff, scan_project, get_fix_context, get_fix_context_batch,
-  query_findings_db, export_snapshot, get_config, update_config,
-  submit_feedback, get_scan_history, suppress_finding
+  verify_fix, verify_fix_batch, query_findings_db, export_snapshot, get_config,
+  update_config, submit_feedback, get_scan_history, suppress_finding
 
 Hook-хендлеры (session_start, pre_tool_use, post_tool_use) не являются
 MCP-инструментами: они живут в hooks.py и вызываются через CLI
@@ -57,11 +57,13 @@ from appsecgate_mcp.rules import (
 )
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.storage.db import Database, init_databases
+from appsecgate_mcp.storage.logical_id import compute_logical_id
 from appsecgate_mcp.storage.query import ReadOnlyQueryError, init_views, run_query
 from appsecgate_mcp.storage.stores import (
     FeedbackStore,
     FindingContextStore,
     FindingIdentityStore,
+    FixAttemptsStore,
     ProjectsStore,
     ScanCacheStore,
     ShownFindingsStore,
@@ -150,6 +152,7 @@ class SessionState:
         self.projects_store: ProjectsStore | None = None
         self.finding_identity_store: FindingIdentityStore | None = None
         self.finding_context_store: FindingContextStore | None = None
+        self.fix_attempts_store: FixAttemptsStore | None = None
         self.sql_audit_store: SqlAuditLogStore | None = None
 
         self.findings: OrderedDict[str, Finding] = OrderedDict()
@@ -240,6 +243,8 @@ class SessionState:
         self.finding_identity_store.init_schema()
         self.finding_context_store = FindingContextStore(self.databases["shown"])
         self.finding_context_store.init_schema()
+        self.fix_attempts_store = FixAttemptsStore(self.databases["shown"])
+        self.fix_attempts_store.init_schema()
         self.sql_audit_store = SqlAuditLogStore(self.databases["shown"])
         self.sql_audit_store.init_schema()
 
@@ -600,10 +605,11 @@ def _normalize_history_item(item: dict[str, Any], project: str) -> dict[str, Any
 
 @mcp.tool()
 async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dict[str, Any]:
-    """Возвращает журнал показанных находок (shown_findings.db).
+    """Возвращает журнал показанных находок (shown_findings.db) с попытками верификации.
 
     Пути в items всегда относительные от корня проекта. Строки с путями вне
-    проекта исключаются из ответа.
+    проекта исключаются из ответа. Поле ``latest_attempt`` — последняя запись
+    из ``fix_attempts`` для находки (или ``None``).
     """
     state = await _ensure_session()
     try:
@@ -618,7 +624,35 @@ async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dic
         n for row in rows if (n := _normalize_history_item(row, state.project_path)) is not None
     ]
     items = items[:limit]
-    return {"count": len(items), "items": items}
+    verified = 0
+    not_fixed = 0
+    wont_fix = 0
+    attempts_by_id: dict[str, Any] = {}
+    for item in items:
+        attempts = []
+        if getattr(state, "fix_attempts_store", None) is not None and state.project_id is not None:
+            attempts = await state.fix_attempts_store.list_for(state.project_id, item["fingerprint"])
+        if attempts:
+            attempts_by_id[item["fingerprint"]] = attempts[0]
+        status = (item.get("status") or "").upper()
+        if status == "FIXED":
+            verified += 1
+        elif status == "WONT_FIX":
+            wont_fix += 1
+        elif status in ("SHOWN", "NOT_FIXED"):
+            not_fixed += 1
+    coverage = {"attempts": 0, "total": 0}
+    if getattr(state, "fix_attempts_store", None) is not None and state.project_id is not None:
+        coverage = await state.fix_attempts_store.coverage(state.project_id)
+    return {
+        "count": len(items),
+        "items": items,
+        "attempts": attempts_by_id,
+        "verified": verified,
+        "not_fixed": not_fixed,
+        "wont_fix": wont_fix,
+        "coverage": coverage,
+    }
 
 
 @mcp.tool()
@@ -680,6 +714,191 @@ async def get_fix_context_batch(finding_ids: list[str]) -> dict[str, Any]:
         else:
             contexts.append(pack.model_dump(mode="json"))
     return {"status": "ok", "contexts": contexts, "errors": errors, "count": len(contexts)}
+
+
+async def _read_source(state: SessionState, file_path: str) -> str:
+    """Читает исходник файла внутри корня проекта (зеркалит логику coordinator)."""
+    try:
+        target = _resolve_inside_project(file_path, state.project_path)
+        return target.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return ""
+
+
+async def _verification_scan(
+    state: SessionState, file_path: str
+) -> list[tuple[Finding, str]]:
+    """Пересканирует файл (persist=False) и возвращает пары (finding, logical_id)."""
+    result = await state.coordinator.scan([file_path], mode="file", persist=False)
+    pairs: list[tuple[Finding, str]] = []
+    for finding in result.findings:
+        source = await _read_source(state, finding.file_path)
+        logical_id = compute_logical_id(
+            finding.rule_id, finding.file_path, finding.line_start, source
+        )
+        pairs.append((finding, logical_id))
+    return pairs
+
+
+def _resolve_attempt_target(row: dict[str, Any]) -> dict[str, Any]:
+    """Достаёт идентификаторы ``(fingerprint, logical_id, rule_id, file_path)``."""
+    return {
+        "fingerprint": row["fingerprint"],
+        "logical_id": row.get("logical_id"),
+        "rule_id": row["rule_id"],
+        "file_path": row["file_path"],
+    }
+
+
+async def _verify_attempts(
+    state: SessionState, attempts: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, int]]:
+    """Проверяет батч попыток: перескан каждого файла один раз + запись fix_attempts.
+
+    Возвращает ``(results, summary, file_rescans)``. ``file_rescans``: file_path → число
+    появлений в батче (счётчик, а не scan_id — серверные сканы не имеют ID).
+    """
+    resolved: list[dict[str, Any]] = []
+    for attempt in attempts:
+        row = await state.shown_store.find(attempt["finding_id"])
+        if row is None:
+            resolved.append({**attempt, "_error": f"finding not found: {attempt['finding_id']}"})
+            continue
+        target = _resolve_attempt_target(row)
+        if target["logical_id"] is None:
+            resolved.append(
+                {**attempt, "_error": f"no logical_id for finding: {attempt['finding_id']}"}
+            )
+            continue
+        resolved.append({**attempt, "_target": target})
+
+    scan_cache: dict[str, list[tuple[Finding, str]]] = {}
+    results: list[dict[str, Any]] = []
+    for attempt in resolved:
+        if "_error" in attempt:
+            results.append(
+                {
+                    "logical_id": "",
+                    "fingerprint": attempt["finding_id"],
+                    "reported_status": attempt["status"],
+                    "verified_status": "error",
+                    "verified": False,
+                    "reason": attempt["_error"],
+                }
+            )
+            continue
+
+        target = attempt["_target"]
+        reported = attempt["status"]
+        note = attempt.get("note") or ""
+        logical_id = target["logical_id"]
+
+        if reported == "wont_fix":
+            new_fingerprints: list[str] = []
+            verified_status = "wont_fix"
+        else:
+            scan_pairs = scan_cache.get(target["file_path"])
+            if scan_pairs is None:
+                scan_pairs = await _verification_scan(state, target["file_path"])
+                scan_cache[target["file_path"]] = scan_pairs
+            new_fingerprints = [f.fingerprint for f, lid in scan_pairs if lid == logical_id]
+            verified_status = "not_fixed" if new_fingerprints else "fixed"
+
+        await state.fix_attempts_store.record(
+            project_id=state.project_id,
+            logical_id=logical_id,
+            fingerprint=target["fingerprint"],
+            rule_id=target["rule_id"],
+            file_path=target["file_path"],
+            reported_status=reported.upper(),
+            verified_status=verified_status.upper(),
+            note=note,
+            session_id=state.session_id,
+        )
+        if verified_status in ("fixed", "wont_fix"):
+            await state.shown_store.set_status(
+                target["fingerprint"],
+                verified_status.upper(),
+                reason=note if verified_status == "wont_fix" else None,
+            )
+
+        results.append(
+            {
+                "logical_id": logical_id,
+                "fingerprint": target["fingerprint"],
+                "reported_status": reported,
+                "verified_status": verified_status,
+                "verified": reported == verified_status,
+                "new_fingerprints": new_fingerprints,
+                "reason": "",
+            }
+        )
+
+    summary: dict[str, int] = {}
+    for result in results:
+        key = result["verified_status"]
+        summary[key] = summary.get(key, 0) + 1
+    file_rescans = {path: 1 for path in scan_cache}
+    return results, summary, file_rescans
+
+
+@mcp.tool()
+async def verify_fix(finding_id: str, status: str, note: str = "") -> dict[str, Any]:
+    """Верифицирует одну находку: перескан файла и сверка по (logical_id).
+
+    status: fixed | not_fixed | wont_fix. ``wont_fix`` требует пояснения в note.
+    """
+    state = await _ensure_session()
+    if state.fix_attempts_store is None or state.shown_store is None:
+        return {"status": "error", "reason": "session not initialized"}
+    normalized = status.strip().lower()
+    if normalized not in ("fixed", "not_fixed", "wont_fix"):
+        return {
+            "status": "error",
+            "reason": f"invalid status '{status}': expected fixed|not_fixed|wont_fix",
+        }
+    results, _summary, _file_rescans = await _verify_attempts(
+        state, [{"finding_id": finding_id, "status": normalized, "note": note}]
+    )
+    result = results[0]
+    if result.get("verified_status") == "error":
+        return {"status": "error", "reason": result["reason"]}
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Верифицирует до 20 находок; каждый файл пересканируется один раз.
+
+    attempts: [{"finding_id": str, "status": fixed|not_fixed|wont_fix, "note": str}].
+    """
+    state = await _ensure_session()
+    if state.fix_attempts_store is None or state.shown_store is None:
+        return {"status": "error", "reason": "session not initialized"}
+    if len(attempts) > _BATCH_LIMIT:
+        return {
+            "status": "error",
+            "reason": f"batch limit exceeded: max {_BATCH_LIMIT} attempts",
+            "limit": _BATCH_LIMIT,
+        }
+    normalized: list[dict[str, Any]] = []
+    for attempt in attempts:
+        finding_id = attempt.get("finding_id")
+        status = str(attempt.get("status", "")).strip().lower()
+        if not finding_id:
+            return {"status": "error", "reason": "attempt missing 'finding_id'"}
+        if status not in ("fixed", "not_fixed", "wont_fix"):
+            return {"status": "error", "reason": f"invalid status '{status}' for {finding_id}"}
+        normalized.append(
+            {"finding_id": finding_id, "status": status, "note": attempt.get("note", "")}
+        )
+    results, summary, file_rescans = await _verify_attempts(state, normalized)
+    return {
+        "status": "ok",
+        "results": results,
+        "file_rescans": file_rescans,
+        "summary": summary,
+    }
 
 
 @mcp.tool()

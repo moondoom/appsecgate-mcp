@@ -22,9 +22,15 @@ from typing import Any
 
 from appsecgate_mcp.storage.db import Database
 
-# Публичные views (arch §4.7). v_attempts / v_verification_coverage появятся
-# на этапе верификации (arch §8.3), когда будет таблица fix_attempts.
-PUBLIC_VIEWS: tuple[str, ...] = ("v_findings", "v_summary", "v_projects")
+# Публичные views (arch §4.7). v_attempts / v_verification_coverage добавляются
+# на этапе верификации (arch §8.3), когда появляется таблица fix_attempts.
+PUBLIC_VIEWS: tuple[str, ...] = (
+    "v_findings",
+    "v_attempts",
+    "v_summary",
+    "v_verification_coverage",
+    "v_projects",
+)
 
 _MAX_ROWS = 1000
 
@@ -176,6 +182,42 @@ def init_views(db: Database) -> None:
             SUM(CASE WHEN status = 'SUPPRESSED' THEN 1 ELSE 0 END) AS suppressed
         FROM shown_findings
         GROUP BY project_id, severity
+        """
+    )
+    db._execute_ddl(
+        """
+        CREATE VIEW IF NOT EXISTS v_attempts AS
+        SELECT
+            project_id,
+            logical_id,
+            fingerprint,
+            rule_id,
+            file_path,
+            attempt_num,
+            reported_status,
+            verified_status,
+            note,
+            session_id,
+            agent_reported_at,
+            verified_at
+        FROM fix_attempts
+        """
+    )
+    db._execute_ddl(
+        """
+        CREATE VIEW IF NOT EXISTS v_verification_coverage AS
+        SELECT
+            s.project_id,
+            COUNT(DISTINCT s.logical_id) AS total_findings,
+            COUNT(DISTINCT a.logical_id) AS attempted_findings,
+            CASE WHEN COUNT(DISTINCT s.logical_id) = 0 THEN 0
+                 ELSE ROUND(100.0 * COUNT(DISTINCT a.logical_id) / COUNT(DISTINCT s.logical_id), 2)
+            END AS coverage_pct
+        FROM shown_findings s
+        LEFT JOIN (
+            SELECT DISTINCT project_id, logical_id FROM fix_attempts
+        ) a ON a.project_id = s.project_id AND a.logical_id = s.logical_id
+        GROUP BY s.project_id
         """
     )
 

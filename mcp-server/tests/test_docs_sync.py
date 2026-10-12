@@ -32,8 +32,8 @@ def test_readme_tools_match_list_tools() -> None:
     assert _readme_tool_names() == _registered_tool_names()
 
 
-def test_exactly_twelve_tools() -> None:
-    assert len(_registered_tool_names()) == 12
+def test_exactly_fourteen_tools() -> None:
+    assert len(_registered_tool_names()) == 14
 
 
 def test_hooks_are_not_mcp_tools() -> None:
