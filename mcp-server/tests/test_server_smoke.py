@@ -35,9 +35,10 @@ def test_all_tools_registered():
     assert expected.issubset(names)
 
 
-def test_extract_touched_files():
-    files = server._extract_touched_files("Edit", {"file_path": "/abs/a.py"})
-    assert files
+def test_extract_touched_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(server._session, "project_path", str(tmp_path))
+    files = server._extract_touched_files("Edit", {"file_path": "a.py"})
+    assert files == ["a.py"]
     assert server._extract_touched_files("Read", {"file_path": "a.py"}) == []
     assert server._extract_touched_files("Write", {}) == []
 
