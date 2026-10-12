@@ -10,6 +10,12 @@ from typing import Any
 import yaml
 
 from appsecgate_mcp.config.models import Config
+from appsecgate_mcp.rules import (
+    DistributionMode,
+    LicenseGuard,
+    RuleResolver,
+    load_manifest_soft,
+)
 
 DEFAULT_CONFIG_PATH = Path("/etc/appsecgate/default.yaml")
 PROJECT_CONFIG_REL = ".appsecgate-mcp/config.yaml"
@@ -97,9 +103,41 @@ class ConfigLoader:
         config.project_path = str(project.resolve())
         config.data_dir = str(base_dir)
         config.cache_dir = str(cache_dir)
+        self._resolve_rules(config)
 
         self._cache[cache_key] = config
         return config
+
+    def _resolve_rules(self, config: Config) -> None:
+        """Разрешает Rules Bundle и проверяет лицензии (дизайн v1 §3.3, этап 2).
+
+        Fail-soft: любые проблемы попадают в `config.rules_warnings`,
+        `resolved_rules` остаётся валидным (возможно пустым) объектом.
+        """
+        resolver = RuleResolver.from_config(config)
+        try:
+            resolved = resolver.resolve(
+                distribution_mode=config.rules.distribution_mode,
+            )
+        except Exception as exc:  # noqa: BLE001 - fail-soft контракт
+            config.resolved_rules = None
+            config.rules_warnings = [f"rules resolution failed: {exc}"]
+            return
+
+        warnings = list(resolved.warnings)
+        warnings.extend(self._license_warnings(resolver, config.rules.distribution_mode))
+        config.resolved_rules = resolved
+        config.rules_warnings = warnings
+
+    @staticmethod
+    def _license_warnings(resolver: RuleResolver, mode: DistributionMode) -> list[str]:
+        """Проверяет лицензионную чистоту дефолтного манифеста (fail-soft)."""
+        manifest, warning = load_manifest_soft(resolver.default_root / "manifest.yaml")
+        if manifest is None:
+            return [warning] if warning else []
+        warnings = list(LicenseGuard.warnings(manifest, mode))
+        warnings.extend(LicenseGuard.check(manifest, mode))
+        return warnings
 
     def _load_default_dict(self) -> dict[str, Any]:
         if self.default_config_path.exists():
@@ -129,4 +167,5 @@ class ConfigLoader:
         config = Config.model_validate(data)
         config.data_dir = str(base_dir)
         config.cache_dir = str(cache_dir)
+        self._resolve_rules(config)
         return config

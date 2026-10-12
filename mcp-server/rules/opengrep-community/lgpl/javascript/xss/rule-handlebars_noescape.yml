@@ -1,0 +1,58 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/xss/xss_templates.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_xss_rule-handlebars-noescape"
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern: function ($REQ, $RES, ...) {...}
+    - pattern-either:
+      - pattern-inside: |
+          $HB = require('handlebars');
+          ...
+      - pattern-inside: |
+          import $HB from "handlebars";
+  pattern-sinks:
+  - pattern: "$HB.compile(..., {noEscape: true,...}, ...)(...)"
+  - pattern: |
+      var $METHOD = $HB.compile(..., {noEscape: true,...}, ...)
+      ...
+      $METHOD(...)
+  message: |
+    This application is compiling strings with `Handlebars.compile` using an insecure
+    option of `{noEscape: true}`. This configuration bypasses the default behavior of 
+    Handlebars, which is to escape input values to prevent Cross-Site Scripting (XSS) 
+    attacks. 
+    XSS attacks are a type of security breach that occurs when an attacker manages to 
+    inject malicious scripts into web pages viewed by other users. These scripts can then 
+    execute in the context of the victim's session, allowing the attacker to bypass access 
+    controls and potentially access sensitive information or perform actions on behalf of the    
+    user. It is important to encode the data depending on the specific context it is used in. 
+
+    By default, `Handlebars.compile` escapes input values to prevent XSS attacks. 
+    Consider using `Handlebars.compile` with default settings or set `{noEscape: false}` 
+    to force encoding of input data.
+
+    Example of using Handlebars.compile safely:
+    ```
+    var template = "This is {{target}}";
+    var out = Handlebars.compile(template)({target: req.query.message});
+    res.send(out);
+    ```    
+  languages:
+  - "javascript"
+  severity: "WARNING"
+  metadata:
+    owasp: 
+    - "A7:2017-Cross-Site Scripting (XSS)"
+    - "A03:2021-Injection"
+    shortDescription: "Improper neutralization of script-related HTML tags in a web page
+      (basic XSS)"
+    cwe: "CWE-80"
+    security-severity: "MEDIUM"
+    category: "security"

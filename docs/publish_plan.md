@@ -52,17 +52,14 @@ echo $DOCKER_HUB_TOKEN | docker login -u $DOCKER_HUB_USERNAME --password-stdin
 ### 2.1. Сборка
 
 ```bash
-cd mcp-server
-docker build -t appsecgate/mcp:0.1.0 .
+# Из корня репозитория. Тег сразу под свой namespace
+make docker-build TAG=<username>/appsecgate-mcp:0.1.0
 ```
 
 ### 2.2. Перетегирование под свой namespace
 
-```bash
-docker tag appsecgate/mcp:0.1.0 <username>/appsecgate-mcp:0.1.0
-```
-
-`docker tag` не копирует образ, а создаёт новый указатель на те же слои.
+Отдельный шаг не нужен: `TAG` задаётся сразу при сборке (см. 2.1).
+Если образ уже собран под другим именем, используй `docker tag`: он не копирует образ, а создаёт новый указатель на те же слои.
 
 ### 2.3. Push
 
@@ -436,12 +433,11 @@ docker images
 # Логин через PAT
 echo $DOCKER_HUB_TOKEN | docker login -u $DOCKER_HUB_USERNAME --password-stdin
 
-# Сборка
-cd mcp-server && docker build -t appsecgate/mcp:0.1.0 .
+# Сборка из корня репозитория (тег под свой namespace)
+make docker-build TAG=<username>/appsecgate-mcp:0.1.0
 
-# Тег
-docker tag appsecgate/mcp:0.1.0 <username>/appsecgate-mcp:0.1.0
-docker tag appsecgate/mcp:0.1.0 <username>/appsecgate-mcp:latest
+# Дополнительный тег latest
+docker tag <username>/appsecgate-mcp:0.1.0 <username>/appsecgate-mcp:latest
 
 # Push
 docker push <username>/appsecgate-mcp:0.1.0

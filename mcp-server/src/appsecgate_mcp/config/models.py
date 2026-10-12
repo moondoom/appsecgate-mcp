@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from appsecgate_mcp.rules import DistributionMode, ResolvedRules
+
 
 class StackConfig(BaseModel):
     """Определение стека проекта."""
@@ -14,12 +16,24 @@ class StackConfig(BaseModel):
     frameworks: list[str] = Field(default_factory=list)
 
 
+class RuleProfileConfig(BaseModel):
+    """Явный профиль правил для подпроекта (дизайн v1 §6.2).
+
+    Декларация, не автоопределение: пользователь указывает путь и языки.
+    """
+
+    name: str = ""
+    path: str = "."
+    languages: list[str] = Field(default_factory=list)
+
+
 class ScannerConfig(BaseModel):
     """Настройки отдельного сканера."""
 
     enabled: bool = True
     tool: str = ""
     rulesets: list[str] = Field(default_factory=list)
+    profiles: list[RuleProfileConfig] = Field(default_factory=list)
     severity_threshold: str = "medium"
     extra_options: dict[str, Any] = Field(default_factory=dict)
 
@@ -89,6 +103,38 @@ class SLAConfig(BaseModel):
     lead_response: str = "10d"
 
 
+class RulesConfig(BaseModel):
+    """Настройки Rules Bundle (дизайн v1 §3.1).
+
+    `path` — корень дефолтных правил; `distribution_mode` — режим поставки;
+    `overrides` — inline overlay-настройки (disable/replace) поверх файловых.
+    """
+
+    path: str = ""
+    distribution_mode: DistributionMode = DistributionMode.MIT
+    overrides: dict[str, Any] = Field(default_factory=dict)
+    profiles: list[RuleProfileConfig] = Field(default_factory=list)
+
+
+class NetworkSyncConfig(BaseModel):
+    """Параметры онлайн-синхронизации (дизайн v1 §2.2)."""
+
+    trivy_db: bool = True
+    timeout_seconds: int = 30
+    max_db_age_days: int = 30
+
+
+class NetworkConfig(BaseModel):
+    """Режим работы сети: `offline` по умолчанию (дизайн v1 §2.1)."""
+
+    mode: str = "offline"  # offline | online
+    sync: NetworkSyncConfig = Field(default_factory=NetworkSyncConfig)
+
+    def is_online(self) -> bool:
+        """True, если включён онлайн-режим (регистр не важен)."""
+        return self.mode.strip().lower() == "online"
+
+
 class Config(BaseModel):
     """Корневая модель конфигурации."""
 
@@ -99,11 +145,25 @@ class Config(BaseModel):
     auto_fix: AutoFixConfig = Field(default_factory=AutoFixConfig)
     suppress: list[SuppressRuleConfig] = Field(default_factory=list)
     sla: SLAConfig = Field(default_factory=SLAConfig)
+    rules: RulesConfig = Field(default_factory=RulesConfig)
+    network: NetworkConfig = Field(default_factory=NetworkConfig)
 
     # Не из YAML, заполняется загрузчиком
     project_path: str | None = None
     cache_dir: str = ""
     data_dir: str = ""
+    resolved_rules: ResolvedRules | None = None
+    rules_warnings: list[str] = Field(default_factory=list)
+
+    @property
+    def rules_path(self) -> str:
+        """Корень дефолтных правил (для RuleResolver). Пусто — брать дефолт."""
+        return self.rules.path or ""
+
+    @property
+    def distribution_mode(self) -> DistributionMode:
+        """Режим поставки правил (`mit` | `commercial`)."""
+        return self.rules.distribution_mode
 
     def severity_threshold_value(self, category: str) -> str:
         """Возвращает порог severity для категории сканера."""

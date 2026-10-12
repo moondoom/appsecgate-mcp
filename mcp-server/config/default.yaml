@@ -8,6 +8,22 @@ stack:
   languages: []
   frameworks: []
 
+# Rules Bundle: локальная поставка правил (дизайн v1 §1, §3).
+# path пустой → используется дефолт образа (/opt/appsecgate/rules).
+rules:
+  path: ""
+  distribution_mode: mit
+  overrides: {}
+  profiles: []
+
+# Сеть: офлайн по умолчанию (дизайн v1 §2). Автодетект сети не делается.
+network:
+  mode: offline
+  sync:
+    trivy_db: true
+    timeout_seconds: 30
+    max_db_age_days: 30
+
 scanners:
   sast:
     enabled: true

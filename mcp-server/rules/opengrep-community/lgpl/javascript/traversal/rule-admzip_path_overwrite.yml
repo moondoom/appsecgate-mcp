@@ -1,0 +1,41 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/traversal/archive_path_overwrite.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_traversal_rule-admzip-path-overwrite"
+  patterns:
+  - pattern-inside: |
+      $X = require('adm-zip')
+      ...
+  - pattern-not: |
+      if ($FILENAME.indexOf('..'))
+  - pattern-not: |
+      $FS.createWriteStream($PATH.join(..., $PATH.basename($FILENAME, ...)))
+  - pattern-not: |
+      $FS.writeFile($PATH.join(..., $PATH.basename($FILENAME, ...)))
+  - pattern-not: |
+      $FS.writeFileSync($PATH.join(..., $PATH.basename($FILENAME, ...)))
+  - pattern-either:
+    - pattern: "$ZIPENTZ.forEach(function $FUNC($ENTRY, ...) { $FS.createWriteStream(...)
+        }, ...)"
+    - pattern: "$ZIPENTZ.forEach(function $FUNC($ENTRY, ...) { $FS.writeFile(...)
+        }, ...)"
+    - pattern: "$ZIPENTZ.forEach(function $FUNC($ENTRY, ...) { $FS.writeFileSync(...)
+        }, ...)"
+  message: |
+    Insecure ZIP archive extraction using adm-zip can result in arbitrary path over write and can result in code injection.
+  languages:
+  - "javascript"
+  metadata:
+    shortDescription: "Improper limitation of a pathname to a restricted directory
+      ('Path Traversal')"
+    cwe: "CWE-22"
+    owasp:
+    - "A5:2017-Broken Access Control"
+    - "A01:2021-Broken Access Control"
+    security-severity: "MEDIUM"
+    category: "security"
+  severity: "WARNING"

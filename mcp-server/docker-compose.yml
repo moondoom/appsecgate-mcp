@@ -28,6 +28,8 @@ services:
       # Кэш сканеров и SQLite-базы — единственное место записи.
       - appsecgate-cache:/home/appsecgate/.cache
       - appsecgate-data:/home/appsecgate/.appsecgate-mcp
+      # Опционально (разработка правил): подменить bundle из образа на локальный, только для чтения.
+      # - ${APPSECGATE_RULES_DIR:-./rules}:/opt/appsecgate/rules:ro
 
     environment:
       - HOME=/home/appsecgate

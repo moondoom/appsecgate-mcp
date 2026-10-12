@@ -1,0 +1,84 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/ssrf/ssrf_wkhtmltoimage.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+  - id: rules_lgpl_javascript_ssrf_rule-wkhtmltoimage-ssrf
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern: |
+              function($REQ, $RES, ...){
+                ...
+              }
+          - focus-metavariable: $REQ
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $W = require('wkhtmltoimage')
+                  ...
+              - pattern-inside: |
+                  import $W from 'wkhtmltoimage'
+                  ...
+          - pattern: |
+              $W.generate(...)
+    pattern-sanitizers:
+      - patterns:
+          - pattern-inside: |
+              if($ALLOWED.includes($URL)){
+                ...
+              }
+    message: |
+      This rule detects instances where user-controlled URLs are passed directly
+      to the `generate` function of `wkhtmltoimage` library. This practice can
+      lead to Server Side Request Forgery (SSRF) vulnerabilities, where an
+      attacker can induce the server to make requests to arbitrary URLs. This
+      can potentially expose internal services within the network or lead to
+      information disclosure.
+
+      To mitigate this vulnerability, ensure that URLs are safe and intended for 
+      public access. Implementing allowlists for acceptable domains or schemes can 
+      significantly reduce the risk of SSRF. Additionally, consider using server-side 
+      proxy services that restrict the outgoing requests to trusted domains and 
+      resources.
+
+      Secure Code Example:
+      ```
+      const wkhtmltoimage = require('wkhtmltoimage');
+      
+      // Define an allowlist of domains
+      const allowedDomains = ['example.com', 'trusted-source.com'];
+
+      app.post('/generate-image', (req, res) => {
+        const userInputUrl = req.body.url; 
+        const parsedUrl = new URL(userInputUrl);
+
+        // Check if the domain is in the allowlist
+        if (allowedDomains.includes(parsedUrl.hostname)) {
+            wkhtmltoimage.generate(userInputUrl, { output: 'output.jpg' }, 
+              function (err, stream) {
+                if (err) {
+                    return res.status(500).send('Error generating image');
+                }
+                // Send a success response or the image itself
+                res.status(200).send('Image generated successfully');
+            });
+        } else {
+            res.status(400).send('URL is not allowed due to security policies.');
+        }
+      });
+      ```
+    languages:
+      - "javascript"
+    severity: "WARNING"
+    metadata:
+      owasp:
+        - "A1:2017-Injection"
+        - "A10:2021-Server-Side Request Forgery"
+      cwe: "CWE-918"
+      shortDescription: "Server-side request forgery (SSRF)"
+      security-severity: "MEDIUM"
+      category: "security"

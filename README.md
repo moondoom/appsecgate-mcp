@@ -161,12 +161,17 @@ appsecgate-mcp/
 ### Локальный MCP-сервер (Фаза 1)
 
 ```bash
-# Установка
-pip install -e mcp-server
+# Установка зависимостей (из корня репозитория)
+make setup
 
-# Запуск
-appsecgate-mcp
+# Запуск MCP-сервера
+cd mcp-server && uv run appsecgate-mcp
+
+# Проверка: линт и тесты
+make check
 ```
+
+Полный список команд: `make help`.
 
 Конфигурация проекта задаётся в файле `.appsecgate-mcp/config.yaml`:
 

@@ -1,0 +1,49 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/xss/xss_templates.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_xss_rule-squirrelly-autoescape"
+  pattern-either:
+  - patterns:
+    - pattern-inside: |
+        $SQLY = require('squirrelly')
+        ...
+    - pattern: "$SQLY.autoEscaping(false)"
+  - patterns:
+    - pattern-inside: |
+        import $SQLY from 'squirrelly';
+        ...
+    - pattern: "$SQLY.autoEscaping(false)"
+  message: |
+    This application is rendering HTML with vulnerable 
+    configurations by setting Sqrl.autoEscaping(false) in squirrelly.
+
+    This could lead to Cross Site Scripting (XSS) if the input is malicious 
+    script code and the application server is not properly validating the output.
+
+    ```
+    // safe use of squirrelly render
+    var myTemplate = "<p>My Message is: {{message}}</p>"
+    Sqrl.Render(myTemplate, {message: req.query.message})
+    ```
+
+    XSS is an attack that exploits a web application or system to treat user input as markup or script code. 
+    It is important to encode the data depending on the specific context it is used in.
+
+    By default, squirrelly autoEscaping(true) escapes input values to prevent XSS attacks. 
+    Consider using squirrelly with default autoEscaping settings.
+  languages:
+  - "javascript"
+  severity: "WARNING"
+  metadata:
+    shortDescription: "Improper neutralization of input during web page generation
+      ('Cross-site Scripting')"
+    category: "security"
+    cwe: "CWE-79"
+    owasp: 
+    - "A7:2017-Cross-Site Scripting (XSS)"
+    - "A03:2021-Injection"
+    security-severity: "MEDIUM"

@@ -1,0 +1,46 @@
+rules:
+  - id: appsecgate.python.subprocess-shell-true
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Вызов subprocess с shell=True: при попадании пользовательского ввода
+      в команду возможна инъекция команд. Передавайте аргументы списком.
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+      owasp: "A03:2021 - Injection"
+      license: MIT
+      bundle: appsecgate/base
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+      - pattern-not: subprocess.$FUNC(["...", ...], shell=False, ...)
+
+  - id: appsecgate.python.os-system-call
+    languages: [python]
+    severity: WARNING
+    message: >-
+      os.system передаёт строку в оболочку. Используйте subprocess.run
+      со списком аргументов без shell=True.
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+      owasp: "A03:2021 - Injection"
+      license: MIT
+      bundle: appsecgate/base
+    pattern: os.system(...)
+
+  - id: appsecgate.javascript.eval-non-literal
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      eval() с аргументом, который не является литералом. Возможно
+      выполнение произвольного кода.
+    metadata:
+      category: security
+      cwe: "CWE-95: Eval Injection"
+      owasp: "A03:2021 - Injection"
+      license: MIT
+      bundle: appsecgate/base
+    patterns:
+      - pattern: eval($X)
+      - pattern-not: eval("...")

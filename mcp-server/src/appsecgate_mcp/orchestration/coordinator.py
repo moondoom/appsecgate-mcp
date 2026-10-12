@@ -93,6 +93,8 @@ class ScanCoordinator:
                 meta.errors.append(ScannerError(scanner=scanner.name, error=str(result)))
                 continue
             meta.scanners_ran.append(scanner.name)
+            # Частичные результаты сканера (пропущенные пакеты и т.п.) — в meta.
+            meta.warnings.extend(getattr(scanner, "warnings", []))
             raw.extend(result)
         return raw
 

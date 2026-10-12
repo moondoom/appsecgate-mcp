@@ -1,0 +1,16 @@
+# Кастомные детекторы TruffleHog (данные конфигурации, не производная работа под AGPL).
+# Схема сверяется с версией из manifest.yaml (min_scanner_version: 3.82.0).
+# TODO(§11.2): проверить схему запуском `trufflehog filesystem --config detectors.yaml`.
+
+detectors:
+  - name: AppSecGateInternalToken
+    keywords:
+      - appsecgate_
+    regex:
+      token: 'appsecgate_[A-Za-z0-9]{32}'
+
+  - name: AppSecGateServiceUrlWithCredentials
+    keywords:
+      - appsecgate-svc
+    regex:
+      url: 'https?://[A-Za-z0-9._-]+:[^@\s/]+@appsecgate-svc[A-Za-z0-9./_-]*'

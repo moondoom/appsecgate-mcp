@@ -105,6 +105,8 @@ class ScanMeta(BaseModel):
     scanners_skipped: list[str] = Field(default_factory=list)
     errors: list[ScannerError] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    # Инвентаризационный хэш набора правил (дизайн v1 §1.5); None — правила не разрешены.
+    ruleset_hash: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
 

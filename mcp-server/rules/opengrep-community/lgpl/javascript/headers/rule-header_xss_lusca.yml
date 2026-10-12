@@ -1,0 +1,32 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/headers/header_xss_protection.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_headers_rule-header-xss-lusca"
+  patterns:
+  - pattern-inside: |
+      $X = require('lusca')
+      ...
+  - pattern-not: |
+      $X.use(helmet())
+  - pattern-either:
+    - pattern: |
+        $X.xssProtection(false)
+    - pattern: |
+        $X({ xssProtection: false})
+  message: |
+    X-XSS-Protection header is set to 0. This will disable the browser's XSS Filter.
+  languages:
+  - "javascript"
+  severity: "WARNING"
+  metadata:
+    owasp: 
+    - "A6:2017-Security Misconfiguration"
+    - "A05:2021-Security Misconfiguration"
+    cwe: "CWE-358"
+    shortDescription: "Improperly implemented security check for standard"
+    security-severity: "MEDIUM"
+    category: "security"

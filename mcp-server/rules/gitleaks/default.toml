@@ -1,0 +1,27 @@
+title = "AppSecGate gitleaks rules"
+
+# Встроенные правила gitleaks (MIT) остаются активными.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "appsecgate-internal-api-token"
+description = "Внутренний API-токен AppSecGate"
+regex = '''appsecgate_(?i)[a-z0-9]{32}'''
+keywords = ["appsecgate_"]
+tags = ["secrets", "internal"]
+
+[[rules]]
+id = "appsecgate-generic-password-assignment"
+description = "Пароль, присвоенный в конфигурации"
+regex = '''(?i)(password|passwd|pwd)\s*[:=]\s*["']([^"'\s]{8,})["']'''
+secretGroup = 2
+keywords = ["password", "passwd", "pwd"]
+tags = ["secrets", "generic"]
+
+[[rules]]
+id = "appsecgate-private-key-block"
+description = "Блок приватного ключа в тексте"
+regex = '''-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'''
+keywords = ["private key"]
+tags = ["secrets", "crypto"]

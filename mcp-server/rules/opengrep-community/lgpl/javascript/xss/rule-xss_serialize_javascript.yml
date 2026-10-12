@@ -1,0 +1,52 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/xss/xss_serialize_js.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_xss_rule-xss-serialize-javascript"
+  pattern-either:
+  - patterns:
+    - pattern-inside: |
+        $S = require('serialize-javascript')
+        ...
+    - pattern: "$S(..., {...,unsafe: true,...})"
+  - patterns:
+    - pattern-inside: |
+        import serialize from "serialize-javascript";
+        ...
+    - pattern: "serialize(..., {...,unsafe: true,...})"
+  message: |
+    This application is serializing Javascript objects with vulnerable 
+    configurations by setting `{unsafe: true}` in serialize-javascript. 
+
+    This could lead to Cross Site Scripting (XSS) if the input was malicious 
+    script code and the application server is not properly validating the output.
+
+    ```
+    // safe use of serialize-javascript
+    const jsObj = serialize({
+      foo: htmlResponse
+      }
+    );
+    ```
+
+    XSS is an attack which exploits a web application or system to treat user input as markup or script code. 
+    It is important to encode the data depending on the specific context it is used in. 
+
+    By default, serialize-javascript encodes input values to prevent XSS attacks. 
+    Consider using serialize-javascript with default settings or set `{unsafe: false}` to encode
+    input data.
+  severity: "WARNING"
+  languages:
+  - "javascript"
+  metadata:
+    owasp: 
+    - "A7:2017-Cross-Site Scripting (XSS)"
+    - "A03:2021-Injection"
+    shortDescription: "Improper neutralization of script-related HTML tags in a web page
+      (basic XSS)"
+    cwe: "CWE-80"
+    security-severity: "MEDIUM"
+    category: "security"

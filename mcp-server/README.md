@@ -12,15 +12,19 @@
 Проект использует [uv](https://docs.astral.sh/uv/) как менеджер пакетов.
 
 ```bash
-# Создать venv и установить зависимости (включая dev)
-uv sync --extra dev
+# Из корня репозитория (рекомендуется)
+make setup     # установить зависимости (uv sync --extra dev)
+make test      # запустить тесты
+make lint      # проверка ruff
+make format    # форматирование ruff
+make check     # lint + test перед коммитом
+make clean     # удалить локальные артефакты
 
-# Запустить тесты
-uv run pytest
-
-# Линт и форматирование
-uv run ruff check src tests
-uv run ruff format src tests
+# Эквивалентные команды uv из каталога mcp-server/
+# uv sync --extra dev
+# uv run pytest
+# uv run ruff check src tests
+# uv run ruff format src tests
 ```
 
 ## Запуск

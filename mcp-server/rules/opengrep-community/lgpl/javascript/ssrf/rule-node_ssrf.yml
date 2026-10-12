@@ -1,0 +1,330 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/ssrf/ssrf_node.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: rules_lgpl_javascript_ssrf_rule-node-ssrf
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern: function ($REQ, $RES, ...) {...}
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern: function $FUNC($REQ, $RES, ...) {...}
+  pattern-sanitizers:
+  - patterns:
+    - pattern-either:
+      - pattern: |
+          if($VALIDATION){
+          ...
+          } 
+      - pattern: |
+          $A = $VALIDATION
+          ...
+          if($A){
+          ...
+          }
+    - metavariable-pattern:
+        metavariable: $VALIDATION
+        pattern-either:
+        - pattern: |
+            $AL.includes(...)  
+        - pattern: |
+            $AL.indexOf(...) !== -1
+        - pattern: |
+            $AL.find(...) !== undefined
+        - pattern: |
+            $ALS.has(...)
+  pattern-sinks:
+  - patterns: 
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern-inside: |
+          $NEEDLE = require('needle');
+          ...
+      - pattern-inside: |
+          import $NEEDLE from 'needle'
+          ...
+    - pattern-either:
+      - pattern: $NEEDLE('$VERB', $REQ, ...)
+      - pattern: $NEEDLE.$VERB($REQ, ...)
+    - metavariable-regex:
+        metavariable: $VERB
+        regex: ^(get|put|post|patch|delete|head)$
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern-inside: |
+          $AXIOS = require('axios');
+          ...
+      - pattern-inside: |
+          import $AXIOS from 'axios'
+          ...
+    - pattern-either:
+      - patterns:
+        - metavariable-regex:
+            metavariable: $URL
+            regex: ^(url|baseURL)$
+        - pattern-either:
+          - pattern: |
+              $AXIOS({ ..., $URL: $REQ, ...})
+          - pattern: |
+              $AXIOS.create({ ..., $URL: $REQ, ...})
+      - patterns:
+        - pattern: $AXIOS.$VERB($REQ, ...)
+        - metavariable-regex:
+            metavariable: $VERB
+            regex: ^(get|put|post|patch|delete|head)$
+      - patterns:
+        - pattern: axios($REQ)
+        - pattern-not-inside: axios({...})
+      - pattern: |
+          axios.defaults.baseURL = $REQ
+  - patterns:
+    - focus-metavariable: $URL
+    - pattern-either:
+      - pattern-inside: |
+          {..., request, ... } = require('urllib');
+          ...
+      - pattern-inside: |
+          import {..., request, ... } from 'urllib'
+          ...
+    - pattern: request($URL, ...)
+  - patterns:
+    - focus-metavariable: $URL
+    - pattern-either:
+      - pattern-inside: |
+          {..., HttpClient, ... } = require('urllib');
+          ...
+      - pattern-inside: |
+          import {..., HttpClient, ... } from 'urllib'
+          ...
+      - pattern: |
+          $HTTPCLIENT = new HttpClient({
+                              allowH2: true,
+                            });
+          ...
+          $HTTPCLIENT.request($URL, ...)
+  - patterns:
+    - focus-metavariable: $URL
+    - pattern-either:
+      - pattern-inside: |
+          $URLLIIB = require('urllib');
+          ...
+      - pattern-inside: |
+          import $URLLIIB from 'urllib'
+          ...
+    - pattern: $URLLIIB.request($URL, ...)
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          $SA = require('superagent');
+           ...
+      - pattern-inside: |
+          import $SA from 'superagent'
+          ...
+    - patterns:
+      - pattern: $SA.$VERB(...)
+      - metavariable-regex:
+          metavariable: $VERB
+          regex: ^(get|put|post|patch|delete|head)$
+  - patterns:
+    - pattern-either:
+      - patterns:
+        - pattern: fetch($REQ,...)
+        - focus-metavariable: $REQ
+        - pattern-not: fetch(new Request(...))
+      - patterns:
+        - pattern: fetch(new Request($REQ,...))
+        - focus-metavariable: $REQ
+    - pattern-not-inside: |
+        $REQUEST_OBJ = new Request(...)
+        ...
+        fetch($REQUEST_OBJ)
+  - patterns:
+    - pattern: new Request($REQ,...)
+    - focus-metavariable: $REQ
+    - pattern-inside: |
+        $REQUEST_OBJ = new Request($REQ,...)
+        ...
+        fetch($REQUEST_OBJ)
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern-inside: |
+          $HTTP = require('$PKG');
+          ...
+      - pattern-inside: |
+          import $HTTP from $PKG
+          ...
+    - metavariable-regex:
+        metavariable: $PKG
+        regex: ^(http|https)$
+    - metavariable-regex:
+        metavariable: $METHOD
+        regex: ^(get|request)$
+    - pattern-either:
+      - patterns:
+        - pattern: $HTTP.$METHOD($REQ, ...)
+        - pattern-not-inside: |
+            $HTTP.$METHOD({...}, ...)
+        - pattern-not-inside: |
+            $OPTS = {...}
+            ...
+            $HTTP.$METHOD($OPTS, ...)
+      - pattern: |
+          $HTTP.$METHOD({..., hostname: $REQ}, ...)
+      - pattern: |
+            $OPTS = {..., hostname: $REQ, ...}
+            ...
+            $HTTP.$METHOD($OPTS, ...)
+      - pattern: |
+          $HTTP.$METHOD({..., host: $REQ}, ...)
+      - pattern: |
+          $OPTS = {..., host: $REQ, ...}
+          ...
+          $HTTP.$METHOD($OPTS, ...)            
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern-inside: |
+          { ..., io, ... } = require('socket.io-client');
+          ...
+      - pattern-inside: |
+          import { ..., io, ... } from 'socket.io-client'
+          ...
+    - pattern: io($REQ, ...)
+  - patterns:
+    - focus-metavariable: $HOST
+    - pattern-either:
+      - pattern-inside: |
+          $NET = require('net');
+          ...
+      - pattern-inside: |
+          import $NET from 'net'
+          ...
+    - metavariable-regex:
+        metavariable: $METHOD
+        regex: ^(connect|createConnection)$
+    - pattern-either:
+      - pattern: $NET.$METHOD($PORT, $HOST, ...)
+      - pattern: |
+          $NET.$METHOD({..., host: $HOST, ...}, ...)
+      - pattern: |
+          $OPTS = {..., host: $HOST, ...}
+          ...
+          $NET.$METHOD($OPTS, ...)
+      - pattern: |
+          $CLIENT = new $NET.Socket()
+          ...
+          $CLIENT.$METHOD($PORT, $HOST, ...)
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          $BENT = require('bent');
+          ...
+      - pattern-inside: |
+          import $BENT from 'bent';
+          ...
+    - pattern: $BENT(...)
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern-inside: |
+          $BENT = require('bent');
+          ...
+          $MTD = $BENT(...)
+      - pattern-inside: |
+          import $BENT from 'bent';
+          ...
+          $MTD = $BENT(...)
+    - pattern: $MTD($REQ, ...)
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          $BENT = require('bent');
+          ...
+          $GETBENT = $BENT('$PKG')
+          ...
+      - pattern-inside: |
+          import $BENT from 'bent';
+          ...
+          $GETBENT = $BENT('$PKG')
+          ...
+    - pattern: $GETBENT(...)
+    - metavariable-regex:
+        metavariable: $PKG
+        regex: ^(json|buffer)$
+  - patterns:
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern-inside: |
+          import $GOT from 'got';
+          ...
+    - pattern: $GOT.$VERB($REQ, ...)
+    - metavariable-regex:
+        metavariable: $VERB
+        regex: ^(get|put|post|patch|delete|head)$
+  - patterns:
+    - focus-metavariable: $URL
+    - pattern-either:
+      - pattern-inside: |
+          $REQUEST = require('request');
+          ...
+      - pattern-inside: |
+          import $REQUEST from 'request';
+          ...
+    - pattern: $REQUEST($URL, ...)
+  message: |
+      This application allows user-controlled URLs to be passed directly to HTTP client libraries. 
+      This can result in Server-Side Request Forgery (SSRF).
+      SSRF refers to an attack where the attacker can abuse functionality on 
+      the server to force it to make requests to other internal systems within your 
+      infrastructure that are not directly exposed to the internet. 
+      This allows the attacker to access internal resources they do not have direct access to.
+      
+      Some risks of SSRF are:
+  
+      - Access and manipulation of internal databases, APIs, or administrative panels
+      - Ability to scan internal network architecture and services
+      - Can be used to pivot attacks into the internal network
+      - Circumvent network segregation and firewall rules
+  
+      To avoid this, try using hardcoded HTTP request calls or a whitelisting object to 
+      check whether the user input is trying to access allowed resources or not.
+  
+      Here is an example:
+      ```
+      var whitelist = [
+        "https://example.com", 
+        "https://example.com/sample"
+      ]
+  
+      app.get('/ssrf/node-ssrf/axios/safe/3', function (req, res) {
+        if(whitelist.includes(req.query.url)){
+            axios.get(url, {})
+                .then(function (response) {
+                    console.log(response);
+                })
+                .catch(function (response) {
+                    console.log(response);  
+                })
+        }
+      });
+      ``` 
+      For more information on SSRF see OWASP:
+      https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+  languages:
+  - javascript
+  severity: ERROR
+  metadata:
+    owasp:
+    - A1:2017-Injection
+    - A10:2021-Server-Side Request Forgery
+    cwe: CWE-918
+    shortDescription: Server-side request forgery (SSRF)
+    security-severity: HIGH
+    category: security

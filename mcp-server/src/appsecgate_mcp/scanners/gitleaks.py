@@ -13,8 +13,12 @@ from typing import Any
 
 from appsecgate_mcp.config.models import ScannerConfig
 from appsecgate_mcp.models.finding import Category
+from appsecgate_mcp.rules import ResolvedRules
 from appsecgate_mcp.scanners.base import BaseScanner, RawFinding
 from appsecgate_mcp.scanners.runner import ScannerExecutionError
+
+# Имена файлов конфигурации Gitleaks, которые ищем в директории правил.
+_CONFIG_FILENAMES: tuple[str, ...] = ("gitleaks.toml", "default.toml")
 
 
 class GitleaksAdapter(BaseScanner):
@@ -30,9 +34,29 @@ class GitleaksAdapter(BaseScanner):
         project_path: str | None = None,
         timeout: float | int = 120,
         config: ScannerConfig | None = None,
+        resolved_rules: ResolvedRules | None = None,
     ) -> None:
-        super().__init__(project_path=project_path, timeout=timeout)
+        super().__init__(
+            project_path=project_path,
+            timeout=timeout,
+            ruleset_hash=resolved_rules.ruleset_hash if resolved_rules else "",
+        )
         self.config = config
+        self.resolved_rules = resolved_rules
+
+    def _config_path(self) -> str | None:
+        """Путь к TOML-конфигу Gitleaks из Rules Bundle (если есть).
+
+        Ищем `gitleaks.toml`/`default.toml` среди файлов бандла; при
+        отсутствии — возвращаем None (работает встроенный конфиг Gitleaks).
+        """
+        if self.resolved_rules is None:
+            return None
+        for bundle in self.resolved_rules.bundles_for_scanner(self.name):
+            for path in bundle.files:
+                if Path(path).name.lower() in _CONFIG_FILENAMES:
+                    return path
+        return None
 
     async def is_available(self) -> bool:
         try:
@@ -57,6 +81,9 @@ class GitleaksAdapter(BaseScanner):
             "--exit-code",
             "0",
         ]
+        config_path = self._config_path()
+        if config_path:
+            cmd += ["--config", config_path]
         result = await self.run(cmd)
         # Gitleaks: 0 — успех (независимо от находок при --exit-code 0).
         if result.returncode != 0:

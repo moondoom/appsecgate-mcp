@@ -1,0 +1,71 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/traversal/archive_path_overwrite.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_traversal_rule-zip-path-overwrite"
+  patterns:
+  - pattern-either:
+    - pattern-inside: |
+        import $X from 'unzipper'
+        ...
+    - pattern-inside: |
+        $X = require('unzipper')
+        ...
+  - pattern-inside: |
+      $Y.pipe($X.Parse(...)).on('entry', function $FUNC(...) {
+          ...
+      }, ...)
+  - pattern-not-inside: |
+          if (<... $FILENAME.indexOf(...) ...>){ 
+          ...
+          }
+  - pattern-not-inside: |
+      $BASE = $PATH.basename($FILENAME, ...)
+      ...
+      $JOIN = $PATH.join(..., $BASE)
+      ...
+  - pattern-not: |
+      $FS.$MTD($PATH.join(..., $PATH.basename($FILENAME, ...)))
+  - pattern: |
+      $FS.$MTD($FIL, ...)
+  - metavariable-regex:
+      metavariable: $MTD
+      regex: ^(writeFileSync|writeFile|createWriteStream)$
+  message: |
+    This application is extracting ZIP archives without sanitizing paths or writing files to a dedicated extraction directory. 
+    This allows attackers to overwrite sensitive files or inject malicious code by manipulating TAR archive contents.
+
+    To fix, sanitize all paths from ZIP archives before writing extracted files using path.basename and path.join.
+
+    Example  of extracting tar files safely:
+    ```
+    app.get("/extract", async (req, res) => {
+            fs.createReadStream(zipPath)
+            .pipe(unzipper.Parse())
+            .on('entry', entry => {
+                const directory = 'assets/tar/extracted/';
+                const filename = entry.path;
+                entry.pipe(fs.createWriteStream(path.join(directory, filename)));
+            });
+    });
+    ```
+
+    Write extracted files only to a dedicated extraction directory, not the global filesystem. Limit extracts to allowed file type.
+
+    See OWASP Path Traversal (https://owasp.org/www-community/attacks/Path_Traversal) and Unrestricted Upload of File with 
+    Dangerous Type (https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload) for more details.
+  languages:
+  - "javascript"
+  severity: "WARNING"
+  metadata:
+    shortDescription: "Improper limitation of a pathname to a restricted directory
+      ('Path Traversal')"
+    cwe: "CWE-22"
+    owasp:
+    - "A5:2017-Broken Access Control"
+    - "A01:2021-Broken Access Control"
+    security-severity: "MEDIUM"
+    category: "security"

@@ -1,0 +1,14 @@
+title = "AppSecGate gitleaks allowlist"
+
+[allowlist]
+description = "Заведомо безопасные значения: плейсхолдеры и тестовые фикстуры"
+regexes = [
+  '''<[A-Za-z_-]*(token|secret|password|key)[A-Za-z_-]*>''',
+  '''(?i)example(_|-)?(token|secret|key|password)''',
+  '''(?i)your[_-](api[_-])?(key|token|secret)[_-]?here''',
+]
+paths = [
+  '''(^|/)tests?/fixtures/''',
+  '''(^|/)\.git/''',
+  '''\.(lock|min\.js)$''',
+]

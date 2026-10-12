@@ -1,0 +1,36 @@
+version: "1.0.0"
+distribution_mode: "mit"
+
+bundles:
+  - id: "appsecgate/community-sast"
+    scanner: "semgrep"
+    path: "/opt/appsecgate/rules/opengrep-community"
+    license: "MIT AND LGPL-3.0-only"
+    source: "https://github.com/qodana/opengrep-sast-rules"
+    redistribution: "allowed"
+    tags: ["owasp", "generic", "py", "js", "go", "iac"]
+
+  - id: "appsecgate/base"
+    scanner: "semgrep"
+    path: "/opt/appsecgate/rules/semgrep-custom"
+    license: "MIT"
+    source: "internal"
+    redistribution: "allowed"
+    tags: ["appsecgate", "custom"]
+
+  - id: "appsecgate/secrets"
+    scanner: "gitleaks"
+    path: "/opt/appsecgate/rules/gitleaks"
+    license: "MIT"
+    source: "internal + gitleaks default"
+    redistribution: "allowed"
+    tags: ["secrets"]
+
+  - id: "appsecgate/trufflehog-custom"
+    scanner: "trufflehog"
+    path: "/opt/appsecgate/rules/trufflehog"
+    license: "N/A (config only)"
+    source: "internal"
+    redistribution: "allowed"
+    min_scanner_version: "3.82.0"
+    tags: ["secrets"]

@@ -1,0 +1,109 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/xml/xpathi_node.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_xml_rule-node-xpath-injection"
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - pattern-either:
+      - pattern: |
+          function ($REQ, $RES, ...) {...}
+      - pattern: |
+          function $FUNC($REQ, $RES, ...) {...}
+    - focus-metavariable: $REQ
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          $XPATH = require('xpath')
+          ...
+      - pattern-inside: |
+          import { $XPATH } from 'xpath'
+          ...
+      - pattern-inside: |
+          import { $K as $XPATH } from 'xpath'
+          ...
+    - pattern: |
+        $XPATH.parse($REQ, ...)    
+    - focus-metavariable: $REQ  
+  pattern-sanitizers:
+  - patterns:
+    - pattern-either:
+      - pattern: |
+          if($VALIDATION){
+          ...
+          $XPATH.parse($REQ, ...) 
+          ...
+          } 
+      - pattern: |
+          $A = $VALIDATION
+          ...
+          if($A){
+          ...
+          $XPATH.parse($REQ, ...) 
+          ...
+          }
+    - metavariable-pattern:
+        metavariable: $VALIDATION
+        pattern-either:
+        - pattern: |
+            $AL.includes(...)  
+        - pattern: |
+            $AL.indexOf(...) !== -1
+        - pattern: |
+            $AL.find(...) !== undefined
+        - pattern: |
+            $ALS.has(...)
+  message: |
+    Passing untrusted user input in `xpath.parse()` can result in XPATH injection
+    vulnerability. This could be abused by malicious actors to execute expressions on
+    on XML files to capture unauthorized information.
+    To prevent XPATH injection vulnerabilities:
+
+    - Always validate and sanitize user inputs, especially parameters
+    or query strings that may influence the flow of the application.
+    - Avoid directly using user input for parsing. If unavoidable, ensure
+    strict validation against an allowlist. 
+    - Use allowlists (lists of permitted expressions) to validate user input 
+    against known, trusted expressions before performing the parse.
+
+
+    Following is an example of secure validation against allowlist to prevent the vulnerability:
+    ```
+    // Define a list of explicitly allowed expressions for parsing
+    const allowedExpr = [
+        'expression1',
+        'expression2',
+        'expression3'
+    ];
+
+    app.get('/xml/xpath/1', (req, res) => {
+        var expression = req.params.exp;
+        var isAllowed = allowedExpr.includes(expression);
+        let xml_string = fs.readFileSync("books.xml", "utf8");
+        var doc = new dom().parseFromString(xml_string, 'text/xml');
+        if (isAllowed) {
+            // If the expression is allowed, proceed with the parsing
+            var evaluator = xpath.parse("//"+expression);
+            var nodes = evaluator.select({ node: doc });            
+            res.send(nodes[0].firstChild.data);
+        } else {
+            res.status(400).send('Invalid expression');
+        }
+    });
+    ```
+  languages:
+  - "javascript"
+  severity: "ERROR"
+  metadata:
+    owasp: 
+    - "A1:2017-Injection"
+    - "A03:2021-Injection"
+    cwe: "CWE-643" 
+    shortDescription: "Improper neutralization of data within XPath expressions (XPath Injection)"
+    security-severity: "CRITICAL"
+    category: "security"

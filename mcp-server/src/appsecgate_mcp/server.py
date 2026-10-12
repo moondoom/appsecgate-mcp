@@ -37,6 +37,12 @@ from appsecgate_mcp.models.finding import Finding, ScanResult, Suppression
 from appsecgate_mcp.orchestration.autofixer import AutoFixer
 from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
 from appsecgate_mcp.orchestration.gate import GateEngine, GateSummary
+from appsecgate_mcp.rules import (
+    TrivyDbStatus,
+    seed_trivy_db,
+    sync_trivy_db,
+    trivy_db_status,
+)
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.storage.db import Database, init_databases
 from appsecgate_mcp.storage.stores import (
@@ -105,6 +111,7 @@ class SessionState:
 
         self.findings: dict[str, Finding] = {}
         self.config_loader = ConfigLoader()
+        self.trivy_db: TrivyDbStatus | None = None
 
     # ------------------------------------------------------------------
     # Инициализация / завершение
@@ -121,6 +128,8 @@ class SessionState:
 
         config = self.config_loader.load(project)
         self.config = config
+
+        await self._sync_trivy_db(config)
 
         self.registry = ScannerRegistry.from_config(config, project_path=project)
 
@@ -154,6 +163,32 @@ class SessionState:
         self.suppression_store.init_schema()
         self.scan_cache_store = ScanCacheStore(self.databases["scan_cache"])
         self.scan_cache_store.init_schema()
+
+    async def _sync_trivy_db(self, config: Config) -> None:
+        """Seed + (опц.) онлайн-синхронизация Trivy DB, затем статус (дизайн v1 §2.3).
+
+        Один раз на `session_start`, не на каждый скан. Онлайн-синхронизация
+        только при `network.mode: online` и `network.sync.trivy_db`, с таймаутом
+        и fallback на локальную БД (fail-soft). Ошибки не роняют инициализацию.
+        """
+        cache_dir = os.environ.get("TRIVY_CACHE_DIR")
+        try:
+            seed_trivy_db(cache_dir=cache_dir)
+        except OSError:
+            pass
+
+        if config.network.is_online() and config.network.sync.trivy_db:
+            warning = await sync_trivy_db(
+                cache_dir=cache_dir,
+                timeout_seconds=config.network.sync.timeout_seconds,
+            )
+            if warning and warning not in config.rules_warnings:
+                config.rules_warnings.append(warning)
+
+        self.trivy_db = trivy_db_status(
+            cache_dir=cache_dir,
+            max_age_days=config.network.sync.max_db_age_days,
+        )
 
     async def close(self) -> None:
         for db in self.databases.values():
@@ -190,10 +225,19 @@ async def _build_scan_output(state: SessionState, result: ScanResult) -> dict[st
     gate: GateSummary | None = None
     if state.gate_engine is not None:
         gate = await state.gate_engine.evaluate_all(result.findings, mode="local")
+    # Хэш набора правил фиксируем в meta каждого скана (дизайн v1 §1.5).
+    if state.config is not None and state.config.resolved_rules is not None:
+        result.meta.ruleset_hash = state.config.resolved_rules.ruleset_hash
+    meta = result.meta.model_dump(mode="json")
+    # Trivy DB-предупреждения живут в meta.warnings (дизайн v1 §2.3, §4.4).
+    if state.trivy_db is not None:
+        for warning in state.trivy_db.collect_warnings():
+            if warning not in meta["warnings"]:
+                meta["warnings"].append(warning)
     payload: dict[str, Any] = {
         "summary": result.to_summary(),
         "findings": [f.model_dump(mode="json") for f in result.findings],
-        "meta": result.meta.model_dump(mode="json"),
+        "meta": meta,
     }
     if gate is not None:
         payload["gate"] = {
@@ -406,12 +450,28 @@ async def suppress_finding(
 async def session_start(project_path: str | None = None) -> dict[str, Any]:
     """Хук SessionStart: инициализирует сессию для проекта."""
     await _session.initialize(project_path, force=True)
+    config = _session.config
+    resolved = config.resolved_rules
+    trivy_db = _session.trivy_db
+
+    warnings: list[str] = list(config.rules_warnings)
+    if trivy_db is not None:
+        for warning in trivy_db.collect_warnings():
+            if warning not in warnings:
+                warnings.append(warning)
+
     return {
         "status": "ready",
         "project_path": _session.project_path,
-        "data_dir": _session.config.data_dir,
-        "enabled_categories": _session.config.enabled_scanner_categories(),
+        "data_dir": config.data_dir,
+        "enabled_categories": config.enabled_scanner_categories(),
         "scanners": _session.registry.names(),
+        "ruleset_version": resolved.version if resolved else None,
+        "ruleset_hash": resolved.ruleset_hash if resolved else None,
+        "distribution_mode": resolved.distribution_mode.value if resolved else None,
+        "bundles": resolved.bundles_summary() if resolved else [],
+        "trivy_db": trivy_db.model_dump(mode="json") if trivy_db else None,
+        "warnings": warnings,
     }
 
 

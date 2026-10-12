@@ -1,0 +1,27 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/electronjs/security_electron.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_electronjs_rule-electron-context-isolation"
+  patterns:
+  - pattern-either:
+    - pattern: |
+        new BrowserWindow({webPreferences: {contextIsolation: false}})
+    - pattern: |
+        var $X = {webPreferences: {contextIsolation: false}};
+  message: |
+    Disabling context isolation can introduce Prototype Pollution vulnerabilities.
+  languages:
+  - "javascript"
+  severity: "WARNING"
+  metadata:
+    owasp: 
+    - "A6:2017-Security Misconfiguration"
+    - "A05:2021-Security Misconfiguration"
+    cwe: "CWE-1321" 
+    shortDescription: "Improperly controlled modification of object prototype attributes ('Prototype Pollution')"
+    security-severity: "MEDIUM"
+    category: "security"

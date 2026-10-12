@@ -1,0 +1,109 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/crypto/crypto_node.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+  - id: rules_lgpl_javascript_crypto_rule-node-md5
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - patterns:
+                  - pattern-inside: |
+                      $Y = $X.createHash('md5')
+                      ...
+                  - pattern: |
+                      $Y.update("...")
+              - pattern: |
+                  $X.createHash('md5').update("...")
+      - patterns:
+          - pattern-inside: |
+              require('crypto-js')
+              ...
+          - pattern: |
+              $X.MD5("...")
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $M = require('md5')
+                  ...
+              - pattern-inside: |
+                  $M = require('blueimp-md5')
+                  ...
+              - pattern-inside: |
+                  $M = require('js-md5')
+                  ...
+          - pattern: |
+              $M("...")
+      - patterns:
+          - pattern-inside: |
+              require('node-forge')
+              ...
+          - pattern-either:
+              - patterns:
+                  - pattern-inside: |
+                      $Y = $X.md.md5.create()
+                      ...
+                  - pattern: |
+                      $Y.update("...")
+              - pattern: |
+                  $X.md.md5.create().update("...")
+      - patterns:
+          - pattern-inside: |
+              $X = require('jshashes')
+              ...
+              $Y = new $X.MD5()
+              ...
+          - pattern: |
+              $Y.$METHOD("...")
+      - patterns:
+          - pattern-either:
+              - patterns:
+                  - pattern-inside: |
+                      $X = require('create-hash')
+                      ...
+                      $Y = $X('md5')
+                      ...
+                  - pattern: |
+                      $Y.update("...")
+              - patterns:
+                  - pattern-inside: |
+                      $X = require('create-hash')
+                      ...
+                  - pattern: |
+                      $X('md5').update("...")      
+    message: |
+      The MD5 hashing algorithm is considered cryptographically weak and 
+      vulnerable to collision attacks, where two different inputs generate 
+      the same output hash. When used for hashing sensitive data, attackers 
+      can exploit this weakness to generate collisions, allowing them to bypass 
+      security checks or masquerade malicious data as legitimate. This 
+      vulnerability is particularly critical in authentication mechanisms, 
+      digital signatures, SSL/TLS certificates, and data integrity checks.
+
+      Remediation:
+      To mitigate this vulnerability, replace the MD5 hashing algorithm with 
+      stronger cryptographic hash functions, such as SHA-256 or SHA-3. These 
+      algorithms offer significantly improved security and are resistant to 
+      collision attacks, making them suitable for cryptographic purposes in 
+      modern applications.
+
+      Secure Code example :
+      ```
+      const crypto = require('crypto');
+      const hash = crypto.createHash('sha256').update('sensitive data').digest('hex');
+      console.log(hash); 
+      ```
+    languages:
+      - "javascript"
+    severity: "WARNING"
+    metadata:
+      shortDescription: "Use of weak hash"
+      category: "security"
+      owasp:
+        - "A3:2017-Sensitive Data Exposure"
+        - "A02:2021-Cryptographic Failures"
+      cwe: "CWE-328"
+      security-severity: "MEDIUM"
+      

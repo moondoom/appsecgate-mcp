@@ -12,8 +12,12 @@ from typing import Any
 
 from appsecgate_mcp.config.models import ScannerConfig
 from appsecgate_mcp.models.finding import Category
+from appsecgate_mcp.rules import ResolvedRules
 from appsecgate_mcp.scanners.base import BaseScanner, RawFinding
 from appsecgate_mcp.scanners.runner import ScannerExecutionError
+
+# Имена файлов конфигурации custom-detectors TruffleHog.
+_CONFIG_FILENAMES: tuple[str, ...] = ("detectors.yaml", "detectors.yml")
 
 
 class TruffleHogAdapter(BaseScanner):
@@ -29,9 +33,29 @@ class TruffleHogAdapter(BaseScanner):
         project_path: str | None = None,
         timeout: float | int = 120,
         config: ScannerConfig | None = None,
+        resolved_rules: ResolvedRules | None = None,
     ) -> None:
-        super().__init__(project_path=project_path, timeout=timeout)
+        super().__init__(
+            project_path=project_path,
+            timeout=timeout,
+            ruleset_hash=resolved_rules.ruleset_hash if resolved_rules else "",
+        )
         self.config = config
+        self.resolved_rules = resolved_rules
+
+    def _config_path(self) -> str | None:
+        """Путь к `detectors.yaml` из Rules Bundle (если есть).
+
+        Кастомные детекторы — это данные (не производная работа), передаём их
+        через `--config`, не вендоря исходники TruffleHog (дизайн v1 §7).
+        """
+        if self.resolved_rules is None:
+            return None
+        for bundle in self.resolved_rules.bundles_for_scanner(self.name):
+            for path in bundle.files:
+                if Path(path).name.lower() in _CONFIG_FILENAMES:
+                    return path
+        return None
 
     async def is_available(self) -> bool:
         try:
@@ -42,7 +66,11 @@ class TruffleHogAdapter(BaseScanner):
 
     async def scan(self, files: list[str], mode: str) -> list[RawFinding]:
         source = self.scan_source(files, mode)
-        cmd = ["trufflehog", "filesystem", "--json", "--no-update", source]
+        cmd = ["trufflehog", "filesystem", "--json", "--no-update"]
+        config_path = self._config_path()
+        if config_path:
+            cmd += ["--config", config_path]
+        cmd.append(source)
         if mode != "project" and files:
             cmd += ["--include-paths", ",".join(files)]
         result = await self.run(cmd)

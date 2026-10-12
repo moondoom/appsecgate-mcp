@@ -1,0 +1,49 @@
+# yamllint disable
+# License: GNU Lesser General Public License v3.0
+# source (original): https://github.com/ajinabraham/njsscan/blob/master/njsscan/rules/semantic_grep/traversal/archive_path_overwrite.yaml
+# hash: e7a0a61
+# yamllint enable
+---
+rules:
+- id: "rules_lgpl_javascript_traversal_rule-tar-path-overwrite"
+  patterns:
+  - pattern-inside: |
+      $X = require('tar-stream')
+      ...
+  - pattern-not-inside: |
+      $Y.pipe($UNZIP.Parse(...)).on('entry', function $FUNC(...) {
+          ...
+      }, ...)
+  - pattern-inside: |
+      $EXTRACT.on('entry', function $FUNC(...) {
+        ...
+      }, ...)
+  - pattern-not: |
+      if ($FILENAME.indexOf('..'))
+  - pattern-not: |
+      $FS.createWriteStream($PATH.join(..., $PATH.basename($FILENAME, ...)))
+  - pattern-not: |
+      $FS.writeFile($PATH.join(..., $PATH.basename($FILENAME, ...)))
+  - pattern-not: |
+      $FS.writeFileSync($PATH.join(..., $PATH.basename($FILENAME, ...)))
+  - pattern-either:
+    - pattern: |
+        $FS.createWriteStream($FIL, ...)
+    - pattern: |
+        $FS.writeFile($FIL, ...)
+    - pattern: |
+        $FS.writeFileSync($FIL, ...)
+  message: |
+    Insecure TAR archive extraction can result in arbitrary path over write and can result in code injection.
+  languages:
+  - "javascript"
+  severity: "WARNING"
+  metadata:
+    shortDescription: "Improper limitation of a pathname to a restricted directory
+      ('Path Traversal')"
+    cwe: "CWE-22"
+    owasp:
+    - "A5:2017-Broken Access Control"
+    - "A01:2021-Broken Access Control"
+    security-severity: "MEDIUM"
+    category: "security"

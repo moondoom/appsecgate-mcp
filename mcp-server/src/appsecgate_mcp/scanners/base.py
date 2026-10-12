@@ -70,9 +70,21 @@ class BaseScanner(ABC):
     name: str = ""
     supported_languages: frozenset[str] = frozenset()
 
-    def __init__(self, *, project_path: str | None = None, timeout: float | int = 120) -> None:
+    def __init__(
+        self,
+        *,
+        project_path: str | None = None,
+        timeout: float | int = 120,
+        ruleset_hash: str = "",
+    ) -> None:
         self.project_path = project_path or "."
         self.timeout = timeout
+        # Инвентаризационный хэш набора правил (см. rules/resolver.py).
+        # Используется кэшем сканов; адаптер его не интерпретирует.
+        self.ruleset_hash = ruleset_hash
+        # Предупреждения о частичном результате за последний scan().
+        # Адаптер сбрасывает список в начале scan(); координатор переносит его в meta.
+        self.warnings: list[str] = []
 
     @abstractmethod
     async def scan(self, files: list[str], mode: str) -> list[RawFinding]:
