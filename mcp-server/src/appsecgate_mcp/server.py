@@ -1,17 +1,18 @@
 """MCP Server Layer — FastMCP-сервер AppSecGate (Фаза 1).
 
 
-Регистрирует 9 инструментов и 3 hook-хендлера, обслуживает stdio и
+Регистрирует 9 MCP-инструментов, обслуживает stdio и
 streamable-http транспорты (SSE оставлен как deprecated-алиас). Состояние
 сессии (конфиг, реестр сканеров, оркестратор, сторы,
 in-memory реестр находок) живёт в одном объекте ``SessionState`` и
 инициализируется лениво при первом обращении.
 
-  scan_file, scan_diff, auto_fix, get_config, update_config,
+  scan_file, scan_diff, scan_project, auto_fix, get_config, update_config,
   submit_feedback, get_scan_history, suppress_finding
 
-Hook-хендлеры:
-  session_start, pre_tool_use, post_tool_use
+Hook-хендлеры (session_start, pre_tool_use, post_tool_use) не являются
+MCP-инструментами: они живут в hooks.py и вызываются через CLI
+`appsecgate-mcp hook <name>`.
 
 Поскольку постоянного ``FindingStore`` в Фазе 1 нет, ``auto_fix`` /
 ``submit_feedback`` / ``suppress_finding`` оперируют ``finding_id``, который

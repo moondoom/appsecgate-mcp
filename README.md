@@ -59,14 +59,13 @@ WONTFIX (принятие риска)
 
 Цель — мгновенная обратная связь для разработчика и AI-агента.
 
-- **MCP-инструменты:** `scan_file`, `scan_diff`, `get_config`, `update_config`, `submit_feedback`, `report_blocked`, `get_scan_history`, `suppress_finding`.
-- **Хуки для AI-агентов:** `SessionStart`, `PreToolUse`, `PostToolUse`.
-- **Сканеры:**
-  - SAST: Semgrep, Bandit, ESLint
+- **MCP-инструменты (9):** `scan_file`, `scan_diff`, `scan_project`, `auto_fix`, `get_config`, `update_config`, `submit_feedback`, `get_scan_history`, `suppress_finding`.
+- **Хуки для AI-агентов:** не MCP-инструменты, а подкоманда CLI `appsecgate-mcp hook <name>` с `<name>` из `session_start`, `pre_tool_use`, `post_tool_use`. JSON-событие читается из stdin, результат JSON пишется в stdout. Опция `--project <путь>` задаёт корень проекта.
+- **Сканеры (реализованы):**
+  - SAST: Semgrep
   - Secrets: Gitleaks, TruffleHog
-  - SCA: Trivy, OSV-Scanner, Dependency-Track
-  - IaC: Checkov, KICS
-  - DAST: OWASP ZAP (базовая интеграция)
+  - SCA: Trivy
+- **Запланировано (не реализовано):** Bandit, ESLint (SAST); OSV-Scanner, Dependency-Track (SCA); Checkov, KICS (IaC); OWASP ZAP (DAST).
 - **Конфигурация проекта:** `.appsecgate-mcp/config.yaml`.
 - **Поддержка агентов:** Claude Code, Cursor, Cline, Continue.
 
