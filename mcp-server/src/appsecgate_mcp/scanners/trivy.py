@@ -115,7 +115,7 @@ class TrivyAdapter(BaseScanner):
 
         findings: list[RawFinding] = []
         for res in data.get("Results", []) or []:
-            target = str(res.get("Target") or "")
+            target = self.normalize_path(str(res.get("Target") or ""))
             findings.extend(self._parse_vulns(res, target))
             findings.extend(self._parse_misconfigs(res, target))
             findings.extend(self._parse_licenses(res, target))
@@ -132,8 +132,13 @@ class TrivyAdapter(BaseScanner):
                     raw_severity=str(v.get("Severity") or "unknown"),
                     file_path=target,
                     scanner=self.name,
-                    message=str(
-                        v.get("Title") or v.get("Description") or v.get("VulnerabilityID") or ""
+                    message=self.redact_project_root(
+                        str(
+                            v.get("Title")
+                            or v.get("Description")
+                            or v.get("VulnerabilityID")
+                            or ""
+                        )
                     ),
                     category=Category.SCA,
                     metadata={
@@ -179,7 +184,7 @@ class TrivyAdapter(BaseScanner):
                 RawFinding(
                     rule_id=f"license-{lic.get('Name', 'unknown')}",
                     raw_severity=str(lic.get("Severity") or "low"),
-                    file_path=str(lic.get("FilePath") or target),
+                    file_path=self.normalize_path(str(lic.get("FilePath") or target)),
                     scanner=self.name,
                     message=f"License: {lic.get('Name', 'unknown')} ({lic.get('Category', 'unknown')})",
                     category=Category.LICENSE,

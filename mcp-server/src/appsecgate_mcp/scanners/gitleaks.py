@@ -115,7 +115,7 @@ class GitleaksAdapter(BaseScanner):
                 RawFinding(
                     rule_id=str(item.get("RuleID") or "gitleaks"),
                     raw_severity="high",
-                    file_path=str(item.get("File") or ""),
+                    file_path=self.normalize_path(str(item.get("File") or "")),
                     scanner=self.name,
                     line_start=line_start,
                     line_end=line_end,
@@ -127,7 +127,11 @@ class GitleaksAdapter(BaseScanner):
                         "tags": item.get("Tags", []),
                         "commit": item.get("Commit"),
                         "author": item.get("Author"),
-                        "fingerprint": item.get("Fingerprint"),
+                        "fingerprint": (
+                            self.redact_project_root(str(item["Fingerprint"]))
+                            if item.get("Fingerprint")
+                            else None
+                        ),
                     },
                     remediation="Rotate the leaked credential and remove it from history.",
                 )

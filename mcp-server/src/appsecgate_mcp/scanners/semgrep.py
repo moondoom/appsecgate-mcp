@@ -261,7 +261,9 @@ class SemgrepAdapter(BaseScanner):
         except ScannerExecutionError as exc:
             # Таймаут или отсутствие бинарника: пакет пропущен, скан продолжается.
             self.warnings.append(
-                f"semgrep: пакет из {len(batch)} файлов пропущен ({exc})"
+                self.redact_project_root(
+                    f"semgrep: пакет из {len(batch)} файлов пропущен ({exc})"
+                )
             )
             return []
         # Semgrep возвращает 0 (нет находок) или 1 (есть находки). Прочее — ошибка.
@@ -358,7 +360,9 @@ class SemgrepAdapter(BaseScanner):
                     scanner=self.name,
                     line_start=line_start,
                     line_end=line_end,
-                    message=str(extra.get("message") or meta.get("message") or ""),
+                    message=self.redact_project_root(
+                        str(extra.get("message") or meta.get("message") or "")
+                    ),
                     snippet=snippet,
                     category=Category.SAST,
                     metadata={

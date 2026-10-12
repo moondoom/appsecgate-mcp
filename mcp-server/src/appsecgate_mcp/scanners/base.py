@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -135,6 +136,23 @@ class BaseScanner(ABC):
                 except (OSError, ValueError):
                     return candidate.as_posix()
         return os.path.normpath(candidate.as_posix())
+
+    def redact_project_root(self, text: str) -> str:
+        """Заменяет абсолютный корень проекта в тексте на относительный путь.
+
+        `<root>/a/b` превращается в `a/b`, одиночный `<root>` в `.`. Учитываются
+        `project_path` и его `resolve()`-вариант. Пустая строка и текст без путей
+        возвращаются без изменений. Имена вида `/workspace2` не затрагиваются.
+        """
+        if not text:
+            return text
+        roots = {str(Path(self.project_path)), str(Path(self.project_path).resolve())}
+        for root in sorted(roots, key=len, reverse=True):
+            if root in ("", ".", "/"):
+                continue
+            text = re.sub(re.escape(root) + "/", "", text)
+            text = re.sub(re.escape(root) + r"(?![\w\-/]|\.\w)", ".", text)
+        return text
 
     async def run(self, cmd: list[str], *, timeout: float | int | None = None) -> CommandResult:
         """Запускает внешнюю команду адаптера с настроенным таймаутом."""
