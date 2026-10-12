@@ -1,0 +1,168 @@
+"""Read-only SQL-запросы к findings (arch §4.4, требование F4).
+
+Гарантии:
+  * отдельное соединение ``file:...?mode=ro`` (URIs, read-only на уровне SQLite);
+  * authorizer пропускает только ``SELECT``/``READ``/``FUNCTION`` — любые
+    ``UPDATE``/``DELETE``/``INSERT``/``ATTACH``/``PRAGMA``/``CREATE``
+    отклоняются на C-уровне, а не только по regexp;
+  * только публичные views (§4.7);
+  * автоматический ``LIMIT 1000`` и автофильтр ``project_id``;
+  * один statement (запрет ``;``).
+
+Пишет в ``sql_audit_log`` вызывающая сторона (tool-обёртка в server.py).
+"""
+
+from __future__ import annotations
+
+import re
+import sqlite3
+import time
+from pathlib import Path
+from typing import Any
+
+from appsecgate_mcp.storage.db import Database
+
+# Публичные views (arch §4.7). v_attempts / v_verification_coverage появятся
+# на этапе верификации (arch §8.3), когда будет таблица fix_attempts.
+PUBLIC_VIEWS: tuple[str, ...] = ("v_findings", "v_summary", "v_projects")
+
+_MAX_ROWS = 1000
+
+_SELECT_RE = re.compile(r"^\s*SELECT\b", re.IGNORECASE)
+_FORBIDDEN_RE = re.compile(
+    r"\b(ATTACH|DETACH|PRAGMA|CREATE|DROP|ALTER|INSERT|UPDATE|DELETE|"
+    r"REPLACE|VACUUM|REINDEX|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|TRANSACTION)\b",
+    re.IGNORECASE,
+)
+_LIMIT_RE = re.compile(r"\bLIMIT\b", re.IGNORECASE)
+_TABLE_RE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
+
+
+class ReadOnlyQueryError(Exception):
+    """Запрос отклонён политикой read-only (не является ошибкой сервера)."""
+
+
+def _validate(sql: str) -> None:
+    """Проверяет, что запрос — одиночный SELECT только по публичным views."""
+    if not sql or not sql.strip():
+        raise ReadOnlyQueryError("empty SQL")
+    if ";" in sql:
+        raise ReadOnlyQueryError("only a single statement is allowed (no ';')")
+    if not _SELECT_RE.match(sql):
+        raise ReadOnlyQueryError("only SELECT statements are allowed")
+    if _FORBIDDEN_RE.search(sql):
+        raise ReadOnlyQueryError("statement contains a forbidden keyword")
+    tables = _TABLE_RE.findall(sql)
+    if not tables:
+        raise ReadOnlyQueryError("no FROM/JOIN clause found (views only)")
+    allowed = {name.lower() for name in PUBLIC_VIEWS}
+    for table in tables:
+        if table.lower() not in allowed:
+            raise ReadOnlyQueryError(
+                f"table '{table}' is not an allowed view; allowed: {', '.join(PUBLIC_VIEWS)}"
+            )
+
+
+def _finalize(sql: str, project_id: str) -> str:
+    """Добавляет автофильтр ``project_id`` и ``LIMIT 1000`` (если нет)."""
+    result = sql.strip().rstrip(";")
+    if not _LIMIT_RE.search(result):
+        result += " LIMIT 1000"
+    # project_id — sha256-hexdigest[:16], безопасен для инъекции как literal.
+    literal = f"'{project_id}'"
+    where = re.search(r"\bWHERE\b", result, re.IGNORECASE)
+    if where:
+        pos = where.end()
+        result = result[:pos] + f" project_id = {literal} AND" + result[pos:]
+    else:
+        tail = re.search(r"\b(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING)\b", result, re.IGNORECASE)
+        if tail:
+            result = (
+                result[: tail.start()] + f" WHERE project_id = {literal} " + result[tail.start() :]
+            )
+        else:
+            result += f" WHERE project_id = {literal}"
+    return result
+
+
+def _authorizer(action: int, *_args: Any) -> int:
+    """Разрешает только чтение; всё остальное отклоняется на уровне SQLite."""
+    if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION):
+        return sqlite3.SQLITE_OK
+    return sqlite3.SQLITE_DENY
+
+
+def init_views(db: Database) -> None:
+    """Создаёт публичные views (arch §4.7; версионирование см. §7.2 F13)."""
+    db._execute_ddl(
+        """
+        CREATE VIEW IF NOT EXISTS v_projects AS
+        SELECT project_id, project_alias, project_path, first_seen_at, last_seen_at
+        FROM projects
+        """
+    )
+    db._execute_ddl(
+        """
+        CREATE VIEW IF NOT EXISTS v_findings AS
+        SELECT
+            s.project_id,
+            s.fingerprint,
+            s.logical_id,
+            s.rule_id,
+            s.file_path,
+            s.severity,
+            s.scanner,
+            s.status,
+            s.first_shown_at,
+            s.last_shown_at,
+            s.show_count,
+            i.first_seen_at,
+            c.snippet,
+            c.message,
+            c.remediation
+        FROM shown_findings s
+        LEFT JOIN finding_identity i
+            ON i.project_id = s.project_id AND i.logical_id = s.logical_id
+        LEFT JOIN finding_context c
+            ON c.project_id = s.project_id AND c.fingerprint = s.fingerprint
+        """
+    )
+    db._execute_ddl(
+        """
+        CREATE VIEW IF NOT EXISTS v_summary AS
+        SELECT
+            project_id,
+            severity,
+            COUNT(*) AS total,
+            SUM(CASE WHEN status = 'SHOWN' THEN 1 ELSE 0 END) AS shown,
+            SUM(CASE WHEN status = 'FIXED' THEN 1 ELSE 0 END) AS fixed,
+            SUM(CASE WHEN status = 'SUPPRESSED' THEN 1 ELSE 0 END) AS suppressed
+        FROM shown_findings
+        GROUP BY project_id, severity
+        """
+    )
+
+
+def run_query(
+    db_path: str | Path,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] | None,
+    project_id: str,
+) -> dict[str, Any]:
+    """Проверяет и выполняет read-only SELECT. Возвращает ``{rows, row_count, sql}``."""
+    _validate(sql)
+    finalized = _finalize(sql, project_id)
+
+    uri = f"file:{Path(db_path).resolve().as_posix()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True, timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    conn.set_authorizer(_authorizer)
+    try:
+        started = time.perf_counter()
+        cursor = conn.execute(finalized, tuple(params or ()))
+        rows = [dict(row) for row in cursor.fetchall()]
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    finally:
+        conn.close()
+
+    return {"rows": rows, "row_count": len(rows), "sql": finalized, "duration_ms": duration_ms}

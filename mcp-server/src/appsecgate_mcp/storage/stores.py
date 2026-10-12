@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -492,8 +493,10 @@ class FindingIdentityStore:
 class FindingContextStore:
     """Персистентный контекст находки (arch §4.7).
 
-    Хранит (уже redacted) snippet/message/metadata для страницы находки.
-    Данные пишутся после ``Redactor`` — см. инвариант №4 в AGENTS.md.
+    Хранит (уже redacted) полную находку для страницы/ContextPack. Данные
+    пишутся после ``Redactor`` — см. инвариант №4 в AGENTS.md. Дополнен
+    полями ``severity``/``scanner``/``category``/``line_*``, чтобы
+    ``ContextBuilder`` мог воссоздать ``Finding`` и окно кода без перескана.
     """
 
     def __init__(self, db: Database) -> None:
@@ -508,6 +511,11 @@ class FindingContextStore:
                 logical_id       TEXT NOT NULL,
                 rule_id          TEXT NOT NULL,
                 file_path        TEXT NOT NULL,
+                severity         TEXT NOT NULL,
+                scanner          TEXT NOT NULL,
+                category         TEXT NOT NULL,
+                line_start       INTEGER NOT NULL,
+                line_end         INTEGER NOT NULL,
                 snippet          TEXT,
                 message          TEXT,
                 metadata_json    TEXT,
@@ -519,30 +527,28 @@ class FindingContextStore:
             """
         )
 
-    async def upsert(
-        self,
-        project_id: str,
-        logical_id: str,
-        finding: Finding,
-        *,
-        snippet: str,
-        message: str,
-        metadata_json: str,
-    ) -> None:
+    async def upsert(self, project_id: str, logical_id: str, finding: Finding) -> None:
+        """Пишет уже redacted ``finding`` (snippet/message/metadata маскированы)."""
         now = _now_iso()
         await self.db.execute(
             """
             INSERT INTO finding_context
                 (fingerprint, project_id, logical_id, rule_id, file_path,
+                 severity, scanner, category, line_start, line_end,
                  snippet, message, metadata_json, remediation, captured_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(project_id, fingerprint) DO UPDATE SET
-                logical_id  = excluded.logical_id,
-                snippet     = excluded.snippet,
-                message     = excluded.message,
+                logical_id   = excluded.logical_id,
+                severity     = excluded.severity,
+                scanner      = excluded.scanner,
+                category     = excluded.category,
+                line_start   = excluded.line_start,
+                line_end     = excluded.line_end,
+                snippet      = excluded.snippet,
+                message      = excluded.message,
                 metadata_json = excluded.metadata_json,
-                remediation = excluded.remediation,
-                captured_at = excluded.captured_at
+                remediation  = excluded.remediation,
+                captured_at  = excluded.captured_at
             """,
             (
                 finding.fingerprint,
@@ -550,10 +556,66 @@ class FindingContextStore:
                 logical_id,
                 finding.rule_id,
                 finding.file_path,
-                snippet,
-                message,
-                metadata_json,
+                finding.severity.value,
+                finding.scanner,
+                finding.category.value,
+                finding.line_start,
+                finding.line_end,
+                finding.snippet,
+                finding.message,
+                json.dumps(finding.metadata, sort_keys=True, default=str),
                 finding.remediation,
                 now,
             ),
+        )
+
+    async def get(self, project_id: str, fingerprint: str) -> dict[str, Any] | None:
+        row = await self.db.fetchone(
+            "SELECT * FROM finding_context WHERE project_id = ? AND fingerprint = ?",
+            (project_id, fingerprint),
+        )
+        return dict(row) if row else None
+
+
+class SqlAuditLogStore:
+    """Журнал SQL-запросов ``query_findings_db`` (arch §4.7, требование F19).
+
+    Хранит только текст запроса и метаданные. Запросы ограничены views и не
+    могут содержать секретов (все значения в БД уже redacted), поэтому сам
+    SQL логировать безопасно (инвариант №4 / §6 NF11).
+    """
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def init_schema(self) -> None:
+        self.db._execute_ddl(
+            """
+            CREATE TABLE IF NOT EXISTS sql_audit_log (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id    TEXT NOT NULL,
+                session_id    TEXT NOT NULL,
+                sql           TEXT NOT NULL,
+                duration_ms   INTEGER,
+                row_count     INTEGER,
+                executed_at   TIMESTAMP NOT NULL
+            );
+            """
+        )
+
+    async def record(
+        self,
+        project_id: str,
+        session_id: str,
+        sql: str,
+        duration_ms: int,
+        row_count: int,
+    ) -> None:
+        await self.db.execute(
+            """
+            INSERT INTO sql_audit_log
+                (project_id, session_id, sql, duration_ms, row_count, executed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (project_id, session_id, sql, duration_ms, row_count, _now_iso()),
         )

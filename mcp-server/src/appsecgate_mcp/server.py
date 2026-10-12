@@ -1,20 +1,22 @@
 """MCP Server Layer — FastMCP-сервер AppSecGate (Фаза 1).
 
 
-Регистрирует 8 MCP-инструментов, обслуживает stdio и
+Регистрирует MCP-инструменты, обслуживает stdio и
 streamable-http транспорты (SSE оставлен как deprecated-алиас). Состояние
 сессии (конфиг, реестр сканеров, оркестратор, сторы,
 in-memory реестр находок) живёт в одном объекте ``SessionState`` и
 инициализируется лениво при первом обращении.
 
-  scan_file, scan_diff, scan_project, get_config, update_config,
+  scan_file, scan_diff, scan_project, get_fix_context, get_fix_context_batch,
+  query_findings_db, export_snapshot, get_config, update_config,
   submit_feedback, get_scan_history, suppress_finding
 
 Hook-хендлеры (session_start, pre_tool_use, post_tool_use) не являются
 MCP-инструментами: они живут в hooks.py и вызываются через CLI
 `appsecgate-mcp hook <name>`.
 
-Поскольку постоянного ``FindingStore`` в Фазе 1 нет, ``submit_feedback`` /
+Постоянный ``FindingStore`` (показанные находки + контекст + идентичность)
+держится в SQLite под ``project_id``-осью. ``submit_feedback`` /
 ``suppress_finding`` оперируют ``finding_id``, который
 совпадает с ``fingerprint`` находки. Находки последних сканов держатся в
 памяти процесса (``SessionState.findings``).
@@ -25,9 +27,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import json
 import os
+import sqlite3
 import sys
 import tempfile
+import uuid
 import warnings
 from collections import OrderedDict
 from pathlib import Path
@@ -41,6 +46,7 @@ from appsecgate_mcp.config.loader import PROJECT_CONFIG_REL, ConfigLoader, deep_
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.git import GitError, git_changed_files
 from appsecgate_mcp.models.finding import Finding, ScanResult, Suppression
+from appsecgate_mcp.orchestration.context_builder import ContextBuilder
 from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
 from appsecgate_mcp.orchestration.gate import GateEngine, GateSummary
 from appsecgate_mcp.rules import (
@@ -51,6 +57,7 @@ from appsecgate_mcp.rules import (
 )
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.storage.db import Database, init_databases
+from appsecgate_mcp.storage.query import ReadOnlyQueryError, init_views, run_query
 from appsecgate_mcp.storage.stores import (
     FeedbackStore,
     FindingContextStore,
@@ -58,6 +65,7 @@ from appsecgate_mcp.storage.stores import (
     ProjectsStore,
     ScanCacheStore,
     ShownFindingsStore,
+    SqlAuditLogStore,
     SuppressionStore,
 )
 
@@ -123,12 +131,15 @@ class SessionState:
 
     def __init__(self) -> None:
         self.initialized = False
+        # Идентификатор сессии для sql_audit_log (arch §8.4 п. 3.2).
+        self.session_id: str = uuid.uuid4().hex
         self.project_path = _resolve_default_project()
         self.project_id: str | None = None
         self.project_alias: str | None = None
         self.config: Config | None = None
         self.registry: ScannerRegistry | None = None
         self.coordinator: ScanCoordinator | None = None
+        self.context_builder: ContextBuilder | None = None
         self.gate_engine: GateEngine | None = None
 
         self.databases: dict[str, Database] = {}
@@ -139,6 +150,7 @@ class SessionState:
         self.projects_store: ProjectsStore | None = None
         self.finding_identity_store: FindingIdentityStore | None = None
         self.finding_context_store: FindingContextStore | None = None
+        self.sql_audit_store: SqlAuditLogStore | None = None
 
         self.findings: OrderedDict[str, Finding] = OrderedDict()
         self.config_loader = ConfigLoader()
@@ -189,6 +201,14 @@ class SessionState:
             identity_store=self.finding_identity_store,
             context_store=self.finding_context_store,
             project_root=project,
+            project_id=project_id,
+        )
+        self.context_builder = ContextBuilder(
+            self.finding_context_store,
+            project_root=project,
+            project_id=project_id,
+            project_alias=self.project_alias,
+            feedback_store=self.feedback_store,
         )
         self.gate_engine = GateEngine(config, shown_store=self.shown_store)
         self.initialized = True
@@ -220,6 +240,11 @@ class SessionState:
         self.finding_identity_store.init_schema()
         self.finding_context_store = FindingContextStore(self.databases["shown"])
         self.finding_context_store.init_schema()
+        self.sql_audit_store = SqlAuditLogStore(self.databases["shown"])
+        self.sql_audit_store.init_schema()
+
+        # Публичные views для query_findings_db (arch §4.4, §4.7).
+        init_views(self.databases["shown"])
 
         await self.projects_store.upsert(project_id, self.project_alias or "", self.project_path)
 
@@ -379,9 +404,65 @@ async def scan_project(path: str = ".") -> dict[str, Any]:
         }
 
     rel = str(target.relative_to(Path(state.project_path).resolve()))
-    result = await state.coordinator.scan([rel], mode="project")
-    state.register(result)
-    return await _build_scan_output(state, result)
+    # announce-only: сканируем без записи в shown/identity/context (§4.3, F3).
+    result = await state.coordinator.scan([rel], mode="project", persist=False)
+    return await _build_announce_output(state, result)
+
+
+def _by_file_top10(findings: list[Finding]) -> list[dict[str, Any]]:
+    """Топ-10 файлов по числу находок (для announce-сводки scan_project)."""
+    counts: dict[str, int] = {}
+    for f in findings:
+        counts[f.file_path] = counts.get(f.file_path, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [{"file_path": fp, "count": n} for fp, n in ranked[:10]]
+
+
+async def _build_announce_output(state: SessionState, result: ScanResult) -> dict[str, Any]:
+    """Собирает announce-формат scan_project (arch §4.3)."""
+    by_severity: dict[str, int] = {}
+    by_category: dict[str, int] = {}
+    for f in result.findings:
+        sev = f.severity.value
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        cat = f.category.value
+        by_category[cat] = by_category.get(cat, 0) + 1
+
+    ranked = sorted(result.findings, key=lambda f: f.sort_key(), reverse=True)
+    top = ranked[:20]
+    top_findings = [
+        {
+            "finding_id": f.fingerprint,
+            "logical_id": None,
+            "rule_id": f.rule_id,
+            "file_path": f.file_path,
+            "severity": f.severity.value,
+            "scanner": f.scanner,
+            "line_start": f.line_start,
+        }
+        for f in top
+    ]
+
+    return {
+        "project": {
+            "project_id": state.project_id,
+            "project_alias": state.project_alias,
+        },
+        "summary": {
+            "total": result.total,
+            "by_severity": by_severity,
+            "by_category": by_category,
+            "by_file_top10": _by_file_top10(result.findings),
+        },
+        "top_findings": top_findings,
+        "next_actions": [
+            "query_findings_db(\"SELECT logical_id, severity FROM v_findings WHERE severity = 'high' LIMIT 50\")",
+            "get_fix_context(finding_id='<finding_id>')",
+            "get_fix_context_batch(finding_ids=['<id1>', '<id2>'])",
+        ],
+        "truncated": result.total > len(top_findings),
+        "total_available": result.total,
+    }
 
 
 @mcp.tool()
@@ -558,6 +639,132 @@ async def suppress_finding(
     except Exception:
         pass
     return {"status": "suppressed", "finding_id": finding_id}
+
+
+@mcp.tool()
+async def get_fix_context(finding_id: str) -> dict[str, Any]:
+    """Возвращает ContextPack находки (finding + окно кода + rule doc)."""
+    state = await _ensure_session()
+    if state.context_builder is None:
+        return {"status": "error", "reason": "session not initialized"}
+    pack = await state.context_builder.build(finding_id)
+    if pack is None:
+        return {
+            "status": "error",
+            "reason": f"finding not found or not eligible for context: {finding_id}",
+        }
+    return {"status": "ok", "context": pack.model_dump(mode="json")}
+
+
+_BATCH_LIMIT = 20
+
+
+@mcp.tool()
+async def get_fix_context_batch(finding_ids: list[str]) -> dict[str, Any]:
+    """Возвращает ContextPack для набора находок (лимит 20)."""
+    state = await _ensure_session()
+    if len(finding_ids) > _BATCH_LIMIT:
+        return {
+            "status": "error",
+            "reason": f"batch limit exceeded: max {_BATCH_LIMIT} findings",
+            "limit": _BATCH_LIMIT,
+        }
+    if state.context_builder is None:
+        return {"status": "error", "reason": "session not initialized"}
+    contexts: list[dict[str, Any]] = []
+    errors: dict[str, str] = {}
+    for finding_id in finding_ids:
+        pack = await state.context_builder.build(finding_id)
+        if pack is None:
+            errors[finding_id] = "not found or not eligible for context"
+        else:
+            contexts.append(pack.model_dump(mode="json"))
+    return {"status": "ok", "contexts": contexts, "errors": errors, "count": len(contexts)}
+
+
+@mcp.tool()
+async def query_findings_db(sql: str, params: list[Any] | None = None) -> dict[str, Any]:
+    """Выполняет read-only SELECT по публичным views (v_findings, v_summary, v_projects)."""
+    state = await _ensure_session()
+    if state.project_id is None or "shown" not in state.databases:
+        return {"status": "error", "reason": "session not initialized"}
+    db_path = state.databases["shown"].path
+    try:
+        result = await asyncio.to_thread(run_query, db_path, sql, params, state.project_id)
+    except ReadOnlyQueryError as exc:
+        return {"status": "error", "reason": str(exc)}
+    except sqlite3.Error as exc:
+        return {"status": "error", "reason": f"sql error: {exc}"}
+
+    # Каждый запрос — в sql_audit_log (arch §4.4, требование F19).
+    if state.sql_audit_store is not None:
+        try:
+            await state.sql_audit_store.record(
+                state.project_id,
+                state.session_id,
+                result["sql"],
+                int(result["duration_ms"]),
+                result["row_count"],
+            )
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "rows": result["rows"],
+        "row_count": result["row_count"],
+        "sql": result["sql"],
+    }
+
+
+@mcp.tool()
+async def export_snapshot(
+    path: str, format: str = "ndjson", project_id: str | None = None
+) -> dict[str, Any]:
+    """Экспортирует снапшот находок в ndjson (parquet — в Фазе 2)."""
+    state = await _ensure_session()
+    if format == "parquet":
+        return {
+            "status": "error",
+            "reason": (
+                "parquet export is not available in Phase 1 "
+                "(no new production dependencies); use format='ndjson'"
+            ),
+        }
+    if format != "ndjson":
+        return {"status": "error", "reason": f"unsupported format: {format}"}
+    if state.project_id is None or "shown" not in state.databases:
+        return {"status": "error", "reason": "session not initialized"}
+
+    pid = project_id or state.project_id
+    db_path = state.databases["shown"].path
+    try:
+        result = await asyncio.to_thread(
+            run_query, db_path, "SELECT * FROM v_findings LIMIT 100000", None, pid
+        )
+    except (ReadOnlyQueryError, sqlite3.Error) as exc:
+        return {"status": "error", "reason": str(exc)}
+
+    target = Path(path)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {"status": "error", "reason": f"cannot create directory: {exc}"}
+
+    text = "\n".join(json.dumps(row, ensure_ascii=False, default=str) for row in result["rows"])
+    if text:
+        text += "\n"
+    try:
+        _atomic_write(target, text)
+    except OSError as exc:
+        return {"status": "error", "reason": f"cannot write snapshot: {exc}"}
+
+    return {
+        "status": "ok",
+        "path": str(target),
+        "format": "ndjson",
+        "rows": result["row_count"],
+    }
 
 
 # ----------------------------------------------------------------------

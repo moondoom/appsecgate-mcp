@@ -568,12 +568,12 @@ Constraints:
 - 1.1. Таблицы `projects`, `finding_identity`, `finding_context`.
 - 1.2. `project_id` + `project_alias`; фиксация при init.
 - 1.3. `logical_id` — AST-scope + bucket fallback.
-- 1.4. `ContextBuilder` + `Redactor` (redaction до записи).
-- 1.5. `get_fix_context` + `get_fix_context_batch` (лимит 20).
-- 1.6. `scan_project` → announce-only.
-- 1.7. Публичные views + `query_findings_db`.
-- 1.8. `sql_audit_log`.
-- 1.9. `export_snapshot` (parquet/ndjson).
+- 1.4. `ContextBuilder` + `Redactor` (redaction до записи). ✅
+- 1.5. `get_fix_context` + `get_fix_context_batch` (лимит 20). ✅
+- 1.6. `scan_project` → announce-only. ✅
+- 1.7. Публичные views + `query_findings_db`. ✅
+- 1.8. `sql_audit_log`. ✅ (retention — §8.4.3.2, TODO)
+- 1.9. `export_snapshot` (parquet/ndjson). ✅ (только ndjson; parquet — Фаза 2, нет новых prod-зависимостей)
 
 ### 8.3. Этап 2 — верификация (2–3 дня)
 

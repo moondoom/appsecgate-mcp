@@ -7,7 +7,7 @@
 ## 1. Состояние проекта
 
 **Фаза 1 (локальный MCP-сервер) реализована:**
-- 9 MCP-инструментов: `scan_file`, `scan_diff`, `scan_project`, `auto_fix`, `get_config`, `update_config`, `submit_feedback`, `get_scan_history`, `suppress_finding`.
+- 12 MCP-инструментов: `scan_file`, `scan_diff`, `scan_project`, `get_fix_context`, `get_fix_context_batch`, `query_findings_db`, `export_snapshot`, `get_config`, `update_config`, `submit_feedback`, `get_scan_history`, `suppress_finding` (`auto_fix` удалён — см. fix-workflow-design §4.2).
 - Хуки `session_start`, `pre_tool_use`, `post_tool_use` вынесены из MCP в CLI: `appsecgate-mcp hook <name>` (JSON из stdin, JSON в stdout).
 - Сканеры: Semgrep, Gitleaks, TruffleHog, Trivy.
 - Rules bundle (`mcp-server/rules/`) с `LicenseGuard` и `RuleResolver`.

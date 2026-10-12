@@ -9,6 +9,7 @@ from appsecgate_mcp.storage.stores import (
     ProjectsStore,
     ScanCacheStore,
     ShownFindingsStore,
+    SqlAuditLogStore,
     SuppressionStore,
 )
 
@@ -20,6 +21,7 @@ __all__ = [
     "ProjectsStore",
     "ScanCacheStore",
     "ShownFindingsStore",
+    "SqlAuditLogStore",
     "SuppressionStore",
     "compute_logical_id",
     "extract_scope_key",

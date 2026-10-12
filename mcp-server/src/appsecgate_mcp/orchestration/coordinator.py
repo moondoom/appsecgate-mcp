@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import time
 from dataclasses import replace
@@ -41,12 +40,18 @@ class ScanCoordinator:
         identity_store=None,
         context_store=None,
         project_root: str | None = None,
+        project_id: str | None = None,
     ) -> None:
         self.config = config
         self.registry = registry
         # Корень проекта для приведения абсолютных путей сканеров к относительным.
         # None — пути не трогаем (совместимость с тестами без проекта).
         self.project_root = Path(project_root).resolve() if project_root else None
+        # Проектная ось для записей identity/context. Заполняется сервером после
+        # фиксации project_id в SessionState.initialize() (инвариант №6).
+        self.project_id = project_id
+        # Кэш содержимого исходников на один скан (file_path -> source).
+        self._source_cache: dict[str, str] = {}
         self.normalizer = Normalizer(config)
         self.fingerprint = FingerprintGenerator()
         self.dedup = Deduplicator()
@@ -58,10 +63,19 @@ class ScanCoordinator:
         # Redaction секретов до записи в БД (инвариант №4).
         self.redactor = Redactor()
 
-    async def scan(self, files: list[str], mode: str = "file") -> ScanResult:
-        """Сканирует файлы в режиме `file` | `diff` | `project`."""
+    async def scan(
+        self, files: list[str], mode: str = "file", *, persist: bool = True
+    ) -> ScanResult:
+        """Сканирует файлы в режиме `file` | `diff` | `project`.
+
+        ``persist=False`` — инвентаризация без записи в shown/identity/context
+        (announce-only для ``scan_project``, arch §4.3): находки не помечаются
+        ``SHOWN``.
+        """
         started = datetime.now(UTC)
         t0 = time.perf_counter()
+        # Сбрасываем кэш исходников: каждый скан читает актуальное состояние файлов.
+        self._source_cache = {}
         rel_files = [self._to_relative(f) for f in files]
         scanned = [rel for rel in rel_files if rel is not None]
         meta = ScanMeta(
@@ -83,7 +97,8 @@ class ScanCoordinator:
         findings = await self._apply_suppression(findings)
         findings = self.normalizer.process(findings)
 
-        await self._record_shown(findings, meta)
+        if persist:
+            await self._record_shown(findings, meta)
 
         meta.finished_at = datetime.now(UTC).isoformat()
         meta.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -195,6 +210,8 @@ class ScanCoordinator:
         """
         if not file_path or self.project_root is None:
             return ""
+        if file_path in self._source_cache:
+            return self._source_cache[file_path]
         candidate = Path(file_path)
         if candidate.is_absolute():
             try:
@@ -202,12 +219,14 @@ class ScanCoordinator:
             except ValueError:
                 return ""
         target = self.project_root / candidate
+        source = ""
         try:
-            if not target.is_file():
-                return ""
-            return target.read_text(encoding="utf-8", errors="replace")
+            if target.is_file():
+                source = target.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            return ""
+            source = ""
+        self._source_cache[file_path] = source
+        return source
 
     async def _persist_findings(self, findings: list[Finding]) -> None:
         """Проставляет ``logical_id`` и пишет в shown/identity/context.
@@ -222,7 +241,7 @@ class ScanCoordinator:
 
         logical_ids: dict[str, str] = {}
         identity_rows: list[tuple[Finding, str]] = []
-        context_rows: list[tuple[Finding, str, str, str, str]] = []
+        context_rows: list[tuple[Finding, str]] = []
 
         for finding in findings:
             source = await self._source_for(finding.file_path)
@@ -235,24 +254,19 @@ class ScanCoordinator:
                 identity_rows.append((finding, logical_id))
 
             if context_store is not None:
+                # Redaction строго до записи в finding_context (инвариант №4).
                 redacted, _ = self.redactor.redact_finding(finding)
-                context_rows.append(
-                    (
-                        finding,
-                        logical_id,
-                        redacted.snippet,
-                        redacted.message,
-                        json.dumps(redacted.metadata, sort_keys=True, default=str),
-                    )
-                )
+                context_rows.append((redacted, logical_id))
 
         if shown_store is not None:
             await shown_store.record_shown_batch(findings, logical_ids=logical_ids)
 
         if identity_store is not None:
+            if self.project_id is None:
+                raise RuntimeError("identity_store set without project_id")
             for finding, logical_id in identity_rows:
                 await identity_store.upsert(
-                    self._project_id_for_store(),
+                    self.project_id,
                     logical_id,
                     finding.rule_id,
                     finding.file_path,
@@ -260,22 +274,7 @@ class ScanCoordinator:
                 )
 
         if context_store is not None:
-            for finding, logical_id, snippet, message, metadata_json in context_rows:
-                await context_store.upsert(
-                    self._project_id_for_store(),
-                    logical_id,
-                    finding,
-                    snippet=snippet,
-                    message=message,
-                    metadata_json=metadata_json,
-                )
-
-    def _project_id_for_store(self) -> str:
-        """``project_id`` для identity/context записей.
-
-        Пробует взять из shown_store (у него ось проекта уже настроена);
-        иначе возвращает пустую строку — это совместимость с тестами,
-        которые создают идентити/контекст-сторы без сессии.
-        """
-        shown = getattr(self, "shown_store", None)
-        return shown.project_id if shown is not None else ""
+            if self.project_id is None:
+                raise RuntimeError("context_store set without project_id")
+            for finding, logical_id in context_rows:
+                await context_store.upsert(self.project_id, logical_id, finding)

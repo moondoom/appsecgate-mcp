@@ -25,14 +25,14 @@ REDACTED = "[REDACTED]"
 
 # Паттерны известных секретов (§4.9): AWS / GCP / Azure, PEM, JWT.
 _SECRET_PATTERNS: list[re.Pattern[str]] = [
-    # PEM-блоки (приватные ключи, сертификаты).
-    re.compile(r"-----BEGIN [A-Z0-9 ]+(?: |PRIVATE)? ?KEY-----", re.IGNORECASE),
-    re.compile(r"-----BEGIN CERTIFICATE-----", re.IGNORECASE),
+    # PEM-блоки (приватные ключи, сертификаты) — маскируем весь блок целиком.
+    re.compile(r"-----BEGIN [A-Z0-9 ]+-----[\s\S]*?-----END [A-Z0-9 ]+-----", re.IGNORECASE),
+    # Одинокая PEM-шапка, если блок обрезан сниппетом.
+    re.compile(r"-----BEGIN (?:[A-Z0-9 ]+ ?)?(?:PRIVATE KEY|CERTIFICATE)-----"),
     # AWS access key id (AKIA...) + secret access key (40 base64 символов).
     re.compile(r"\b(?:A3T[A-Z0-9]|AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}\b"),
-    # GCP service account private key (json-«private_key» форматы) / OAuth client secret.
+    # GCP OAuth client secret (YA29...) и service account key.
     re.compile(r"\bYA29\.[0-9A-Za-z\-_]+"),
-    re.compile(r"-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----"),
     # Azure connection string / shared key.
     re.compile(
         r"DefaultEndpointsProtocol=https?;AccountName=[^;]+;"
