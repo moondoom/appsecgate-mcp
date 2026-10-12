@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from appsecgate_mcp import server
+from appsecgate_mcp import hooks, server
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.models.finding import ScanResult
 from appsecgate_mcp.rules import trivy_db
@@ -28,19 +28,18 @@ def test_all_tools_registered():
         "submit_feedback",
         "get_scan_history",
         "suppress_finding",
-        "session_start",
-        "pre_tool_use",
-        "post_tool_use",
     }
-    assert expected.issubset(names)
+    assert names == expected
+    assert len(tools) == 9
 
 
-def test_extract_touched_files(tmp_path, monkeypatch):
-    monkeypatch.setattr(server._session, "project_path", str(tmp_path))
-    files = server._extract_touched_files("Edit", {"file_path": "a.py"})
+def test_extract_touched_files(tmp_path):
+    state = server.SessionState()
+    state.project_path = str(tmp_path)
+    files = hooks.extract_touched_files(state, "Edit", {"file_path": "a.py"})
     assert files == ["a.py"]
-    assert server._extract_touched_files("Read", {"file_path": "a.py"}) == []
-    assert server._extract_touched_files("Write", {}) == []
+    assert hooks.extract_touched_files(state, "Read", {"file_path": "a.py"}) == []
+    assert hooks.extract_touched_files(state, "Write", {}) == []
 
 
 def test_parser_accepts_streamable_http():
@@ -233,9 +232,8 @@ async def test_session_start_reports_trivy_db(tmp_path, monkeypatch):
     cache = _write_trivy_cache(tmp_path / "trivy", updated_at=datetime.now(UTC) - timedelta(days=9))
     monkeypatch.setenv("TRIVY_CACHE_DIR", str(cache))
     monkeypatch.setenv("APPSECGATE_MCP_HOME", str(tmp_path / "home"))
-    monkeypatch.setattr(server, "_session", server.SessionState())
 
-    out = await server.session_start(str(tmp_path))
+    out = await hooks.session_start(server.SessionState(), str(tmp_path))
 
     assert out["status"] == "ready"
     trivy = out["trivy_db"]
@@ -253,9 +251,8 @@ async def test_session_start_reports_rules_meta(tmp_path, monkeypatch):
     """`session_start` отдаёт ruleset_hash, режим дистрибуции, бандлы и warnings."""
     monkeypatch.setenv("TRIVY_CACHE_DIR", str(tmp_path / "trivy"))
     monkeypatch.setenv("APPSECGATE_MCP_HOME", str(tmp_path / "home"))
-    monkeypatch.setattr(server, "_session", server.SessionState())
 
-    out = await server.session_start(str(tmp_path))
+    out = await hooks.session_start(server.SessionState(), str(tmp_path))
 
     assert out["status"] == "ready"
     assert isinstance(out["ruleset_hash"], str)
