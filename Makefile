@@ -1,8 +1,7 @@
 SERVER_DIR     := mcp-server
 IMAGE          ?= appsecgate/mcp
 VERSION        ?= 0.1.0
-NAMESPACE      ?= appsecgate
-TAG            ?= animage/appsecgate-mcp:$(VERSION)
+TAG            ?= $(IMAGE):$(VERSION)
 PROJECT_PATH   ?= $(CURDIR)
 WITH_JAVA_DB   ?= false
 
