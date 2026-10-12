@@ -90,9 +90,8 @@ class ConfigLoader:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        data = self._load_default_dict()
         project_data = self._load_project_dict(project)
-        merged = deep_merge(data, project_data)
+        merged = self.merged_layers(project_data)
         merged = _apply_env_overrides(merged)
 
         base_dir, cache_dir = resolve_dirs()
@@ -138,6 +137,10 @@ class ConfigLoader:
         warnings = list(LicenseGuard.warnings(manifest, mode))
         warnings.extend(LicenseGuard.check(manifest, mode))
         return warnings
+
+    def merged_layers(self, project_data: dict[str, Any]) -> dict[str, Any]:
+        """Собирает default + project-слой тем же порядком, что и load()."""
+        return deep_merge(self._load_default_dict(), project_data)
 
     def _load_default_dict(self) -> dict[str, Any]:
         if self.default_config_path.exists():

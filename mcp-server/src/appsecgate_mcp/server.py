@@ -22,13 +22,16 @@ Hook-хендлеры:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
+import tempfile
 import warnings
 from pathlib import Path
 from typing import Any
 
 import yaml
 from mcp.server.fastmcp import FastMCP
+from pydantic import ValidationError
 
 from appsecgate_mcp.config.loader import PROJECT_CONFIG_REL, ConfigLoader, deep_merge
 from appsecgate_mcp.config.models import Config
@@ -120,14 +123,20 @@ class SessionState:
         self.findings: dict[str, Finding] = {}
         self.config_loader = ConfigLoader()
         self.trivy_db: TrivyDbStatus | None = None
+        self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Инициализация / завершение
     # ------------------------------------------------------------------
     async def initialize(self, project_path: str | None = None, *, force: bool = False) -> None:
-        """(Пере)собирает конфиг, реестр сканеров, сторы и оркестратор."""
-        if self.initialized and not force:
-            return
+        """(Пере)собирает сессию под блокировкой. Повторный вызов без force — no-op."""
+        async with self._lock:
+            if self.initialized and not force:
+                return
+            await self._initialize_locked(project_path, force=force)
+
+    async def _initialize_locked(self, project_path: str | None, *, force: bool) -> None:
+        """Тело инициализации. Вызывать только при удержании self._lock."""
         if force:
             await self.close()
 
@@ -385,24 +394,78 @@ async def get_config() -> dict[str, Any]:
     return state.config.model_dump(mode="json")
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """Атомарная запись: временный файл в той же директории, затем os.replace."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _format_validation_errors(exc: ValidationError) -> list[str]:
+    """Превращает ошибки pydantic в строки вида 'путь.к.полю: сообщение'."""
+    messages: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(part) for part in err["loc"]) or "<root>"
+        messages.append(f"{loc}: {err['msg']}")
+    return messages
+
+
+def _restore_config(path: Path, previous_text: str | None) -> None:
+    """Возвращает файл конфига к предыдущему содержимому (или удаляет, если его не было)."""
+    if previous_text is None:
+        path.unlink(missing_ok=True)
+    else:
+        _atomic_write(path, previous_text)
+
+
 @mcp.tool()
 async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
-    """Глубоко мёржит updates в .appsecgate-mcp/config.yaml проекта и перезагружает сессию."""
+    """Глубоко мёржит updates в .appsecgate-mcp/config.yaml проекта и перезагружает сессию.
+
+    Итоговый конфиг проверяется той же схемой, что и ConfigLoader.load, до записи.
+    Невалидный результат возвращается как status=invalid, файл не меняется.
+    """
     state = await _ensure_session()
     project_conf = Path(state.project_path) / PROJECT_CONFIG_REL
-    project_conf.parent.mkdir(parents=True, exist_ok=True)
 
     existing: dict[str, Any] = {}
+    previous_text: str | None = None
     if project_conf.exists():
+        previous_text = project_conf.read_text(encoding="utf-8")
         try:
-            existing = yaml.safe_load(project_conf.read_text()) or {}
+            existing = yaml.safe_load(previous_text) or {}
         except yaml.YAMLError:
             existing = {}
     merged = deep_merge(existing, updates)
-    project_conf.write_text(yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
+
+    try:
+        Config.model_validate(state.config_loader.merged_layers(merged))
+    except ValidationError as exc:
+        return {"status": "invalid", "errors": _format_validation_errors(exc)}
+
+    project_conf.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(project_conf, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 
     state.config_loader = ConfigLoader(state.config_loader.default_config_path)
-    await state.initialize(state.project_path, force=True)
+    try:
+        await state.initialize(state.project_path, force=True)
+    except Exception as exc:
+        _restore_config(project_conf, previous_text)
+        try:
+            state.config_loader = ConfigLoader(state.config_loader.default_config_path)
+            await state.initialize(state.project_path, force=True)
+        except Exception:
+            pass
+        return {
+            "status": "error",
+            "reason": f"reinitialization failed, config rolled back: {exc}",
+            "config_path": str(project_conf),
+        }
     return {
         "status": "updated",
         "config_path": str(project_conf),
