@@ -35,6 +35,7 @@ import tempfile
 import uuid
 import warnings
 from collections import OrderedDict
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,15 @@ _WRITE_TOOLS: frozenset[str] = frozenset(
 
 # Максимум находок, удерживаемых в памяти (защита от неограниченного роста).
 _MAX_IN_MEMORY_FINDINGS = 2000
+
+# Retention: SHOWN без активности удаляется из shown_findings (arch §4.7).
+_SHOWN_RETENTION_DAYS = 30
+
+
+def _retention_cutoff(days: int, *, now: datetime | None = None) -> str:
+    """ISO-метка «момент минус days дней» — порог удаления для retention."""
+    base = now or datetime.now(UTC)
+    return (base - timedelta(days=days)).isoformat()
 
 
 def _resolve_default_project() -> str:
@@ -253,6 +263,21 @@ class SessionState:
 
         await self.projects_store.upsert(project_id, self.project_alias or "", self.project_path)
 
+        # Retention: удаляем SHOWN-находки без активности ≥ 30 дней (arch §4.7).
+        await self.apply_retention()
+
+    async def apply_retention(self) -> dict[str, int]:
+        """Применяет retention policy к shown_findings (остальное — Фаза 2)."""
+        removed = 0
+        if self.shown_store is not None:
+            try:
+                removed = await self.shown_store.purge_stale_shown(
+                    cutoff=_retention_cutoff(_SHOWN_RETENTION_DAYS)
+                )
+            except Exception:
+                removed = 0
+        return {"purged_shown": removed}
+
     async def _sync_trivy_db(self, config: Config) -> None:
         """Seed + (опц.) онлайн-синхронизация Trivy DB, затем статус (дизайн v1 §2.3).
 
@@ -342,7 +367,33 @@ async def _build_scan_output(state: SessionState, result: ScanResult) -> dict[st
 # ----------------------------------------------------------------------
 # FastMCP instance
 # ----------------------------------------------------------------------
-mcp = FastMCP("appsecgate-mcp")
+mcp = FastMCP(
+    "appsecgate-mcp",
+    instructions=(
+        "AppSecGate is a security scanner. The server finds, stores, and verifies "
+        "findings. The server does NOT generate or apply fixes — the agent does "
+        "that with its own LLM.\n\n"
+        "Fix protocol:\n"
+        "1. After Edit/Write, call scan_file(path).\n"
+        "2. For each finding, call get_fix_context(finding_id). For a group, use "
+        "get_fix_context_batch(finding_ids=[...]).\n"
+        "3. Generate a fix with your LLM. Apply it via Edit/Write.\n"
+        "4. After applying, call verify_fix(...) or verify_fix_batch([...]). "
+        "The server rescans files and confirms the result.\n"
+        "5. If verified=false, the finding is NOT fixed. Retry or mark wont_fix "
+        "with a note.\n\n"
+        "Bulk queries:\n"
+        "- scan_project returns a summary only (announce). For details use "
+        "query_findings_db with SQL over views.\n"
+        "- Available views: v_findings, v_attempts, v_summary, "
+        "v_verification_coverage, v_projects. SELECT only.\n\n"
+        "Constraints:\n"
+        "- Do not edit files outside finding.file_path.\n"
+        "- Do not delete secrets from code — suggest rotation via submit_feedback.\n"
+        "- Redacted fields are placeholders; do not attempt to recover them.\n"
+        "- All work is scoped to the current project (project_id)."
+    ),
+)
 _session = SessionState()
 
 
@@ -631,7 +682,9 @@ async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dic
     for item in items:
         attempts = []
         if getattr(state, "fix_attempts_store", None) is not None and state.project_id is not None:
-            attempts = await state.fix_attempts_store.list_for(state.project_id, item["fingerprint"])
+            attempts = await state.fix_attempts_store.list_for(
+                state.project_id, item["fingerprint"]
+            )
         if attempts:
             attempts_by_id[item["fingerprint"]] = attempts[0]
         status = (item.get("status") or "").upper()
@@ -725,9 +778,7 @@ async def _read_source(state: SessionState, file_path: str) -> str:
         return ""
 
 
-async def _verification_scan(
-    state: SessionState, file_path: str
-) -> list[tuple[Finding, str]]:
+async def _verification_scan(state: SessionState, file_path: str) -> list[tuple[Finding, str]]:
     """Пересканирует файл (persist=False) и возвращает пары (finding, logical_id)."""
     result = await state.coordinator.scan([file_path], mode="file", persist=False)
     pairs: list[tuple[Finding, str]] = []
@@ -857,6 +908,8 @@ async def verify_fix(finding_id: str, status: str, note: str = "") -> dict[str, 
             "status": "error",
             "reason": f"invalid status '{status}': expected fixed|not_fixed|wont_fix",
         }
+    if normalized == "wont_fix" and not note.strip():
+        return {"status": "error", "reason": "wont_fix requires a note"}
     results, _summary, _file_rescans = await _verify_attempts(
         state, [{"finding_id": finding_id, "status": normalized, "note": note}]
     )
@@ -889,9 +942,10 @@ async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
             return {"status": "error", "reason": "attempt missing 'finding_id'"}
         if status not in ("fixed", "not_fixed", "wont_fix"):
             return {"status": "error", "reason": f"invalid status '{status}' for {finding_id}"}
-        normalized.append(
-            {"finding_id": finding_id, "status": status, "note": attempt.get("note", "")}
-        )
+        note = str(attempt.get("note", "") or "")
+        if status == "wont_fix" and not note.strip():
+            return {"status": "error", "reason": f"wont_fix requires a note: {finding_id}"}
+        normalized.append({"finding_id": finding_id, "status": status, "note": note})
     results, summary, file_rescans = await _verify_attempts(state, normalized)
     return {
         "status": "ok",

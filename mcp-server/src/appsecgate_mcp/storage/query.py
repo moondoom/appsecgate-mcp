@@ -24,12 +24,19 @@ from appsecgate_mcp.storage.db import Database
 
 # Публичные views (arch §4.7). v_attempts / v_verification_coverage добавляются
 # на этапе верификации (arch §8.3), когда появляется таблица fix_attempts.
+# Помимо актуальных имён allowlist содержит версионированные снапшоты ``_v1``
+# (arch F13): схема меняется — новый ``_vN``, старый живёт минимум 2 релиза.
 PUBLIC_VIEWS: tuple[str, ...] = (
     "v_findings",
     "v_attempts",
     "v_summary",
     "v_verification_coverage",
     "v_projects",
+    "v_findings_v1",
+    "v_attempts_v1",
+    "v_summary_v1",
+    "v_verification_coverage_v1",
+    "v_projects_v1",
 )
 
 _MAX_ROWS = 1000
@@ -45,8 +52,9 @@ _TABLE_RE = re.compile(r"\b(?:FROM|JOIN)\b", re.IGNORECASE)
 _TABLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # Ключевые слова, после которых список таблиц во FROM/JOIN гарантированно
 # заканчивается — их учитываем при извлечении имён через запятую.
-_CLAUSE_STOP_RE = re.compile(r"\b(WHERE|GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|ON|USING)\b",
-                             re.IGNORECASE)
+_CLAUSE_STOP_RE = re.compile(
+    r"\b(WHERE|GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|ON|USING)\b", re.IGNORECASE
+)
 
 
 class ReadOnlyQueryError(Exception):
@@ -83,7 +91,7 @@ def _extract_tables(sql: str) -> list[str]:
     """
     tables: list[str] = []
     for kw in _TABLE_RE.finditer(sql):
-        tail = sql[kw.end():]
+        tail = sql[kw.end() :]
         tail_stripped = tail.lstrip()
         # FROM/JOIN с подзапросом: `FROM (` / `JOIN (`.
         if tail_stripped.startswith("("):
@@ -93,7 +101,7 @@ def _extract_tables(sql: str) -> list[str]:
             continue
         tables.append(m.group(0))
         # Разбираем список через запятую, останавливаясь на ключевых словах.
-        rest = tail_stripped[m.end():]
+        rest = tail_stripped[m.end() :]
         pos = _CLAUSE_STOP_RE.search(rest)
         head = rest if pos is None else rest[: pos.start()]
         for part in head.split(","):
@@ -220,6 +228,11 @@ def init_views(db: Database) -> None:
         GROUP BY s.project_id
         """
     )
+    # Версионированные снапшоты views (arch §4.7, F13): каждое изменение схемы
+    # view рождает новый ``_vN``; предыдущая версия живёт минимум 2 релиза.
+    # Здесь фиксируем текущую (``_v1``) как baseline для будущих ``_v2``.
+    for _name in ("v_findings", "v_attempts", "v_summary", "v_verification_coverage", "v_projects"):
+        db._execute_ddl(f"CREATE VIEW IF NOT EXISTS {_name}_v1 AS SELECT * FROM {_name}")
 
 
 def run_query(

@@ -186,6 +186,24 @@ class ShownFindingsStore:
             return False
         return row["status"] not in ("FIXED", "SUPPRESSED")
 
+    async def purge_stale_shown(
+        self,
+        *,
+        cutoff: str,
+    ) -> int:
+        """Удаляет показанные находки, неактивные дольше ``cutoff`` (ISO).
+
+        Удаляются только строки со статусом ``SHOWN``, у которых ``last_shown_at``
+        старше ``cutoff``. ``finding_identity`` и ``finding_context`` сохраняются
+        для детекта рецидивов (arch §4.7 Retention policy). Возвращает число
+        удалённых строк.
+        """
+        cursor_count = await self.db.execute_rowcount(
+            "DELETE FROM shown_findings WHERE status = 'SHOWN' AND last_shown_at < ?",
+            (cutoff,),
+        )
+        return cursor_count
+
     async def get_all(self, limit: int = 100) -> list[dict[str, Any]]:
         rows = await self.db.fetchall(
             "SELECT * FROM shown_findings ORDER BY last_shown_at DESC LIMIT ?", (limit,)

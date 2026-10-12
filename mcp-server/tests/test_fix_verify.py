@@ -231,3 +231,66 @@ async def test_v_attempts_view(tmp_path):
     assert result["rows"][0]["logical_id"] == "lid-1"
     assert result["rows"][0]["verified_status"] == "fixed"
     db.close()
+
+
+async def test_retention_purges_stale_shown_only(tmp_path):
+    db, _path, shown, _attempts = _setup(tmp_path)
+    # Прямая вставка строк с заданными last_shown_at/status (record_shown ставит now).
+    await db.execute(
+        "INSERT INTO shown_findings"
+        " (fingerprint, project_id, rule_id, file_path, severity, scanner, logical_id,"
+        "  first_shown_at, last_shown_at, status_updated_at, show_count, status)"
+        " VALUES (?, 'pid-1', 'test.rule', 'a.py', 'high', 'semgrep', ?, ?, ?, ?, 1, ?)",
+        (
+            "fp-old",
+            "lid-old",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "SHOWN",
+        ),
+    )
+    await db.execute(
+        "INSERT INTO shown_findings"
+        " (fingerprint, project_id, rule_id, file_path, severity, scanner, logical_id,"
+        "  first_shown_at, last_shown_at, status_updated_at, show_count, status)"
+        " VALUES (?, 'pid-1', 'test.rule', 'a.py', 'high', 'semgrep', ?, ?, ?, ?, 1, ?)",
+        (
+            "fp-fixed",
+            "lid-fixed",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "FIXED",
+        ),
+    )
+    removed = await shown.purge_stale_shown(cutoff="2024-06-01T00:00:00+00:00")
+    assert removed == 1
+    assert await shown.find("fp-old") is None
+    assert (await shown.find("fp-fixed"))["status"] == "FIXED"
+    db.close()
+
+
+async def test_versioned_views_exist(tmp_path):
+    db, path, _shown, _attempts = _setup(tmp_path)
+    for name in ("v_findings", "v_attempts", "v_summary", "v_verification_coverage", "v_projects"):
+        result = run_query(path, f"SELECT * FROM {name}_v1", None, "pid-1")
+        assert isinstance(result["rows"], list)
+    db.close()
+
+
+async def test_verify_fix_wont_fix_requires_note(tmp_path, monkeypatch):
+    db, _path, shown, attempts = _setup(tmp_path)
+    await shown.record_shown(_finding("fp-1"), logical_id="lid-1")
+    st = _StubState(shown, attempts, db)
+    st.project_path = str(tmp_path)
+
+    async def ensure(project_path=None):
+        return st
+
+    monkeypatch.setattr(server, "_ensure_session", ensure)
+
+    out = await server.verify_fix("fp-1", "wont_fix", note="")
+    assert out["status"] == "error"
+    assert "requires a note" in out["reason"]
+    db.close()

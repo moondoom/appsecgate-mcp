@@ -244,6 +244,19 @@ class BatchVerifyResult(BaseModel):
 **Логика batch:** уникальные `file_path` пересканируются один раз,
 затем для каждой находки — сверка `(logical_id, rule_id)`. Лимит 20.
 
+### 4.6.1. Уточнение семантики верификации (решение разработчика)
+
+Набор статусов верификации в реализации: `fixed`, `not_fixed`, `wont_fix`.
+Отдельного статуса `regressed` нет: если находка с тем же `logical_id`
+появляется вновь после перескана, но `fingerprint` изменился — это
+`not_fixed` (т.е. фикс не привёл к устранению находки).
+
+- `wont_fix` — записывается **только** через `verify_fix` / `verify_fix_batch`.
+  `suppress_finding` и `submit_feedback(WONT_FIX)` **не** меняют статус
+  верификации (suppress — локальный фильтр показа, feedback — офлайн-очередь).
+- `note` обязателен для `wont_fix` (несёт пояснение; без него запись
+  не считается завершённой).
+
 ### 4.7. Хранилище
 
 ```sql
@@ -572,22 +585,22 @@ Constraints:
 - 1.5. `get_fix_context` + `get_fix_context_batch` (лимит 20). ✅
 - 1.6. `scan_project` → announce-only. ✅
 - 1.7. Публичные views + `query_findings_db`. ✅
-- 1.8. `sql_audit_log`. ✅ (retention — §8.4.3.2, TODO)
+- 1.8. `sql_audit_log`. ✅ (retention — §8.4 п. 3.2)
 - 1.9. `export_snapshot` (parquet/ndjson). ✅ (только ndjson; parquet — Фаза 2, нет новых prod-зависимостей)
 
 ### 8.3. Этап 2 — верификация (2–3 дня)
 
-- 2.1. Таблица `fix_attempts` с `logical_id`, `session_id`, `project_id`.
-- 2.2. `verify_fix` + `verify_fix_batch` (лимит 20).
-- 2.3. Индексы и views coverage.
-- 2.4. Детект регрессии.
-- 2.5. `get_scan_history` расширен.
+- 2.1. Таблица `fix_attempts` с `logical_id`, `session_id`, `project_id`. ✅
+- 2.2. `verify_fix` + `verify_fix_batch` (лимит 20). ✅
+- 2.3. Индексы и views coverage. ✅ (`v_attempts`, `v_verification_coverage`, `idx_fix_attempts_project`)
+- 2.4. Детект регрессии. ✅ (нет отдельного статуса `regressed`: повторный перескан с новым fingerprint при том же `logical_id` → `not_fixed`, F6)
+- 2.5. `get_scan_history` расширен. ✅ (поля `attempts`, `verified`, `not_fixed`, `wont_fix`, `coverage`)
 
 ### 8.4. Этап 3 — протокол (1–2 дня)
 
-- 3.1. MCP server instructions (English).
-- 3.2. Retention policy.
-- 3.3. Документация для разработчика.
+- 3.1. MCP server instructions (English). ✅ (`FastMCP(..., instructions=...)`, текст §5)
+- 3.2. Retention policy. ✅ (SHOWN ≥ 30 дней без активности → DELETE из `shown_findings`; `apply_retention()` при init)
+- 3.3. Документация для разработчика. ✅ (см. §4.6.1)
 
 ### 8.5. Фаза 2 (out of scope)
 

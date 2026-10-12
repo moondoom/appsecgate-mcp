@@ -114,6 +114,18 @@ class Database:
     async def execute(self, sql: str, params: Sequence[Any] = ()) -> None:
         await asyncio.to_thread(self._write, sql, params)
 
+    async def execute_rowcount(self, sql: str, params: Sequence[Any] = ()) -> int:
+        """Выполняет запись и возвращает число затронутых строк (rowcount)."""
+
+        def _run() -> int:
+            with self._lock:
+                cursor = self._execute_locked(sql, params)
+                assert self._conn is not None
+                self._conn.commit()
+                return cursor.rowcount
+
+        return await asyncio.to_thread(_run)
+
     async def execute_many(self, sql: str, params_list: Sequence[Sequence[Any]]) -> None:
         await asyncio.to_thread(self._write_many, sql, params_list)
 

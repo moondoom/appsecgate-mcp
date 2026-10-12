@@ -1,19 +1,21 @@
 # Session handoff: AppSecGate MCP
 
-> **Назначение:** стартовая точка для новой сессии. Актуально на момент последнего коммита `08cb782`.
+> **Назначение:** стартовая точка для новой сессии. Актуально на момент последнего коммита `5ab3ed8`.
 
 ---
 
 ## 1. Состояние проекта
 
-**Фаза 1 (локальный MCP-сервер) реализована:**
-- 12 MCP-инструментов: `scan_file`, `scan_diff`, `scan_project`, `get_fix_context`, `get_fix_context_batch`, `query_findings_db`, `export_snapshot`, `get_config`, `update_config`, `submit_feedback`, `get_scan_history`, `suppress_finding` (`auto_fix` удалён — см. fix-workflow-design §4.2).
+**Фаза 1 (локальный MCP-сервер) реализована, верификация (этап 2) и протокол (этап 3) готовы:**
+- 14 MCP-инструментов: `scan_file`, `scan_diff`, `scan_project`, `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`, `query_findings_db`, `export_snapshot`, `get_config`, `update_config`, `submit_feedback`, `get_scan_history`, `suppress_finding` (`auto_fix` удалён — см. fix-workflow-design §4.2).
+- Верификация: таблица `fix_attempts` (`FixAttemptsStore`), views `v_attempts` и `v_verification_coverage`; `verify_fix`/`verify_fix_batch` (лимит 20, один перескан на файл). Статусы `fixed`/`not_fixed`/`wont_fix`; `wont_fix` — с `note`, только через verify.
+- Протокол: MCP `instructions` (English, §5), retention `SHOWN` ≥ 30 дней → DELETE (остальное — Фаза 2), версионирование views (`_v1` baseline, F13).
 - Хуки `session_start`, `pre_tool_use`, `post_tool_use` вынесены из MCP в CLI: `appsecgate-mcp hook <name>` (JSON из stdin, JSON в stdout).
 - Сканеры: Semgrep, Gitleaks, TruffleHog, Trivy.
 - Rules bundle (`mcp-server/rules/`) с `LicenseGuard` и `RuleResolver`.
 - Хранилище: `shown_findings.db`, `feedback.db`, `scan_cache.db` (SQLite).
 - Dockerfile и `docker-compose.yml` в `mcp-server/`.
-- Тесты: 186 passed. Линт: `ruff` чистый.
+- Тесты: 270 passed. Линт: `ruff` чистый.
 
 **Гигиена выполнена (последние коммиты):**
 - `7763d18` удалён `docs/mcp-stabilization-plan.md`.
