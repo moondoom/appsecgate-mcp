@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
-from appsecgate_mcp.scanners.base import BaseScanner, RawFinding
+from appsecgate_mcp.scanners.base import BaseScanner
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 
 
