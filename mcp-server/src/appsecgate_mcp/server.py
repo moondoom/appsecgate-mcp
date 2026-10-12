@@ -91,6 +91,25 @@ def _relpath(path: str, project: str) -> str:
         return str(p)
 
 
+def _resolve_inside_project(path: str, project: str) -> Path:
+    """Разрешает путь и проверяет, что он лежит внутри корня проекта.
+
+    Относительные пути считаются от корня проекта. Симлинки раскрываются через
+    resolve(), поэтому ссылка, ведущая наружу, отклоняется. Для пустого пути и
+    пути вне проекта поднимается ValueError.
+    """
+    if not path or not path.strip():
+        raise ValueError("path is empty")
+    base = Path(project).resolve()
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(base):
+        raise ValueError(f"path outside project: {path}")
+    return resolved
+
+
 class SessionState:
     """Состояние одной сессии MCP-сервера (живёт в памяти процесса)."""
 
@@ -140,6 +159,7 @@ class SessionState:
             self.registry,
             suppression_store=self.suppression_store,
             shown_store=self.shown_store,
+            project_root=project,
         )
         self.gate_engine = GateEngine(config, shown_store=self.shown_store)
         self.auto_fixer = AutoFixer(config)
@@ -264,8 +284,10 @@ def _extract_touched_files(tool_name: str, tool_input: dict[str, Any] | None) ->
         candidates.extend(p for p in paths if isinstance(p, str) and p)
 
     seen: dict[str, None] = {}
+    project = Path(_session.project_path).resolve()
     for path in candidates:
-        seen[_relpath(path, _session.project_path)] = None
+        resolved = _resolve_inside_project(path, _session.project_path)
+        seen[str(resolved.relative_to(project))] = None
     return list(seen.keys())
 
 
@@ -286,9 +308,13 @@ async def scan_file(path: str) -> dict[str, Any]:
     path — путь к файлу (абсолютный или относительный от корня проекта).
     """
     state = await _ensure_session()
-    rel = _relpath(path, state.project_path)
-    if not Path(state.project_path, rel).exists() and not Path(path).exists():
+    try:
+        resolved = _resolve_inside_project(path, state.project_path)
+    except ValueError as exc:
+        return {"error": str(exc), "findings": [], "summary": {"total": 0}}
+    if not resolved.is_file():
         return {"error": f"file not found: {path}", "findings": [], "summary": {"total": 0}}
+    rel = str(resolved.relative_to(Path(state.project_path).resolve()))
     result = await state.coordinator.scan([rel], mode="file")
     state.register(result)
     return await _build_scan_output(state, result)
@@ -321,10 +347,10 @@ async def scan_project(path: str = ".") -> dict[str, Any]:
     `project`: semgrep — по файлам, gitleaks/trufflehog/trivy — по директории.
     """
     state = await _ensure_session()
-    target = Path(path)
-    if not target.is_absolute():
-        target = Path(state.project_path) / path
-    target = target.resolve()
+    try:
+        target = _resolve_inside_project(path or ".", state.project_path)
+    except ValueError as exc:
+        return {"error": str(exc), "findings": [], "summary": {"total": 0}}
     if not target.exists():
         return {"error": f"path not found: {path}", "findings": [], "summary": {"total": 0}}
     if not target.is_dir():
@@ -334,7 +360,7 @@ async def scan_project(path: str = ".") -> dict[str, Any]:
             "summary": {"total": 0},
         }
 
-    rel = _relpath(str(target), state.project_path)
+    rel = str(target.relative_to(Path(state.project_path).resolve()))
     result = await state.coordinator.scan([rel], mode="project")
     state.register(result)
     return await _build_scan_output(state, result)
@@ -496,7 +522,10 @@ async def post_tool_use(
 ) -> dict[str, Any]:
     """Хук PostToolUse: сканирует изменённые файлы и пробует автофикс."""
     state = await _ensure_session()
-    files = _extract_touched_files(tool_name, tool_input)
+    try:
+        files = _extract_touched_files(tool_name, tool_input)
+    except ValueError as exc:
+        return {"status": "error", "reason": str(exc), "files": []}
     if not files:
         return {"status": "skipped", "reason": "no file changes detected"}
 

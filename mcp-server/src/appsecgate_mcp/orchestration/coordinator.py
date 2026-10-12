@@ -9,8 +9,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.models.finding import Finding, ScanMeta, ScannerError, ScanResult
@@ -31,9 +34,13 @@ class ScanCoordinator:
         *,
         suppression_store=None,
         shown_store=None,
+        project_root: str | None = None,
     ) -> None:
         self.config = config
         self.registry = registry
+        # Корень проекта для приведения абсолютных путей сканеров к относительным.
+        # None — пути не трогаем (совместимость с тестами без проекта).
+        self.project_root = Path(project_root).resolve() if project_root else None
         self.normalizer = Normalizer(config)
         self.fingerprint = FingerprintGenerator()
         self.dedup = Deduplicator()
@@ -53,7 +60,8 @@ class ScanCoordinator:
         available = await self._select_available(meta)
         raw_findings = await self._run_all(available, files, mode, meta)
 
-        findings = [self._to_finding(rf) for rf in raw_findings]
+        relative = self._relativize(raw_findings, meta)
+        findings = [self._to_finding(rf) for rf in relative]
         findings = self.dedup.deduplicate(findings)
         findings = await self._apply_suppression(findings)
         findings = self.normalizer.process(findings)
@@ -97,6 +105,44 @@ class ScanCoordinator:
             meta.warnings.extend(getattr(scanner, "warnings", []))
             raw.extend(result)
         return raw
+
+    def _relativize(self, raw_findings: list[RawFinding], meta: ScanMeta) -> list[RawFinding]:
+        """Приводит file_path к относительному виду; вне корня проекта — исключает.
+
+        Вызывается до `_to_finding`, чтобы fingerprint считался от относительного пути
+        и не зависел от места монтирования проекта (локально, Docker, CI).
+        """
+        if self.project_root is None:
+            return raw_findings
+        result: list[RawFinding] = []
+        outside = 0
+        for rf in raw_findings:
+            rel = self._to_relative(rf.file_path)
+            if rel is None:
+                outside += 1
+                continue
+            if rel != rf.file_path:
+                rf = replace(rf, file_path=rel)
+            result.append(rf)
+        if outside:
+            meta.warnings.append(f"excluded {outside} finding(s) outside project root")
+        return result
+
+    def _to_relative(self, path: str) -> str | None:
+        """Абсолютный путь внутри корня -> относительный POSIX; вне корня -> None."""
+        if not path:
+            return path
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            return os.path.normpath(candidate.as_posix())
+        root = self.project_root
+        try:
+            return candidate.relative_to(root).as_posix()
+        except ValueError:
+            try:
+                return candidate.resolve().relative_to(root).as_posix()
+            except (OSError, ValueError):
+                return None
 
     def _to_finding(self, raw: RawFinding) -> Finding:
         fp = self.fingerprint.generate_for(raw.rule_id, raw.file_path, raw.snippet)
