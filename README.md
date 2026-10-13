@@ -172,6 +172,29 @@ make check
 
 Полный список команд: `make help`.
 
+### Отладка (логирование)
+
+Сервер пишет логи только в `stderr` (в `stdio`-режиме `stdout` занят протоколом
+MCP). Подробность задаётся флагом `--log-level`, запись в файл с ротацией —
+флагом `--log-file`:
+
+```bash
+# INFO по умолчанию; полный трейс — --log-level DEBUG
+cd mcp-server && uv run appsecgate-mcp --log-level DEBUG
+
+# Писать также в файл (ротация 2 МБ x 3)
+cd mcp-server && uv run appsecgate-mcp --log-file /tmp/appsecgate.log
+```
+
+Для подкоманды `hook` флаги те же: `appsecgate-mcp hook session_start --log-file /tmp/appsecgate.log`.
+Флаги можно задать через переменные окружения `APPSECGATE_LOG_LEVEL` и
+`APPSECGATE_LOG_FILE`.
+
+В логах фиксируются: каждое выполнение внешней команды (argv, код выхода,
+длительность, размеры stdout/stderr), этапы скана и инициализации сессии.
+Содержимое `stdout` сканеров и фрагменты секретов в логи не попадают (редакция
+на месте). Детали — `docs/scan-diagnostics-findings.md`.
+
 Конфигурация проекта задаётся в файле `.appsecgate-mcp/config.yaml`:
 
 ```yaml

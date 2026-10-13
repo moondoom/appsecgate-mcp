@@ -10,16 +10,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
+from appsecgate_mcp.logging_setup import configure_logging
 from appsecgate_mcp.server import (
     _WRITE_TOOLS,
     SessionState,
     _build_scan_output,
     _resolve_inside_project,
 )
+
+logger = logging.getLogger(__name__)
 
 HOOK_NAMES: tuple[str, ...] = ("session_start", "pre_tool_use", "post_tool_use")
 
@@ -148,9 +153,12 @@ async def run_hook_cli(name: str, stdin_text: str, project_path: str | None = No
     try:
         result = await run_hook(name, payload, state)
     except Exception as exc:
+        logger.exception("hook %s failed", name)
         result = {"status": "error", "reason": str(exc)}
     finally:
         await state.close()
+    if isinstance(result, dict):
+        logger.info("hook %s done status=%s", name, result.get("status"))
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
@@ -159,7 +167,19 @@ def hook_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="appsecgate-mcp hook", description="Запуск хука")
     parser.add_argument("name", choices=HOOK_NAMES)
     parser.add_argument("--project", default=None, help="Корень проекта")
+    parser.add_argument(
+        "--log-level",
+        default=os.environ.get("APPSECGATE_LOG_LEVEL", "INFO"),
+        help="Уровень логирования. По умолчанию INFO.",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=os.environ.get("APPSECGATE_LOG_FILE"),
+        help="Файл лога с ротацией. Без него логи пишутся только в stderr.",
+    )
     args = parser.parse_args(argv)
+    configure_logging(args.log_level, args.log_file)
+    logger.info("hook %s start", args.name)
     output = asyncio.run(run_hook_cli(args.name, sys.stdin.read(), args.project))
     sys.stdout.write(output + "\n")
     return 0

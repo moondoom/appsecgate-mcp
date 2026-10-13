@@ -26,12 +26,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import functools
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import sys
 import tempfile
+import time
 import uuid
 import warnings
 from collections import OrderedDict
@@ -46,6 +49,7 @@ from pydantic import ValidationError
 from appsecgate_mcp.config.loader import PROJECT_CONFIG_REL, ConfigLoader, deep_merge
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.git import GitError, git_changed_files
+from appsecgate_mcp.logging_setup import configure_logging
 from appsecgate_mcp.models.finding import Finding, ScanResult, Suppression
 from appsecgate_mcp.orchestration.context_builder import ContextBuilder
 from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
@@ -71,6 +75,8 @@ from appsecgate_mcp.storage.stores import (
     SqlAuditLogStore,
     SuppressionStore,
 )
+
+logger = logging.getLogger(__name__)
 
 # Инструменты агента, означающие запись/правку файлов (для post_tool_use).
 _WRITE_TOOLS: frozenset[str] = frozenset(
@@ -187,6 +193,7 @@ class SessionState:
 
         project = str(Path(project_path).resolve()) if project_path else self.project_path
         project_id = _compute_project_id(project)
+        logger.info("session init project_id=%s", project_id)
 
         if self.project_id is not None and self.project_id != project_id:
             raise ValueError(
@@ -203,6 +210,11 @@ class SessionState:
         await self._sync_trivy_db(config)
 
         self.registry = ScannerRegistry.from_config(config, project_path=project)
+        logger.info(
+            "session init scanners=%s categories=%s",
+            self.registry.names(),
+            config.enabled_scanner_categories(),
+        )
 
         await self._init_storage(config)
 
@@ -287,11 +299,13 @@ class SessionState:
         """
         cache_dir = os.environ.get("TRIVY_CACHE_DIR")
         try:
-            seed_trivy_db(cache_dir=cache_dir)
+            seeded = seed_trivy_db(cache_dir=cache_dir)
+            logger.info("trivy db seed done seeded=%s", seeded)
         except OSError:
             pass
 
         if config.network.is_online() and config.network.sync.trivy_db:
+            logger.info("trivy db sync online timeout=%s", config.network.sync.timeout_seconds)
             warning = await sync_trivy_db(
                 cache_dir=cache_dir,
                 timeout_seconds=config.network.sync.timeout_seconds,
@@ -400,7 +414,51 @@ _session = SessionState()
 # ----------------------------------------------------------------------
 # MCP tools
 # ----------------------------------------------------------------------
+def _response_size(result: Any) -> str:
+    """Компактная оценка размера ответа для лога (без полной сериализации)."""
+    if isinstance(result, dict):
+        if "findings" in result:
+            return f"findings={len(result['findings'])}"
+        if "summary" in result and isinstance(result["summary"], dict):
+            return f"total={result['summary'].get('total')}"
+    if isinstance(result, (dict, list)):
+        return f"items={len(result)}"
+    return "n/a"
+
+
+def _log_tool(func: Any) -> Any:
+    """Обёртка логирования MCP-тула: имя, длительность, размер ответа.
+
+    ``functools.wraps`` сохраняет ``__name__``/``__doc__``/``__wrapped__``,
+    поэтому FastMCP видит исходную сигнатуру и описание тула.
+    """
+
+    @functools.wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        started = time.perf_counter()
+        try:
+            result = await func(*args, **kwargs)
+        except Exception:
+            logger.exception(
+                "tool %s failed after %.2f ms",
+                func.__name__,
+                (time.perf_counter() - started) * 1000,
+            )
+            raise
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.info(
+            "tool=%s duration_ms=%s response=%s",
+            func.__name__,
+            duration_ms,
+            _response_size(result),
+        )
+        return result
+
+    return wrapper
+
+
 @mcp.tool()
+@_log_tool
 async def scan_file(path: str) -> dict[str, Any]:
     """Сканирует один файл и возвращает нормализованные находки.
 
@@ -420,6 +478,7 @@ async def scan_file(path: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+@_log_tool
 async def scan_diff() -> dict[str, Any]:
     """Сканирует staged + unstaged + untracked изменения текущего git-репозитория."""
     state = await _ensure_session()
@@ -438,6 +497,7 @@ async def scan_diff() -> dict[str, Any]:
 
 
 @mcp.tool()
+@_log_tool
 async def scan_project(path: str = ".") -> dict[str, Any]:
     """Сканирует весь проект или конкретную директорию внутри него.
 
@@ -522,6 +582,7 @@ async def _build_announce_output(state: SessionState, result: ScanResult) -> dic
 
 
 @mcp.tool()
+@_log_tool
 async def get_config() -> dict[str, Any]:
     """Возвращает действующую (merged) конфигурацию сессии."""
     state = await _ensure_session()
@@ -568,6 +629,7 @@ async def _reinitialize(state: SessionState) -> None:
 
 
 @mcp.tool()
+@_log_tool
 async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
     """Глубоко мёржит updates в .appsecgate-mcp/config.yaml проекта и перезагружает сессию.
 
@@ -616,6 +678,7 @@ async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
+@_log_tool
 async def submit_feedback(finding_id: str, type: str, reason: str = "") -> dict[str, Any]:
     """Отправляет обратную связь по находке.
 
@@ -655,6 +718,7 @@ def _normalize_history_item(item: dict[str, Any], project: str) -> dict[str, Any
 
 
 @mcp.tool()
+@_log_tool
 async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dict[str, Any]:
     """Возвращает журнал показанных находок (shown_findings.db) с попытками верификации.
 
@@ -709,6 +773,7 @@ async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dic
 
 
 @mcp.tool()
+@_log_tool
 async def suppress_finding(
     finding_id: str, reason: str, expires_at: str | None = None
 ) -> dict[str, Any]:
@@ -729,6 +794,7 @@ async def suppress_finding(
 
 
 @mcp.tool()
+@_log_tool
 async def get_fix_context(finding_id: str) -> dict[str, Any]:
     """Возвращает ContextPack находки (finding + окно кода + rule doc)."""
     state = await _ensure_session()
@@ -747,6 +813,7 @@ _BATCH_LIMIT = 20
 
 
 @mcp.tool()
+@_log_tool
 async def get_fix_context_batch(finding_ids: list[str]) -> dict[str, Any]:
     """Возвращает ContextPack для набора находок (лимит 20)."""
     state = await _ensure_session()
@@ -894,6 +961,7 @@ async def _verify_attempts(
 
 
 @mcp.tool()
+@_log_tool
 async def verify_fix(finding_id: str, status: str, note: str = "") -> dict[str, Any]:
     """Верифицирует одну находку: перескан файла и сверка по (logical_id).
 
@@ -920,6 +988,7 @@ async def verify_fix(finding_id: str, status: str, note: str = "") -> dict[str, 
 
 
 @mcp.tool()
+@_log_tool
 async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
     """Верифицирует до 20 находок; каждый файл пересканируется один раз.
 
@@ -956,6 +1025,7 @@ async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @mcp.tool()
+@_log_tool
 async def query_findings_db(sql: str, params: list[Any] | None = None) -> dict[str, Any]:
     """Выполняет read-only SELECT по публичным views (v_findings, v_summary, v_projects)."""
     state = await _ensure_session()
@@ -991,6 +1061,7 @@ async def query_findings_db(sql: str, params: list[Any] | None = None) -> dict[s
 
 
 @mcp.tool()
+@_log_tool
 async def export_snapshot(
     path: str, format: str = "ndjson", project_id: str | None = None
 ) -> dict[str, Any]:
@@ -1072,6 +1143,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("APPSECGATE_PROJECT_PATH") or os.environ.get("APPSECGATE_WORKSPACE"),
         help="Корень проекта для сканирования",
     )
+    parser.add_argument(
+        "--log-level",
+        default=os.environ.get("APPSECGATE_LOG_LEVEL", "INFO"),
+        help="Уровень логирования (DEBUG/INFO/WARNING/ERROR). По умолчанию INFO.",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=os.environ.get("APPSECGATE_LOG_FILE"),
+        help="Файл лога с ротацией (2 МБ x 3). Без него логи пишутся только в stderr.",
+    )
     return parser
 
 
@@ -1086,6 +1167,8 @@ def main() -> None:
 
         raise SystemExit(hook_main(sys.argv[2:]))
     args = _build_parser().parse_args()
+    configure_logging(args.log_level, args.log_file)
+    logger.info("start appsecgate-mcp transport=%s", getattr(args, "transport", "stdio"))
 
     if args.project:
         _session.project_path = str(Path(args.project).resolve())

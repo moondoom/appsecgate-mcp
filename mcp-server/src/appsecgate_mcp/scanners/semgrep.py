@@ -151,7 +151,14 @@ class SemgrepAdapter(BaseScanner):
 
     async def is_available(self) -> bool:
         try:
-            result = await self.run(["semgrep", "--version"])
+            result = await self.run(
+                [
+                    "semgrep",
+                    "--version",
+                    "--metrics=off",
+                    "--disable-version-check",
+                ]
+            )
         except ScannerExecutionError:
             return False
         return result.returncode == 0

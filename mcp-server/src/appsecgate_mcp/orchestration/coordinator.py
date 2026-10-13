@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from dataclasses import replace
@@ -25,6 +26,8 @@ from appsecgate_mcp.normalization.suppress_filter import ConfigSuppressFilter
 from appsecgate_mcp.scanners.base import RawFinding
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.storage.logical_id import compute_logical_id
+
+logger = logging.getLogger(__name__)
 
 
 class ScanCoordinator:
@@ -78,6 +81,7 @@ class ScanCoordinator:
         self._source_cache = {}
         rel_files = [self._to_relative(f) for f in files]
         scanned = [rel for rel in rel_files if rel is not None]
+        logger.info("scan start mode=%s files=%s", mode, len(scanned))
         meta = ScanMeta(
             mode=mode,
             scanned_files=scanned,
@@ -88,6 +92,12 @@ class ScanCoordinator:
             meta.warnings.append(f"excluded {outside} file(s) outside project root")
 
         available = await self._select_available(meta)
+        logger.info(
+            "scan mode=%s available=%s skipped=%s",
+            mode,
+            [s.name for s in available],
+            meta.scanners_skipped,
+        )
         raw_findings = await self._run_all(available, files, mode, meta)
 
         relative = self._relativize(raw_findings, meta)
@@ -102,6 +112,13 @@ class ScanCoordinator:
 
         meta.finished_at = datetime.now(UTC).isoformat()
         meta.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+        logger.info(
+            "scan done mode=%s findings=%s duration_ms=%s errors=%s",
+            mode,
+            len(findings),
+            meta.duration_ms,
+            [e.model_dump() for e in meta.errors],
+        )
         return ScanResult(findings=findings, meta=meta)
 
     async def _select_available(self, meta: ScanMeta) -> list:

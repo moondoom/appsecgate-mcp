@@ -8,9 +8,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from appsecgate_mcp.normalization.redactor import redact_text
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,34 +50,55 @@ async def run_subprocess(
     самостоятельно.
     """
 
-    async def _inner() -> CommandResult:
-        try:
-            proc = await asyncio.to_thread(
-                subprocess.run,
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=float(timeout),
-                cwd=str(cwd) if cwd is not None else None,
-                check=False,
-                shell=False,
-            )
-        except FileNotFoundError as exc:
-            raise ScannerExecutionError(
-                scanner="unknown",
-                message=f"binary not found: {cmd[0] if cmd else '<empty command>'}",
-            ) from exc
-        except subprocess.TimeoutExpired as exc:
-            raise ScannerExecutionError(
-                scanner="unknown",
-                message=f"timeout after {timeout}s: {' '.join(cmd)}",
-            ) from exc
-
-        return CommandResult(
-            returncode=proc.returncode,
-            stdout=proc.stdout or "",
-            stderr=proc.stderr or "",
-            cmd=cmd,
+    argv_display = redact_text(" ".join(cmd))
+    started = time.perf_counter()
+    try:
+        proc = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=float(timeout),
+            cwd=str(cwd) if cwd is not None else None,
+            check=False,
+            shell=False,
         )
+    except FileNotFoundError as exc:
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.warning("spawn not_found duration_ms=%s cmd=%s", duration_ms, argv_display)
+        raise ScannerExecutionError(
+            scanner="unknown",
+            message=f"binary not found: {cmd[0] if cmd else '<empty command>'}",
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.warning("spawn timeout duration_ms=%s cmd=%s", duration_ms, argv_display)
+        raise ScannerExecutionError(
+            scanner="unknown",
+            message=f"timeout after {timeout}s: {' '.join(cmd)}",
+        ) from exc
 
-    return await _inner()
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    stdout = proc.stdout or ""
+    stderr = proc.stderr or ""
+    outcome = "ok" if proc.returncode == 0 else "nonzero_exit"
+    logger.info(
+        "spawn %s duration_ms=%s returncode=%s stdout_bytes=%s stderr_bytes=%s cwd=%s cmd=%s",
+        outcome,
+        duration_ms,
+        proc.returncode,
+        len(stdout),
+        len(stderr),
+        str(cwd) if cwd is not None else "",
+        argv_display,
+    )
+    if stderr.strip():
+        # Хвост stderr редактуется: в stderr сканеров могут быть фрагменты секретов.
+        logger.info("stderr tail (%d bytes): %s", len(stderr), redact_text(stderr)[-2000:])
+
+    return CommandResult(
+        returncode=proc.returncode,
+        stdout=stdout,
+        stderr=stderr,
+        cmd=cmd,
+    )
