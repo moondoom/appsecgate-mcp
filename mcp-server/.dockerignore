@@ -1,4 +1,4 @@
-"# Исключаем из контекста сборки всё, что не нужно образу.
+# Исключаем из контекста сборки всё, что не нужно образу.
 .git
 .venv
 __pycache__
@@ -7,6 +7,7 @@ __pycache__
 .pytest_cache
 .ruff_cache
 .uv-cache
+.buildx-cache
 tests/
 docs/
 *.md
@@ -14,4 +15,3 @@ docs/
 docker-compose.yml
 .env
 *.db
-"

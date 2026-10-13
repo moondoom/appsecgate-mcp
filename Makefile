@@ -1,9 +1,20 @@
 SERVER_DIR     := mcp-server
-IMAGE          ?= appsecgate/mcp
+IMAGE          ?= animage/appsecgate-mcp
 VERSION        ?= 0.1.0
 TAG            ?= $(IMAGE):$(VERSION)
 PROJECT_PATH   ?= $(CURDIR)
 WITH_JAVA_DB   ?= false
+
+# Кэш BuildKit (type=local). По умолчанию пусто — кэш не экспортируется.
+# Для экспорта нужен builder на драйвере docker-container:
+#   docker buildx create --name appsecgate --driver docker-container --use
+# Затем: make docker-build BUILDX_CACHE_DIR=$(CURDIR)/.buildx-cache
+BUILDX_CACHE_DIR ?=
+ifeq ($(strip $(BUILDX_CACHE_DIR)),)
+BUILDX_CACHE_ARGS :=
+else
+BUILDX_CACHE_ARGS := --cache-from=type=local,src=$(BUILDX_CACHE_DIR) --cache-to=type=local,dest=$(BUILDX_CACHE_DIR),mode=max
+endif
 
 .PHONY: help setup test test-file lint format check \
         docker-build docker-run docker-down docker-push \
@@ -43,10 +54,11 @@ test-file: ## Запустить один тестовый файл (FILE=tests/
 check: lint test ## Полная проверка перед коммитом
 
 docker-build: ## Собрать Docker-образ (context = mcp-server)
-	docker build \
+	docker buildx build $(BUILDX_CACHE_ARGS) \
 	  --build-arg WITH_JAVA_DB=$(WITH_JAVA_DB) \
 	  -t $(TAG) \
 	  -f $(SERVER_DIR)/Dockerfile \
+	  --load \
 	  $(SERVER_DIR)
 
 docker-run: ## Запустить MCP-сервер в Docker (PROJECT_PATH по умолчанию — текущий каталог)

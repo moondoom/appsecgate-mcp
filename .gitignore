@@ -16,6 +16,9 @@ dist/
 .eggs/
 pip-wheel-metadata/
 
+# --- BuildKit local cache ---
+.buildx-cache/
+
 # --- Виртуальные окружения ---
 # uv.lock и .python-version НЕ игнорируем — нужны для воспроизводимых сборок
 .venv/
