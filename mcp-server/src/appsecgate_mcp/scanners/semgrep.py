@@ -277,6 +277,14 @@ class SemgrepAdapter(BaseScanner):
 
     async def scan(self, files: list[str], mode: str) -> list[RawFinding]:
         self.warnings = []
+        if mode == "project" and not self._has_profiles():
+            # Один проход по всей директории: semgrep сам рекурсивно обходит
+            # дерево и применяет .gitignore. Не раздуваем argv полным списком
+            # файлов и не режем его на пакеты — короткая команда в одном
+            # процессе. Профильный путь ниже не затронут: для профилей нужен
+            # точный список файлов под каждым profile.path.
+            source = self.scan_source(files, mode)
+            return await self._run_semgrep([source], self._rulesets())
         targets = await self._select_targets(files, mode)
         if not targets:
             return []
