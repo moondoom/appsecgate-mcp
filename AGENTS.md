@@ -11,10 +11,13 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 
 ## Project Map
 - `mcp-server/src/` — код MCP-сервера (тулы, хуки, сканеры)
-- `mcp-server/src/tools/` — MCP-тулы (`scan_file`, `scan_diff`, `auto_fix`, ...)
-- `mcp-server/src/scanners/` — обёртки Semgrep, Gitleaks, Trivy
+- `mcp-server/src/server.py` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
+  `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`,
+  `query_findings_db`, `export_snapshot`, `get_config`, `update_config`,
+  `submit_feedback`, `get_scan_history`, `suppress_finding`)
+- `mcp-server/src/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
 - `mcp-server/src/storage/` — SQLite-схема, views, миграции (их нет)
-- `mcp-server/tests/` — 186 тестов, все должны быть зелёными
+- `mcp-server/tests/` — 283 теста, все должны быть зелёными
 - `config/default.yaml` — дефолтная конфигурация
 - `docs/` — спецификация и архитектурные решения
 
@@ -52,7 +55,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 ## Build / Test / Format
 - `make check` — ruff + pytest. Обязательно зелёный перед коммитом.
 - `make format` — ЗАПУСКАТЬ, а не править переносы вручную.
-- 186 тестов должны остаться зелёными.
+- 283 теста должны остаться зелёными.
   Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
 ## Rules
@@ -81,7 +84,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 ## Definition of Done
 Задача завершена, когда:
 1. `make check` зелёный.
-2. Все 186 тестов + новые (если добавлены) проходят.
+2. Все 283 теста + новые (если добавлены) проходят.
 3. Изменения соответствуют одному этапу спеки (§8).
 4. Не нарушен ни один инвариант.
 5. Нет новых production-зависимостей.
@@ -89,8 +92,8 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 Если хоть один пункт не выполнен — задача НЕ завершена.
 
 ## Common tasks
-- **Добавить MCP-тул** → `mcp-server/src/tools/`, регистрация в сервере,
-  тест, обновление спеки §5.
+- **Добавить MCP-тул** → `mcp-server/src/server.py` (`@mcp.tool`), тест,
+  обновление спеки §5.
 - **Добавить сканер** → `mcp-server/src/scanners/`, обёртка, тест с моком.
 - **Пофиксить тест** → сначала понять, ПОЧЕМУ упал. Если код прав —
   тест обновляется. Если тест прав — код фиксится. Не наоборот.
@@ -103,3 +106,4 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 - Задача требует новой production-зависимости.
 - Задача выходит за рамки одного этапа роадмапа.
 - Неясно, к какому разделу спеки относится изменение.
+- Открытые задачи проекта — в отдельном файле `docs/open-tasks.md`, не в AGENTS.md.
