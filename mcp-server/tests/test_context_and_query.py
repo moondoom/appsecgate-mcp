@@ -242,6 +242,64 @@ async def test_query_or_does_not_leak_other_project(tmp_path):
     db.close()
 
 
+async def test_finalize_keeps_group_by_outside_where_parens():
+    """WHERE + GROUP BY/ORDER BY: хвостовые клаузы остаются вне скобок предиката."""
+    sql = "SELECT severity, COUNT(*) AS n FROM v_findings WHERE status = 'SHOWN' GROUP BY severity ORDER BY n DESC"
+    finalized = _finalize(sql, "pid-1")
+    assert "WHERE project_id = 'pid-1' AND (status = 'SHOWN')" in finalized
+    assert "GROUP BY severity" in finalized
+    assert "ORDER BY n DESC" in finalized
+    # Скобка предиката закрыта до GROUP BY.
+    assert finalized.index(")") < finalized.index("GROUP BY")
+
+
+async def test_finalize_where_and_existing_limit():
+    """WHERE + LIMIT: LIMIT остаётся снаружи, авто-LIMIT не дублируется."""
+    sql = "SELECT * FROM v_findings WHERE status = 'SHOWN' LIMIT 5"
+    finalized = _finalize(sql, "pid-1")
+    assert "AND (status = 'SHOWN')" in finalized
+    assert finalized.count("LIMIT") == 1
+
+
+async def test_query_group_by_with_where(tmp_path):
+    """Агрегация по severities работает и учитывает автофильтр проекта."""
+    db, path = _setup_db(tmp_path)
+    await ShownFindingsStore(db, "pid-1").record_shown(_make_finding("fp-1"))
+    low = _make_finding("fp-2")
+    low.severity = Severity.LOW
+    await ShownFindingsStore(db, "pid-1").record_shown(low)
+    await ShownFindingsStore(db, "pid-2").record_shown(_make_finding("fp-3"))
+
+    result = run_query(
+        path,
+        "SELECT severity, COUNT(*) AS n FROM v_findings WHERE status = 'SHOWN' GROUP BY severity ORDER BY n DESC",
+        None,
+        "pid-1",
+    )
+    assert result["row_count"] == 2  # только pid-1, без находки другого проекта
+    counts = {row["severity"]: row["n"] for row in result["rows"]}
+    assert counts == {"high": 1, "low": 1}
+    db.close()
+
+
+async def test_query_group_by_having(tmp_path):
+    """HAVING идёт после GROUP BY и не попадает внутрь скобок WHERE."""
+    db, path = _setup_db(tmp_path)
+    await ShownFindingsStore(db, "pid-1").record_shown(_make_finding("fp-1"))
+    low = _make_finding("fp-2")
+    low.severity = Severity.LOW
+    await ShownFindingsStore(db, "pid-1").record_shown(low)
+
+    result = run_query(
+        path,
+        "SELECT severity, COUNT(*) AS n FROM v_findings WHERE status = 'SHOWN' GROUP BY severity HAVING COUNT(*) > 1",
+        None,
+        "pid-1",
+    )
+    assert result["row_count"] == 0
+    db.close()
+
+
 async def test_query_rejects_non_select(tmp_path):
     db, path = _setup_db(tmp_path)
     with pytest.raises(ReadOnlyQueryError, match="only SELECT"):

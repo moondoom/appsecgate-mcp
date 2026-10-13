@@ -400,7 +400,13 @@ mcp = FastMCP(
         "- scan_project returns a summary only (announce). For details use "
         "query_findings_db with SQL over views.\n"
         "- Available views: v_findings, v_attempts, v_summary, "
-        "v_verification_coverage, v_projects. SELECT only.\n\n"
+        "v_verification_coverage, v_projects. SELECT only.\n"
+        "- The server adds the current-project filter (project_id) and a "
+        "LIMIT 1000 automatically. Do NOT add project_id predicates to the "
+        "SQL and do not guess project ids; WHERE/GROUP BY/ORDER BY/HAVING for "
+        "the analysis are fine, e.g. "
+        "\"SELECT severity, COUNT(*) AS n FROM v_findings WHERE status = 'SHOWN' "
+        'GROUP BY severity ORDER BY n DESC".\n\n'
         "Constraints:\n"
         "- Do not edit files outside finding.file_path.\n"
         "- Do not delete secrets from code — suggest rotation via submit_feedback.\n"
@@ -474,7 +480,7 @@ async def scan_file(path: str) -> dict[str, Any]:
     rel = str(resolved.relative_to(Path(state.project_path).resolve()))
     result = await state.coordinator.scan([rel], mode="file")
     state.register(result)
-    return await _build_scan_output(state, result)
+    return await _build_announce_output(state, result)
 
 
 @mcp.tool()
@@ -490,10 +496,10 @@ async def scan_diff() -> dict[str, Any]:
         empty = ScanResult()
         empty.meta.mode = "diff"
         empty.meta.scanned_files = []
-        return await _build_scan_output(state, empty)
+        return await _build_announce_output(state, empty)
     result = await state.coordinator.scan(files, mode="diff")
     state.register(result)
-    return await _build_scan_output(state, result)
+    return await _build_announce_output(state, result)
 
 
 @mcp.tool()
@@ -521,7 +527,7 @@ async def scan_project(path: str = ".") -> dict[str, Any]:
 
     rel = str(target.relative_to(Path(state.project_path).resolve()))
     # announce-only: сканируем без записи в shown/identity/context (§4.3, F3).
-    result = await state.coordinator.scan([rel], mode="project", persist=False)
+    result = await state.coordinator.scan([rel], mode="project")
     return await _build_announce_output(state, result)
 
 
@@ -1027,7 +1033,13 @@ async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
 @mcp.tool()
 @_log_tool
 async def query_findings_db(sql: str, params: list[Any] | None = None) -> dict[str, Any]:
-    """Выполняет read-only SELECT по публичным views (v_findings, v_summary, v_projects)."""
+    """Read-only SELECT по публичным views (v_findings, v_summary, v_projects).
+
+    Фильтр по текущему проекту (project_id) и LIMIT 1000 добавляются сервером
+    автоматически — в SQL их указывать не нужно. Допустимы WHERE/GROUP BY/
+    ORDER BY/HAVING, напр. "SELECT severity, COUNT(*) AS n FROM v_findings
+    WHERE status = 'SHOWN' GROUP BY severity".
+    """
     state = await _ensure_session()
     if state.project_id is None or "shown" not in state.databases:
         return {"status": "error", "reason": "session not initialized"}

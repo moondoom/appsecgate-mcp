@@ -55,6 +55,8 @@ _TABLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _CLAUSE_STOP_RE = re.compile(
     r"\b(WHERE|GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|ON|USING)\b", re.IGNORECASE
 )
+# Начало хвостовых клауз после предиката: всё, что идёт ПОСЛЕ WHERE.
+_TAIL_RE = re.compile(r"\b(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING)\b", re.IGNORECASE)
 
 
 class ReadOnlyQueryError(Exception):
@@ -119,12 +121,29 @@ def _finalize(sql: str, project_id: str) -> str:
     literal = f"'{project_id}'"
     where = re.search(r"\bWHERE\b", result, re.IGNORECASE)
     if where:
-        pos = where.end()
-        # Пользовательский WHERE оборачиваем в скобки: `AND` приоритетнее `OR`,
-        # иначе автофильтр project_id ослабляется в условиях вида `a OR b`.
-        result = result[:pos] + f" project_id = {literal} AND (" + result[pos:].lstrip() + ")"
+        # Хвост после предиката WHERE: GROUP BY / ORDER BY / LIMIT / HAVING
+        # остаётся СНАРУЖИ скобок, иначе скобка закрывается слишком поздно и
+        # SQLite падает с синтаксической ошибкой.
+        tail = _TAIL_RE.search(result, where.end())
+        if tail:
+            predicate = result[where.end() : tail.start()].strip()
+            result = (
+                result[: where.end()]
+                + f" project_id = {literal} AND ({predicate})"
+                + " "
+                + result[tail.start() :].lstrip()
+            )
+        else:
+            # Пользовательский WHERE оборачиваем в скобки: `AND` приоритетнее
+            # `OR`, иначе автофильтр project_id ослабляется в `a OR b`.
+            result = (
+                result[: where.end()]
+                + f" project_id = {literal} AND ("
+                + result[where.end() :].lstrip()
+                + ")"
+            )
     else:
-        tail = re.search(r"\b(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING)\b", result, re.IGNORECASE)
+        tail = _TAIL_RE.search(result)
         if tail:
             result = (
                 result[: tail.start()] + f" WHERE project_id = {literal} " + result[tail.start() :]
