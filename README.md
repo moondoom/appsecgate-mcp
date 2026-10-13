@@ -67,7 +67,9 @@ WONTFIX (принятие риска)
   - SCA: Trivy
 - **Запланировано (не реализовано):** Bandit, ESLint (SAST); OSV-Scanner, Dependency-Track (SCA); Checkov, KICS (IaC); OWASP ZAP (DAST).
 - **Конфигурация проекта:** `.appsecgate-mcp/config.yaml`.
-- **Поддержка агентов:** Claude Code, Cursor, Cline, Continue.
+- **Поддержка агентов:** Claude Code, Cursor, Cline, Continue — инструкция,
+  примеры конфигов и диагностика в [`docs/deploy-agents.md`](docs/deploy-agents.md),
+  рабочий конфиг Continue: `.continue/mcpServers/appsecgate.yaml` (локальный).
 
 ### Фаза 2. Master-сервер
 
@@ -144,6 +146,10 @@ appsecgate-mcp/
 │   ├── product-vision.md        # Полное описание продукта
 │   ├── roadmap.md               # Дорожная карта
 │   ├── architecture.md          # Архитектура
+│   ├── fix-workflow-design.md   # Спецификация Фазы 1
+│   ├── open-tasks.md            # Открытые задачи Фазы 1 (T1–T4)
+│   ├── e2e-test-plan.md         # План E2E на проекте-полигоне
+│   ├── deploy-agents.md         # Развёртывание для AI-агентов
 │   └── api/openapi.yaml         # OpenAPI-спека
 ├── mcp-server/                  # Локальный MCP-сервер
 ├── master-server/               # Центральный сервер

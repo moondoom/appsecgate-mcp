@@ -60,3 +60,9 @@ appsecgate-mcp --transport streamable-http --host 0.0.0.0 --port 8765
 ## Хуки
 
 `session_start`, `pre_tool_use`, `post_tool_use`.
+
+## Подключение AI-агентов
+
+Continue (рабочий конфиг — `.continue/mcpServers/appsecgate.yaml`, локальный),
+Claude Code, Cline и Cursor: инструкция, примеры конфигов и диагностика —
+в [`docs/deploy-agents.md`](../docs/deploy-agents.md).
