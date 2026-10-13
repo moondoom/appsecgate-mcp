@@ -42,7 +42,22 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 
 Если задача требует нарушить инвариант — остановиться и спросить.
 
-## Production dependencies
+## Code Conventions
+- Python ≥ 3.12, `from __future__ import annotations` в каждом модуле.
+- Pydantic v2 (`BaseModel`, `Field(default_factory=...)`).
+- `ruff`: line-length 100, select E/F/I/W/UP/B.
+- `pytest`: `asyncio_mode=auto`.
+- Сканеры запускаются только через `subprocess` без shell (`scanners/runner.py`).
+- Store-классы в `storage/stores.py`, доступ к SQLite только через `storage/db.py`.
+- Все пути в ответах и fingerprint относительные от корня проекта, с прямыми слэшами.
+- Конфиг `update_config` сначала валидируется, потом пишется атомарно (`_atomic_write`), при сбое откатывается.
+
+## Product Principles (неизменны)
+- **Warn-only локально.** Блокировка только в CI (Фаза 2).
+- **Журнал показанного.** Каждая показанная находка пишется в `shown_findings.db`.
+- **Офлайн по умолчанию.** `network.mode: offline`, автодетекта сети нет.
+- **Изоляция сканеров.** Каждый сканер — отдельный процесс, без импорта AGPL-кода.
+- **Никакого автоопределения языков.** Профили задаются явно в конфиге.
 Только три: `mcp`, `pydantic`, `PyYAML`.
 Новые production-зависимости запрещены без явного указания.
 Dev-зависимости (`pytest`, `ruff`) — не трогать без причины.

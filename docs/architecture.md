@@ -44,15 +44,16 @@
 │  │  │  └──────┬───────┘  └──────┬───────┘  └────────┬────────┘  │  │   │
 │  │  └─────────┼─────────────────┼───────────────────┼───────────┘  │   │
 │  │            │                 │                   │              │   │
-│  │  ┌─────────▼─────────────────▼───────────────────▼───────────┐  │   │
-│  │  │                  ORCHESTRATION LAYER                      │  │   │
-│  │  │  ┌──────────────────┐  ┌─────────────┐  ┌──────────────┐  │  │   │
-│  │  │  │ Scan Coordinator │  │ Auto-Fixer  │  │ Gate Engine  │  │  │   │
-│  │  │  │ (parallel run)   │  │ (patch gen) │  │ (warn/block) │  │  │   │
-│  │  │  └────────┬─────────┘  └──────┬──────┘  └──────┬───────┘  │  │   │
-│  │  └───────────┼───────────────────┼────────────────┼──────────┘  │   │
-│  │              │                   │                │              │   │
-│  │  ┌───────────▼───────────────────▼────────────────▼──────────┐  │   │
+│  │  ┌─────────▼──────────────────────────▼───────────────────┐  │   │
+│  │  │                  ORCHESTRATION LAYER                    │  │   │
+│  │  │  ┌──────────────────────┐  ┌──────────────┐            │  │   │
+│  │  │  │ Scan Coordinator     │  │ Gate Engine  │            │  │   │
+│  │  │  │ (parallel run, fix   │  │ (warn/block) │            │  │   │
+│  │  │  │  verify)             │  │              │            │  │   │
+│  │  │  └────────┬─────────────┘  └──────┬───────┘            │  │   │
+│  │  └───────────┼───────────────────────┼────────────────────┘  │   │
+│  │              │                       │                        │   │
+│  │  ┌───────────▼───────────────────────▼────────────────────┐  │   │
 │  │  │                  SCANNER ADAPTER LAYER                    │  │   │
 │  │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │  │   │
 │  │  │  │ Semgrep  │ │ Gitleaks │ │TruffleHog│ │  Trivy fs    │  │  │   │
@@ -96,7 +97,7 @@
 | Компонент | Ответственность |
 |-----------|-----------------|
 
-| **Tool Router** | Регистрирует MCP-инструменты (`scan_file`, `scan_diff`, `scan_project`, `auto_fix`, `get_config`, `submit_feedback`, `suppress_finding`, `get_scan_history`). Валидирует входные параметры через Pydantic. |
+| **Tool Router** | Регистрирует MCP-инструменты (`scan_file`, `scan_diff`, `scan_project`, `get_config`, `submit_feedback`, `suppress_finding`, `get_scan_history`). Валидирует входные параметры через Pydantic. |
 | **Hook Handler** | Принимает события от AI-агента (`SessionStart`, `PreToolUse`, `PostToolUse`). Триггерит оркестрацию. |
 | **Session Manager** | Хранит состояние сессии: активный проект, стек, конфигурацию, флаги (например, «идёт сканирование»). Живёт в памяти процесса. |
 
@@ -125,11 +126,6 @@ async def scan_diff() -> ScanResult:
 async def scan_file(path: str) -> ScanResult:
     """Сканирует конкретный файл."""
     return await coordinator.scan([path], mode="file")
-
-@mcp.tool()
-async def auto_fix(finding_id: str, strategy: str = "patch") -> FixResult:
-    """Пытается автоматически исправить находку."""
-    return await auto_fixer.fix(finding_id, strategy)
 
 @mcp.tool()
 async def submit_feedback(finding_id: str, type: str, reason: str) -> None:
@@ -189,30 +185,6 @@ class ScanCoordinator:
 ```
 
 **Почему параллельно, а не последовательно**: Semgrep, Gitleaks и Trivy независимы друг от друга и работают с разными типами файлов. При последовательном запуске время суммируется; при параллельном — определяется самым медленным сканером.
-
-#### Auto-Fixer
-
-Реализует «уровень 0» воронки эскалации.
-
-```python
-class AutoFixer:
-    async def fix(self, finding_id: str, strategy: str) -> FixResult:
-        finding = await self.finding_store.get(finding_id)
-        
-        # Стратегия 1: patch — прямая замена (для простых правил)
-        if strategy == "patch" and finding.has_known_patch():
-            patch = finding.generate_patch()
-            return FixResult(status="patched", patch=patch)
-        
-        # Стратегия 2: suggestion — вызов LLM (если доступен)
-        if strategy == "suggestion":
-            suggestion = await self.llm.suggest_fix(finding)
-            return FixResult(status="suggested", diff=suggestion)
-        
-        return FixResult(status="failed", reason="no strategy matched")
-```
-
-Ограничение `max_attempts: 1` из конфигурации означает: одна попытка — не получилось, идём к разработчику.
 
 #### Gate Engine
 
@@ -473,31 +445,26 @@ AI-агент          MCP Server       Coordinator      Scanners       Storage
 | Запись в shown_findings.db | ~50 мс |
 | **Итого (параллельно)** | **~3–4 сек** |
 
-### 4.2. Поток `PostToolUse` — автофикс
+### 4.2. Поток `PostToolUse`
 
 ```
-AI-агент           Hook Handler        Auto-Fixer       Gate Engine
-   │                    │                   │                │
-   │── Edit file ──────▶│                   │                │
-   │                    │── scan_file() ───▶│                │
-   │                    │                   │                │
-   │                    │◀─ findings ───────│                │
-   │                    │                                    │
-   │                    │── auto_fix(top) ──────────────────▶│
-   │                    │                                    │
-   │                    │◀─ patch / failure ─────────────────│
-   │                    │                                    │
-   │                    │── log shown_findings ──────────────│
-   │                    │                                    │
-   │◀─ показать остаток ─│                                   │
+AI-агент           Hook Handler         Gate Engine
+   │                    │                     │
+   │── Edit file ──────▶│                     │
+   │                    │── scan_file() ──────│
+   │                    │                     │
+   │                    │◀─ findings ─────────│
+   │                    │                     │
+   │                    │── log shown_findings│
+   │                    │                     │
+   │◀─ показать всё ────│                     │
 ```
 
 **Логика**: 
 1. Агент изменил файл → `PostToolUse` сработал.
 2. Сканируем только этот файл (быстро).
-3. Для каждой находки пробуем `auto_fix`.
-4. Если фикс удался — применяем патч, разработчик не видит проблему.
-5. Если не удался — показываем разработчику и логируем в `shown_findings.db`.
+3. Все находки показываем разработчику и логируем в `shown_findings.db`.
+4. Фикс генерирует AI-агент своей LLM через `get_fix_context` + `verify_fix`.
 
 ---
 
@@ -574,7 +541,6 @@ services:
 | **Время старта контейнера** | < 1 сек |
 | **Скан diff (5 файлов)** | < 5 сек |
 | **Скан одного файла** | < 2 сек |
-| **Auto-fix одной находки** | < 3 сек |
 | **Размер образа** | < 500 МБ (multi-stage build) |
 | **Потребление RAM (idle)** | < 100 МБ |
 | **Потребление RAM (скан)** | < 500 МБ |
@@ -591,7 +557,7 @@ services:
 - ✅ Параллельный запуск сканеров
 - ✅ Нормализация + fingerprint
 - ✅ Три SQLite-базы
-- ✅ Auto-fix (patch + suggestion)
+- ❌ Auto-fix (не реализовано — фикс генерирует AI-агент своей LLM, см. fix-workflow-design §4.2)
 - ✅ Хуки `SessionStart`, `PreToolUse`, `PostToolUse`
 - ✅ Офлайн-режим
 - ✅ Конфигурация через `config.yaml`
@@ -646,7 +612,6 @@ Trivy DB не входит в git-репозиторий. Она скачива�
 1. **Fingerprint**: нужен отдельный спайк. Текущий подход (нормализованный сниппет) может давать ложные схлопывания. Нужно протестировать на реальных данных.
 2. **TruffleHog vs Gitleaks**: запускать оба или каскадом? Оба — медленнее, но полнее. Каскад (TruffleHog только если Gitleaks не нашёл) — быстрее, но может пропустить. Решение: оба, но TruffleHog только на diff, не на весь проект.
 3. **Semgrep baseline**: использовать `--baseline` или собственную фильтрацию? Baseline проще, но требует доступ к git history. Собственная фильтрация — универсальнее.
-4. **Auto-fix через LLM**: какой LLM использовать локально? vLLM, YandexGPT, Ollama? Это влияет на размер образа и требования к железу.
 5. **Синхронизация `shown_findings.db` с master**: как разрешать конфликты, если один и тот же fingerprint показан на разных машинах?
 
 ---
