@@ -1,0 +1,10 @@
+[project]
+name = "vuln-project"
+version = "0.1.0"
+description = "Проект-полигон с намеренными уязвимостями (docs/e2e-test-plan.md)"
+requires-python = ">=3.8"
+dependencies = [
+    "flask==0.12.3",
+    "requests==2.20.0",
+    "urllib3==1.26.0",
+]
