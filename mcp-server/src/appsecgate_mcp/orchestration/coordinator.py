@@ -103,6 +103,10 @@ class ScanCoordinator:
         relative = self._relativize(raw_findings, meta)
         findings = [self._to_finding(rf) for rf in relative]
         findings = self.dedup.deduplicate(findings)
+        # Уровень 2: разные сканеры/правила на одну проблему (T1) — секрет
+        # с тем же значением или тот же фрагмент кода в том же окне строк
+        # показываем разработчику один раз. Схемы БД и тулы не меняются.
+        findings = self.dedup.deduplicate_families(findings)
         findings = self.suppress_filter.apply(findings)
         findings = await self._apply_suppression(findings)
         findings = self.normalizer.process(findings)

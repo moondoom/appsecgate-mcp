@@ -13,11 +13,21 @@ from appsecgate_mcp.scanners.registry import ScannerRegistry
 class FakeScanner(BaseScanner):
     name = "fake"
 
-    def __init__(self, findings, *, available=True, boom=False, **kw):
+    def __init__(
+        self,
+        findings,
+        *,
+        scanner_name: str | None = None,
+        available=True,
+        boom=False,
+        **kw,
+    ):
         super().__init__(**kw)
         self._findings = findings
         self._available = available
         self._boom = boom
+        if scanner_name:
+            self.name = scanner_name
 
     async def is_available(self) -> bool:
         return self._available
@@ -70,3 +80,44 @@ async def test_crashing_scanner_isolated(default_config):
     result = await coord.scan(["a.py"])
     assert result.total == 0
     assert any(e.scanner == "fake" for e in result.meta.errors)
+
+
+@pytest.mark.asyncio
+async def test_scan_dedups_same_secret_across_scanners(default_config):
+    """Регрессия T1: Gitleaks и TruffleHog на одном секрете — одна находка."""
+    registry = ScannerRegistry()
+    registry.register(
+        FakeScanner(
+            [
+                rf(
+                    scanner="gitleaks",
+                    rule_id="aws-access-token",
+                    line_start=5,
+                    snippet='key = "AKIAIOSFODNN7EXAMPLE"',
+                    category=Category.SECRET,
+                    metadata={"Secret": "AKIAIOSFODNN7EXAMPLE"},
+                )
+            ],
+            scanner_name="gitleaks",
+        )
+    )
+    registry.register(
+        FakeScanner(
+            [
+                rf(
+                    scanner="trufflehog",
+                    rule_id="AWS",
+                    raw_severity="medium",
+                    line_start=9,
+                    snippet="AKIAIOSFODNN7EXAMPLE",
+                    category=Category.SECRET,
+                )
+            ],
+            scanner_name="trufflehog",
+        )
+    )
+    coord = ScanCoordinator(default_config, registry)
+    result = await coord.scan(["a.py"], mode="file")
+    assert result.total == 1
+    # Больший severity (gitleaks=high, trufflehog=medium) побеждает.
+    assert result.findings[0].scanner == "gitleaks"
