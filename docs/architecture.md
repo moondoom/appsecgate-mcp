@@ -274,7 +274,7 @@ class BaseScanner(ABC):
 Semgrep поддерживает **baseline-режим**, который идеально подходит для diff-сканирования:
 
 ```bash
-semgrep --json --baseline <commit> --config p/security-audit .
+semgrep --json --baseline <commit> --config /opt/appsecgate/rules/opengrep-community .
 ```
 
 Это позволяет Semgrep самому отфильтровать находки, которые уже были в baseline, и вернуть только новые. Альтернатива — фильтрация на нашей стороне через fingerprint.

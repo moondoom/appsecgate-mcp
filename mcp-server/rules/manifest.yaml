@@ -8,7 +8,7 @@ bundles:
     license: "MIT AND LGPL-3.0-only"
     source: "https://github.com/qodana/opengrep-sast-rules"
     redistribution: "allowed"
-    tags: ["owasp", "generic", "py", "js", "go", "iac"]
+    tags: ["owasp", "generic", "py", "js", "go", "c", "csharp", "scala", "swift"]
 
   - id: "appsecgate/base"
     scanner: "semgrep"

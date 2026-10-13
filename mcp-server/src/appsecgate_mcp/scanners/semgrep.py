@@ -16,37 +16,23 @@ from appsecgate_mcp.rules import ResolvedRules
 from appsecgate_mcp.scanners.base import BaseScanner, RawFinding
 from appsecgate_mcp.scanners.runner import ScannerExecutionError
 
-# Расширения, которые имеет смысл отдавать Semgrep.
+# Расширения файлов, которые имеет смысл отдавать Semgrep.
+# Соответствует фактическим языкам правил в Rules Bundle (см. _LANG_TAGS).
+# Без правил язык не заявляем: сканирование без правил — впустую.
 _SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
     {
         ".py",
         ".pyi",
         ".js",
         ".jsx",
-        ".ts",
-        ".tsx",
         ".mjs",
         ".cjs",
-        ".java",
-        ".kt",
-        ".kts",
         ".go",
-        ".rb",
-        ".php",
         ".c",
         ".h",
-        ".cc",
-        ".cpp",
-        ".hpp",
         ".cs",
-        ".rs",
-        ".swift",
         ".scala",
-        ".tf",
-        ".hcl",
-        ".yaml",
-        ".yml",
-        ".json",
+        ".swift",
     }
 )
 
@@ -61,22 +47,17 @@ _BATCH_SIZE: int = 100
 
 # Язык профиля → теги бандлов, которые ему соответствуют (дизайн v1 §6.2).
 # Фильтрация только явная (из конфига), без автоопределения языков.
+# Список ограничен фактическим охватом Rules Bundle (срез opengrep-community
+# + lgpl): c, csharp, go, javascript, python, scala, swift. Новые языки
+# появляются только когда в бандле появляются правила.
 _LANG_TAGS: dict[str, set[str]] = {
     "python": {"py", "python"},
-    "javascript": {"js", "javascript", "ts", "typescript"},
-    "typescript": {"ts", "typescript", "js", "javascript"},
-    "java": {"java"},
+    "javascript": {"js", "javascript"},
     "go": {"go"},
-    "ruby": {"rb", "ruby"},
-    "php": {"php"},
     "c": {"c"},
-    "cpp": {"cpp", "c"},
     "csharp": {"csharp", "cs"},
-    "rust": {"rust", "rs"},
-    "kotlin": {"kotlin", "kt"},
     "scala": {"scala"},
     "swift": {"swift"},
-    "hcl": {"iac", "hcl"},
 }
 
 # Объединение всех языковых тегов — для отделения языковых бандлов
@@ -98,22 +79,20 @@ class SemgrepAdapter(BaseScanner):
         {
             "python",
             "javascript",
-            "typescript",
-            "java",
             "go",
-            "ruby",
-            "php",
             "c",
-            "cpp",
             "csharp",
-            "rust",
-            "kotlin",
             "scala",
             "swift",
-            "hcl",
         }
     )
-    default_rulesets: tuple[str, ...] = ("p/security-audit",)
+    # Registry-правила (p/security-audit и т.п.) офлайн недоступны
+    # (network_mode: none). Дефолт — локальные каталоги Rules Bundle образа
+    # (см. manifest.yaml); новые правила не добавляем.
+    default_rulesets: tuple[str, ...] = (
+        "/opt/appsecgate/rules/opengrep-community",
+        "/opt/appsecgate/rules/semgrep-custom",
+    )
 
     def __init__(
         self,
@@ -136,7 +115,7 @@ class SemgrepAdapter(BaseScanner):
 
         Приоритет отдан локальным путям из Rules Bundle (дизайн v1 §1.5);
         если bundle не разрешился (fail-soft), используется legacy-путь через
-        `config.rulesets` (registry-правила вида `p/security-audit`).
+        `config.rulesets` (локальные каталоги бандла, см. config/default.yaml).
         """
         if self.resolved_rules is not None:
             paths = self.resolved_rules.paths_for_scanner(self.name)

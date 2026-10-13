@@ -81,7 +81,7 @@ WONTFIX (принятие риска)
 - **Baseline** для каждой ветки и **Delta API** (только новые проблемы).
 - Real-time уведомления через WebSocket.
 - Аудит действий.
-- Интеграции: GitLab CI/CD, DefectDojo, R-Vision, PT ASM.
+- Интеграции: GitLab CI/CD, DefectDojo.
 
 ### Фаза 3. Разделение на роли (RBAC)
 
@@ -147,7 +147,7 @@ appsecgate-mcp/
 │   ├── roadmap.md               # Дорожная карта
 │   ├── architecture.md          # Архитектура
 │   ├── fix-workflow-design.md   # Спецификация Фазы 1
-│   ├── open-tasks.md            # Открытые задачи Фазы 1 (T1–T4)
+│   ├── open-tasks.md            # Открытые задачи Фазы 1 (T1–T3)
 │   ├── e2e-test-plan.md         # План E2E на проекте-полигоне
 │   ├── deploy-agents.md         # Развёртывание для AI-агентов
 │   └── api/openapi.yaml         # OpenAPI-спека
@@ -213,7 +213,9 @@ scanners:
   sast:
     enabled: true
     tool: semgrep
-    rulesets: [p/security-audit, p/python]
+    rulesets: []
+    # ↑ Правила Semgrep берутся из локального Rules Bundle (manifest.yaml),
+    #   p/security-audit и registry-правила офлайн недоступны.
   secrets:
     enabled: true
     tool: gitleaks

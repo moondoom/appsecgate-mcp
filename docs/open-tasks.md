@@ -5,7 +5,11 @@
 (см. AGENTS.md, «Workflow: Plan vs Act»).
 
 **Обновление 2026-10-13:** T1, T2, T3 решены (см. статус под каждой
-задачей). T4 остаётся открытой.
+задачей). T4 снята по решению владельца — новых правил не добавляем,
+фактический охват приведён к срезу бандла (c, csharp, go, javascript,
+python, scala, swift) в `SemgrepAdapter.supported_languages`, `_LANG_TAGS`,
+`_SUPPORTED_EXTENSIONS`, `default_rulesets`, `config/default.yaml` и
+`manifest.yaml`.
 
 ---
 
@@ -61,19 +65,3 @@ get_fix_context → verify_fix → suppress → feedback → export_snapshot),
   воронке, регресс-тест на «двоение» (T1), NF-замеры, две параллельные
   сессии, критерии выхода.
 
-## T4. Rules Bundle для Semgrep «обрезан» (подтверждено, не исправлено)
-
-- Срез `opengrep-community` включает только `c/`, `csharp/`, `go/`, `javascript/`,
-  `python/`, `scala/` + `lgpl/` (js/swift/oc); `jetbrains/` исключён целиком
-  (Commons Clause). Источник: `rules/THIRD_PARTY_NOTICES.md`, коммит `9c6d2ea`.
-- Фактически нет правил для java, kotlin, ruby, php, rust, typescript, hcl — при
-  том что `SemgrepAdapter.supported_languages` заявляет 15 языков, а дефолтный
-  `config.rulesets` — `p/security-audit` (шире среза).
-- Профильная фильтрация усугубляет: бандл `community-sast` имеет теги
-  `["owasp", "generic", "py", "js", "go", "iac"]`, поэтому при профиле на другой
-  язык бандл отбрасывается (`_rulesets_for_languages`, safe-fallback к полному набору).
-- Fallback `p/security-audit` (когда Rules Bundle не зарезолвился) требует доступа
-  к registry semgrep — в офлайне (`network_mode: none`) не работает.
-- Направление (решает Plan-мод): расширить срез недостающими языками либо явно
-  декларировать фактический охват в конфиге; сверить профильные теги с содержимым
-  бандла; проверить поведение fallback без сети.

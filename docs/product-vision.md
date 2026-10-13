@@ -12,7 +12,7 @@
 
 - Работает **локально** (MCP-сервер для AI-агентов и разработчиков).
 - Синхронизируется с **центральным сервером** (единый источник правды для команды).
-- Интегрируется с **ASOC/ASPM** (DefectDojo, R-Vision, PT ASM и др.).
+- Интегрируется с **ASOC/ASPM** (DefectDojo и др.).
 - Строит **BI-аналитику** по эффективности безопасности.
 - Автоматизирует **комплаенс** (ГОСТ Р 56939-2024, ФСТЭК).
 
@@ -263,7 +263,11 @@ scanners:
   sast:
     enabled: true
     tool: semgrep
-    rulesets: [p/security-audit, p/python]
+    # Правила SAST — из локального Rules Bundle (manifest.yaml);
+    # registry-правила (p/*) офлайн недоступны.
+    rulesets:
+      - /opt/appsecgate/rules/opengrep-community
+      - /opt/appsecgate/rules/semgrep-custom
   secrets:
     enabled: true
     tool: gitleaks
@@ -357,7 +361,7 @@ sla:
 
 #### 5.2.4. Синхронизация с ASOC
 
-- Экспорт находок в DefectDojo, R-Vision, PT ASM
+- Экспорт находок в DefectDojo
 - Обновление состояния находок (FIXED_LOCALLY → FIXED_VERIFIED)
 - Двусторонняя синхронизация (ASOC → SG и SG → ASOC)
 
@@ -550,7 +554,7 @@ Lead/AppSec → запрос → CISO → APPROVED/REJECTED
 | **Сбор доказательств** | Интеграции с GitLab, Jira, сканерами, ASOC |
 | **Дашборд готовности** | % соответствия по разделам, риски, план работ |
 | **Отчёты для аудита** | Генерация пакета документов для сертификации |
-| **Интеграция с ASOC** | Автоматическое получение данных из DefectDojo, R-Vision |
+| **Интеграция с ASOC** | Автоматическое получение данных из DefectDojo |
 
 #### 5.5.2. Модули
 
@@ -588,8 +592,6 @@ Lead/AppSec → запрос → CISO → APPROVED/REJECTED
 | Система | Что получаем |
 |---------|--------------|
 | **DefectDojo** | Находки, статусы, MTTR |
-| **R-Vision** | Инциденты, SOAR-кейсы |
-| **PT ASM** | Внешняя поверхность атаки |
 | **GitLab** | Коммиты, MR, пайплайны |
 | **Jira** | Задачи, статусы |
 | **Confluence** | Документы, политики |
@@ -691,7 +693,7 @@ Lead/AppSec → запрос → CISO → APPROVED/REJECTED
 
 - **AI-агенты:** Claude Code, Cursor, Cline, Continue.
 - **CI/CD:** GitLab, GitHub Actions, Jenkins.
-- **ASOC:** DefectDojo, R-Vision, PT ASM.
+- **ASOC:** DefectDojo.
 - **BI:** Metabase, Grafana, Apache Superset.
 - **ОС:** Linux, macOS, Windows (WSL).
 

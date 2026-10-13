@@ -13,8 +13,10 @@ scanners:
     enabled: true
     tool: semgrep
     rulesets:
-      - p/security-audit
-      - p/python
+      - /opt/appsecgate/rules/opengrep-community
+      - /opt/appsecgate/rules/semgrep-custom
+    # ↑ Правила Semgrep берутся из локального Rules Bundle (manifest.yaml);
+    #   registry-правила (p/security-audit) офлайн недоступны.
     severity_threshold: medium
   secrets:
     enabled: true
