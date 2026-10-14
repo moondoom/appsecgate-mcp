@@ -30,24 +30,12 @@ T14 (вторая итерация E2E) и T15 (UX rule_id). Самая важн
 
 ## T1. Fingerprint «двоит» находки (решено ✅)
 
-**Статус:** реализован второй уровень дедупа — `Deduplicator.deduplicate_families()`
-в `coordinator.py`. Ключ: `(file_path, line_start // 20, normalized_body)`, где
-body = `metadata.Secret` (для Gitleaks) / сниппет (TruffleHog) или
-нормализованный фрагмент (Semgrep). `rule_id` и `scanner` в ключ не входят.
-Схемы БД и сигнатуры тулов не тронуты. Пройдено 290 тестов, в том числе
-регрессия `test_scan_dedups_same_secret_across_scanners`.
+**Дизайн:** [ADR-0001](adr/ADR-0001-fingerprint-and-semantic-dedup.md).
 
-- Причина: fingerprint = `sha256(rule_id + file_path + normalize_snippet(snippet))[:16]` —
-  `rule_id` входит в ключ; `Deduplicator` схлопывает только по точному `(file_path, line_start)`.
-- Дубли видны в ответе скана (`_build_scan_output` → `payload["findings"]`),
-  не в `shown_findings` (PK=fingerprint, upsert).
-- Источники: Gitleaks vs TruffleHog на одном секрете; пересечения Semgrep-правил
-  (разные `rule_id`, строки, сниппеты).
-- Сквозная идентичность одной проблемы уже есть — `logical_id`
-  (`rule_id + file_path + AST-scope|bucket`, `storage/logical_id.py`), на нём работает `verify_fix`.
-- Направление фикса: механизм уточнён — вместо pure logical_id (включает rule_id,
-  не схлопнет разные сканеры) использован расширенный ключ «семьи». Файлы:
-  `normalization/dedup.py`, `orchestration/coordinator.py`.
+**Статус:** реализован по ADR-0001 (детерминированный tie-break + `Deduplicator.deduplicate_families()`).
+Пройдено 290 тестов, в том числе регрессия `test_scan_dedups_same_secret_across_scanners`.
+
+Файлы: `normalization/dedup.py`, `orchestration/coordinator.py`.
 
 ## T2. Инструкция развёртывания для Continue / Cline / Claude Code (решено ✅)
 
@@ -175,7 +163,9 @@ announce-форматом. Проверить намерение: если annou
 
 ## T10. Недетерминированный дедуп → нестабильные fingerprint (P0, B1/OBS-5)
 
-**Статус:** открыта критическая (по итогам E2E, OBS-5).
+**Дизайн:** [ADR-0001](adr/ADR-0001-fingerprint-and-semantic-dedup.md).
+
+**Статус:** открыта критическая (по итогам E2E, OBS-5). Реализовать по ADR-0001 (§3.2, детерминированный tie-break в `_collapse()`).
 
 **Симптом (B1):** один и тот же секрет на одной строке получает то
 `github-pat`, то `generic-api-key` fingerprint между прогонами. В дедупе
@@ -227,15 +217,17 @@ E2E-харнесс изначально читал только `status` и пр
 
 ## T13. SCA: 19 CVE схлопнуты в 1 находку (P2, B3)
 
-**Статус:** открыт вопрос (по итогам E2E).
+**Дизайн:** [ADR-0001](adr/ADR-0001-fingerprint-and-semantic-dedup.md).
+
+**Статус:** открыт вопрос (по итогам E2E). Реализовать по ADR-0001 (§12, п. 4).
 
 Trivy находит 19 CVE в `requirements.txt`, но в нормализованном результате
 остаётся **одна** находка (top CVE-2019-1010083): остальные 18 невидимы —
 нет ни в `verify_fix`, ни в `export_snapshot`, ни в `query_findings_db`.
-Проверить: схлопывание в normalizer SCA (по модулю/пакету?) или порог
-severity. Нужно либо перечислять все CVE, либо явно документировать
-«топ-1» как осознанный выбор. Файлы: `normalization/`, `scanners/trivy.py`,
-спека §4.4.
+ADR-0001 фиксирует, что векторный подход не решает эту проблему — нужна
+отдельная логика агрегации по пакету в `trivy.py`/нормалайзере. Нужно либо
+перечислять все CVE, либо явно документировать «топ-1» как осознанный выбор.
+Файлы: `normalization/`, `scanners/trivy.py`, спека §4.4.
 
 ## T14. Вторая итерация E2E: staged-diff, verify_fix-fixed, IaC, память (follow-up)
 
