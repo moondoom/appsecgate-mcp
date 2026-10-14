@@ -1,0 +1,9 @@
+[project]
+name = "other-project"
+version = "0.1.0"
+description = "Второй проект-полигон для параллельных сессий (docs/e2e-test-plan.md)"
+requires-python = ">=3.8"
+dependencies = [
+    "flask==0.12.3",
+    "requests==2.20.0",
+]

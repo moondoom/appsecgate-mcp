@@ -1,8 +1,9 @@
 # План E2E-тестирования AppSecGate MCP на проекте-полигоне
 
-Статус: план (задача T3, `docs/open-tasks.md`). Зафиксировано 2026-10-13.
+Статус: **выполнен 2026-10-14 — 17/17 сценариев, 100%** (`docs/E2E-report-2026-10-14.md`).
+Зафиксировано 2026-10-13.
 Есть 290 юнит/интеграционных тестов (мок-сканеры, tmp-SQLite); E2E на
-реальном проекте и реальных бинарниках здесь не покрывается.
+реальном проекте и реальных бинарниках здесь не покрывался.
 
 Цель: пройти весь цикл воронки §7.3 — scan → context → fix → verify — на
 проекте-полигоне и зафиксировать критерии выхода §7.1–7.2.
@@ -14,20 +15,22 @@
 ```
 mcp-server/tests/fixtures/vuln-project/
 ├── .appsecgate-mcp/config.yaml   # низкие пороги, локальные gates
-├── pyproject.toml               # устаревшие зависимости (Trivy/SCA)
+├── pyproject.toml               # устаревшие зависимости (метаданные проекта)
+├── requirements.txt             # пины устаревших версий (Trivy/SCA)
 ├── secrets.py                   # фиктивные AWS key, AWS secret, GitHub PAT
 ├── sql_injection.py             # SQL-инъекция (Semgrep SAST)
-└── xss.py                       # XSS (Semgrep SAST)
+└── xss.py                       # Jinja2 без autoescape → XSS (Semgrep SAST)
 ```
 
-Матрица «файл → ожидаемая категория»:
+Матрица «файл → ожидаемая категория» (по фактическим детектам, E2E-report §2):
 
 | Файл                | Категория | Сканер        | Что ожидаем |
 |---------------------|-----------|---------------|-------------|
-| `secrets.py`        | secret    | Gitleaks      | ≥ 2 находки (AWS key, GitHub PAT) |
-| `sql_injection.py`  | sast      | Semgrep       | ≥ 1 находка (SQLi) |
-| `xss.py`            | sast      | Semgrep       | ≥ 1 находка (XSS) |
-| `pyproject.toml`    | sca       | Trivy         | ≥ 1 находка (устаревшая зависимость) |
+| `secrets.py`        | secret    | Gitleaks      | 1 находка: `github-pat`+`generic-api-key` на одной строке схлопываются дедупом (T1-фикс). AWS-примеры — документационные, Gitleaks их игнорирует |
+| `sql_injection.py`  | sast      | Semgrep       | ≥ 1 находка (hardcoded SQL-выражение) |
+| `xss.py`            | sast      | Semgrep       | ≥ 1 находка (jinja2-autoescape-false; CWE-116) |
+| `requirements.txt`  | sca       | Trivy         | ≥ 1 находка (19 CVE: flask/requests/urllib3) |
+| `pyproject.toml`    | sca       | Trivy         | 0 ожидаемо — без lock/manifest Trivy уязвимости не детектит |
 
 ## 2. Предусловия
 
@@ -89,14 +92,16 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ## 5. Регрессия T1 — «двоение» находок (проверка фикса)
 
-Сценарий (должен проходить с дедупом уровня 2, `deduplicate_families`):
+Сценарий (проходит с дедупом уровня 1–2, `deduplicate` + `deduplicate_families`):
 
-1. В конфиге полигона включить оба секрет-сканера:
-   `scanners.secrets.tool: gitleaks` + `trufflehog` (или оба адаптера).
-2. `scan_file secrets.py`.
-3. Ожидание: на **один и тот же секрет** (AWS key) — **одна** находка
-   в ответе скана, не две. Критерий: `len(result["findings"])` по секретам
-   == числу уникальных значений секретов в файле.
+1. `scan_file secrets.py` (конфиг: `scanners.secrets.tool: gitleaks` — tool
+   скалярный, §10.4; поведение с двумя адаптерами покрыто юнит-тестом
+   `test_scan_dedups_same_secret_across_scanners`).
+2. Ожидание: два правила Gitleaks (`github-pat`, `generic-api-key`) на **одной
+   строке** (один и тот же секрет) — **одна** находка в ответе скана, не две
+   (дедуп уровня 1 по `(file_path, line_start)`; «семьи» уровня 2 склеивают
+   по `(file, window//20, тело)`).
+3. Подтверждено E2E: `scan_file secrets.py` → total=1 (`github-pat`).
 
 Проверка семантики дедупа:
 - Разные секреты в одном файле — разные находки.
@@ -105,14 +110,14 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ## 6. Нефункциональные измерения (§6.2)
 
-На хосте проекта, не в контейнере:
+Замеры выполняются по ходу E2E-прогона (`scripts/e2e_measure.py`):
+- Длительность `scan_project` берётся из `meta.duration_ms` ответа скана.
+- Пиковая память — семплинг `docker stats --no-stream` по контейнерам образа
+  во время прогона (0.1 c шаг).
+- Размер `shown_findings` + `finding_context` — после полного цикла по SQLite
+  (page_count × page_size).
 
-```bash
-/usr/bin/time -v docker compose -f mcp-server/docker-compose.yml \
-  run --rm appsecgate-mcp scan-project ... 2>&1 | grep -E 'wall clock|Maximum resident'
-```
-
-Замеряем и фиксируем:
+Целевые значения (см. E2E-report §4):
 - Длительность `scan_project` полного полигона (target: < 30 c).
 - Пиковое потребление памяти контейнера (target: < 512 МБ).
 - Размер `shown_findings` + `finding_context` в SQLite после полного цикла.
@@ -120,11 +125,20 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ## 7. Параллельные сессии
 
-1. Сессия A — полигон `vuln-project`.
+1. Сессия A — полигон `vuln-project` (mount `/workspace`).
 2. Сессия B — временный второй проект (`mcp-server/tests/fixtures/other-project`,
-   можно скопировать полигон без секретов).
+   копия полигона без секретов; mount `/workspace-b`).
 3. Параллельно прогоняем `scan_project` в обеих — ожидаем независимые
    `project_id` и раздельные записи в БД.
+
+Особенности прогона:
+- `project_id = sha256(realpath(project_path))` (§4.7) — при одинаковом
+  контейнерном пути оба проекта дали бы один id. В харнессе проекты
+  монтируются в разные пути.
+- Тест параллельных сессий выполняется **до** мутаций (suppress): suppression
+  хранится по fingerprint без project_id и глобально фильтрует равные находки
+  в любом проекте (см. E2E-report OBS-2).
+- Для корректного изолированного прогона используется свежий data volume.
 
 ## 8. Критерии выхода
 
@@ -140,7 +154,42 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ## 9. Организация
 
-- Прогон выполняется вручную (Docker + MCP-клиент), автоматизация — позже,
-  отдельным этапом.
-- Результаты фиксируются в `docs/E2E-report-<дата>.md` (создаётся по
-  итогам прогона, вне этого файла).
+- Прогон выполняется через `scripts/e2e_measure.py` (автоматизация; MCP-клиент
+  поднимает контейнеры в stdio-режиме).
+- Ручные сценарии (§3.4–3.5 — `update_config` локально; §4.3 — контекст-пакет).
+- Результаты зафиксированы в `docs/E2E-report-2026-10-14.md`.
+
+## 10. Примечания (по итогам прогона 2026-10-14)
+
+1. `update_config` в Docker **не тестируется** — `.appsecgate-mcp` смонтирован `:ro`.
+   Прогоняется локально через `mcp-server/.venv/bin/appsecgate-mcp` (без Docker).
+   Результаты: валидный update → `updated`; неверный **тип** → `invalid` (файл не
+   меняется); **неизвестное поле** молча дропается и уходит в файл (см.
+   E2E-report OBS-3 — кандидат в задачи).
+2. `verify_fix` проверяет `not_fixed`-путь (файл не менялся — проект `:ro`):
+   сервер возвращает `status: ok, verified_status: not_fixed, verified: true`,
+   и этот же fingerprint после перескана. `fixed`-путь — локально при
+   редактируемом проекте.
+3. `scan_diff` работает по untracked-файлам полигона (git init выполнен; все
+   файлы untracked) — найдено 4 файла/4 находки.
+4. Регрессия T1 (§5) — `scanners.secrets.tool` скалярный; тестируется с
+   `gitleaks`. Дедуп проверяется на двойном срабатывании gitleaks в одной
+   строке (2 raw-находки → 1 в ответе). Семантика «разные секреты/строки →
+   разные находки» подтверждена family-дедупом (§5 плана; тест
+   `test_scan_dedups_same_secret_across_scanners` + E2E).
+5. Для параллельных сессий создан `mcp-server/tests/fixtures/other-project/`;
+   монтируется в `/workspace-b` для различных `project_id`.
+6. Фикстуры уточнены по факту: `xss.py` — jinja2 autoescape (иначе правил на
+   flask f-string нет); добавлен `requirements.txt` для Trivy/SCA
+   (pyproject без lock не детектится); `secrets.py` — 1 находка после дедупа.
+
+## 11. Инструментарий
+
+- **Автоматический:** `scripts/e2e_measure.py` — полный цикл воронки
+  (`scan_file`/`scan_diff`/`scan_project`, `query_findings_db`, `get_fix_context`
+  + batch, `verify_fix`, `suppress_finding`, `submit_feedback`,
+  `get_scan_history`, `export_snapshot`), NF-замеры (§6), параллельные сессии
+  (§7). Для изоляции создаёт свежий data volume на прогон.
+- **Ручной прогон:** MCP-клиент (Cline/Continue) — инициализация (§3),
+  контекст-пакеты (§4.3), `update_config` локально (§3.4–3.5).
+- Результаты — в `docs/E2E-report-<дата>.md`.

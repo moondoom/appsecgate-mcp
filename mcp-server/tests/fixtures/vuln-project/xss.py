@@ -1,18 +1,14 @@
 """Намеренный XSS проекта-полигона (docs/e2e-test-plan.md).
 
-Пример плохой практики: вывод пользовательского ввода без экранирования.
-Semgrep-правила XSS должны сработать на этом файле.
+Пример плохой практики: Jinja2-окружение без autoescape. Пользовательский
+ввод рендерится без экранирования → XSS (CWE-116, OWASP A7:2017).
+Semgrep-правило python/escaping/rule-jinja2-autoescape-false должно
+сработать на этом файле.
 """
 
 from __future__ import annotations
 
-from flask import Flask, request
+import jinja2
 
-app = Flask(__name__)
-
-
-@app.route("/profile")
-def profile() -> str:
-    """Отдаёт <name> без экранирования — НЕ использовать в продакшене."""
-    name = request.args.get("name", "")
-    return f"<div class='profile'>{name}</div>"
+# autoescape выключен — вывод пользовательского ввода в HTML без экранирования.
+env = jinja2.Environment(autoescape=False)
