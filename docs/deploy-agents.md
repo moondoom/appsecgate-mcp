@@ -149,30 +149,54 @@ mcpServers:
 
 ### Cline
 
-Файл: `<проект>/.cline/mcp_settings.json` (или `mcp_settings.json` в корне):
+Cline (v4.x) читает MCP-серверы из **общего** файла настроек
+`~/.cline/data/settings/cline_mcp_settings.json` — единый конфиг для CLI,
+desktop и VS Code-расширения. Пути `.cline/mcp_settings.json` и
+`mcp_settings.json` в корне проекта старые версии Cline больше **не читают**.
+
+Добавьте сервер `appsecgate` в `~/.cline/data/settings/cline_mcp_settings.json`:
 
 ```json
 {
   "mcpServers": {
     "appsecgate": {
+      "type": "stdio",
       "command": "docker",
       "args": [
         "run", "--rm", "-i", "--network=none", "--read-only",
         "--tmpfs=/tmp:size=100M,mode=1777", "--cap-drop=ALL",
         "--security-opt=no-new-privileges:true",
-        "-v", ".:/workspace:ro",
+        "-v", "/абсолютный/путь/к/проекту:/workspace:ro",
         "-v", "appsecgate-cache:/home/appsecgate/.cache",
         "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
         "animage/appsecgate-mcp:0.1.0",
         "--transport", "stdio", "--project", "/workspace"
       ],
-      "env": {}
+      "cwd": "/абсолютный/путь/к/проекту",
+      "env": {},
+      "disabled": false,
+      "timeout": 600
     }
   }
 }
 ```
 
-В VS Code можно прописать сервер в настройках `cline.mcpServers`.
+Важно:
+
+- Для общего (пользовательского) конфига в `-v` и `cwd` указывайте
+  **абсолютный путь** к проекту: тогда bind-mount не зависит от того, какой
+  воркспейс открыт в Cline в данный момент. Относительный `.:/workspace:ro`
+  подходит только для проектного `.mcp.json` (см. ниже).
+- `timeout` в Cline задаётся в секундах (600 = 10 мин).
+- После изменения перезапустите Cline (или перезагрузите окно VS Code) —
+  расширение перечитает файл настроек.
+- При первом подключении Cline может запросить подтверждение безопасности —
+  подтвердите запуск сервера `appsecgate`.
+
+Альтернатива (только проект): проектный `.mcp.json` в корне воркспейса.
+Cline читает его и показывает серверы в отдельной вкладке MCP — каждый сервер
+нужно однократно одобрить в интерфейсе. Тот же файл использует Claude Code,
+поэтому один `.mcp.json` может обслуживать оба клиента.
 
 ### Cursor
 
@@ -238,6 +262,7 @@ mcpServers:
 | Клиент: «не удалось запустить» / пустой ответ | Образ не собран либо имя образа не совпадает | `make docker-build`; сверить тег в конфиге |
 | Тулы видны, но ответ — ошибка сети | У проекта слишком большой кэш в `/tmp` (>100M) либо нет прав на bind-mount | Проверить tmpfs и права на каталог |
 | Тулы НЕ видны | Неверное имя сервера / префикс | Имя должно быть `appsecgate` (без пробелов); префикс `mcp__appsecgate__` |
+| Тулы НЕ видны (Cline) | Сервер не добавлен в `~/.cline/data/settings/cline_mcp_settings.json` (старый путь `.cline/mcp_settings.json` не читается) | Добавить сервер в общий файл и перезапустить Cline/VS Code |
 | `scan_file` вернул пустой `findings` | Правила не зарезолвились (офлайн, Rules Bundle пуст) | Проверить `meta.warnings` и `ruleset_hash`; убедиться, что бандл в образе |
 | `meta.errors` непуст | Недоступен бинарник сканера (semgrep/gitleaks/trivy) | Проверить образ: `docker run --rm animage/appsecgate-mcp semgrep --version` |
 | Ошибка «project_id mismatch» | Смена `project_path` в одной сессии | Новый проект = новая сессия (инвариант №6) |

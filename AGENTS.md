@@ -135,3 +135,18 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 - Задача выходит за рамки одного этапа роадмапа.
 - Неясно, к какому разделу спеки относится изменение.
 - Открытые задачи проекта — в отдельном файле `docs/open-tasks.md`, не в AGENTS.md.
+
+## Agent File Access (Cline / AI agents)
+- Читать содержимое файлов ТОЛЬКО через встроенные тулы агента
+  (`read_file`, `list_files`, `search_files`).
+- НЕ использовать `bash`/`execute_command` для `cat`, `ls`, `grep`, `find`,
+  `head`, `tail`, `wc`, `sed -n`, `awk`, а также конструкций вида
+  `ls foo && echo FOUND || echo NOT_FOUND`.
+- `execute_command` разрешён только для:
+  - целей `make` (`make check`, `make format`, `make docker-*`);
+  - git-операций;
+  - запуска тестов/линтера — но только через `make`.
+- Рабочая директория уже = корень проекта. Пути передавать относительные,
+  без префикса `/home/animage/projects/...`.
+- Если файл нужно проверить на существование — использовать `list_files`
+  или `search_files`, а не `ls ... || echo`.
