@@ -466,9 +466,9 @@ def _log_tool(func: Any) -> Any:
 @mcp.tool()
 @_log_tool
 async def scan_file(path: str) -> dict[str, Any]:
-    """Сканирует один файл и возвращает нормализованные находки.
+    """Scan a single file and return normalized findings.
 
-    path — путь к файлу (абсолютный или относительный от корня проекта).
+    path — path to the file (absolute or relative to the project root).
     """
     state = await _ensure_session()
     try:
@@ -486,7 +486,7 @@ async def scan_file(path: str) -> dict[str, Any]:
 @mcp.tool()
 @_log_tool
 async def scan_diff() -> dict[str, Any]:
-    """Сканирует staged + unstaged + untracked изменения текущего git-репозитория."""
+    """Scan staged + unstaged + untracked changes in the current git repository."""
     state = await _ensure_session()
     try:
         files = await git_changed_files(state.project_path)
@@ -505,11 +505,11 @@ async def scan_diff() -> dict[str, Any]:
 @mcp.tool()
 @_log_tool
 async def scan_project(path: str = ".") -> dict[str, Any]:
-    """Сканирует весь проект или конкретную директорию внутри него.
+    """Scan the entire project or a specific directory inside it.
 
-    path — директория (абсолютная или относительная от корня проекта).
-    По умолчанию сканируется весь проект. Запускаются все сканеры в режиме
-    `project`: semgrep — по файлам, gitleaks/trufflehog/trivy — по директории.
+    path — directory (absolute or relative to the project root).
+    Defaults to the full project. Runs all scanners in ``project`` mode:
+    semgrep — per file, gitleaks/trufflehog/trivy — per directory.
     """
     state = await _ensure_session()
     try:
@@ -520,7 +520,7 @@ async def scan_project(path: str = ".") -> dict[str, Any]:
         return {"error": f"path not found: {path}", "findings": [], "summary": {"total": 0}}
     if not target.is_dir():
         return {
-            "error": f"not a directory: {path} (используйте scan_file для файла)",
+            "error": f"not a directory: {path} (use scan_file for a single file)",
             "findings": [],
             "summary": {"total": 0},
         }
@@ -590,7 +590,7 @@ async def _build_announce_output(state: SessionState, result: ScanResult) -> dic
 @mcp.tool()
 @_log_tool
 async def get_config() -> dict[str, Any]:
-    """Возвращает действующую (merged) конфигурацию сессии."""
+    """Return the active (merged) session configuration."""
     state = await _ensure_session()
     return state.config.model_dump(mode="json")
 
@@ -637,10 +637,10 @@ async def _reinitialize(state: SessionState) -> None:
 @mcp.tool()
 @_log_tool
 async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
-    """Глубоко мёржит updates в .appsecgate-mcp/config.yaml проекта и перезагружает сессию.
+    """Deep-merge updates into .appsecgate-mcp/config.yaml and reload the session.
 
-    Итоговый конфиг проверяется той же схемой, что и ConfigLoader.load, до записи.
-    Невалидный результат возвращается как status=invalid, файл не меняется.
+    The resulting config is validated against the same schema as ConfigLoader.load
+    before writing. Invalid results return status=invalid, file unchanged.
     """
     state = await _ensure_session()
     project_conf = Path(state.project_path) / PROJECT_CONFIG_REL
@@ -686,7 +686,7 @@ async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
 @mcp.tool()
 @_log_tool
 async def submit_feedback(finding_id: str, type: str, reason: str = "") -> dict[str, Any]:
-    """Отправляет обратную связь по находке.
+    """Submit feedback on a finding.
 
     type: FALSE_POSITIVE | CONFIRMED | WONT_FIX.
     """
@@ -726,11 +726,11 @@ def _normalize_history_item(item: dict[str, Any], project: str) -> dict[str, Any
 @mcp.tool()
 @_log_tool
 async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dict[str, Any]:
-    """Возвращает журнал показанных находок (shown_findings.db) с попытками верификации.
+    """Return the shown findings log (shown_findings.db) with verification attempts.
 
-    Пути в items всегда относительные от корня проекта. Строки с путями вне
-    проекта исключаются из ответа. Поле ``latest_attempt`` — последняя запись
-    из ``fix_attempts`` для находки (или ``None``).
+    Paths in items are always relative to the project root. Rows with paths
+    outside the project are excluded. ``latest_attempt`` — most recent
+    ``fix_attempts`` entry for the finding (or ``None``).
     """
     state = await _ensure_session()
     try:
@@ -783,7 +783,7 @@ async def get_scan_history(limit: int = 50, file_path: str | None = None) -> dic
 async def suppress_finding(
     finding_id: str, reason: str, expires_at: str | None = None
 ) -> dict[str, Any]:
-    """Создаёт локальный suppression (не влияет на CI-контур в Фазе 1)."""
+    """Create a local suppression (does not affect CI gate in Phase 1)."""
     state = await _ensure_session()
     suppression = Suppression(
         fingerprint=finding_id,
@@ -802,7 +802,7 @@ async def suppress_finding(
 @mcp.tool()
 @_log_tool
 async def get_fix_context(finding_id: str) -> dict[str, Any]:
-    """Возвращает ContextPack находки (finding + окно кода + rule doc)."""
+    """Return the ContextPack for a finding (finding + code window + rule doc)."""
     state = await _ensure_session()
     if state.context_builder is None:
         return {"status": "error", "reason": "session not initialized"}
@@ -821,7 +821,7 @@ _BATCH_LIMIT = 20
 @mcp.tool()
 @_log_tool
 async def get_fix_context_batch(finding_ids: list[str]) -> dict[str, Any]:
-    """Возвращает ContextPack для набора находок (лимит 20)."""
+    """Return ContextPacks for multiple findings (limit 20)."""
     state = await _ensure_session()
     if len(finding_ids) > _BATCH_LIMIT:
         return {
@@ -969,9 +969,9 @@ async def _verify_attempts(
 @mcp.tool()
 @_log_tool
 async def verify_fix(finding_id: str, status: str, note: str = "") -> dict[str, Any]:
-    """Верифицирует одну находку: перескан файла и сверка по (logical_id).
+    """Verify a single finding: rescan the file and match by (logical_id).
 
-    status: fixed | not_fixed | wont_fix. ``wont_fix`` требует пояснения в note.
+    status: fixed | not_fixed | wont_fix. ``wont_fix`` requires a note.
     """
     state = await _ensure_session()
     if state.fix_attempts_store is None or state.shown_store is None:
@@ -996,7 +996,7 @@ async def verify_fix(finding_id: str, status: str, note: str = "") -> dict[str, 
 @mcp.tool()
 @_log_tool
 async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
-    """Верифицирует до 20 находок; каждый файл пересканируется один раз.
+    """Verify up to 20 findings; each file is rescanned once.
 
     attempts: [{"finding_id": str, "status": fixed|not_fixed|wont_fix, "note": str}].
     """
@@ -1033,11 +1033,11 @@ async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
 @mcp.tool()
 @_log_tool
 async def query_findings_db(sql: str, params: list[Any] | None = None) -> dict[str, Any]:
-    """Read-only SELECT по публичным views (v_findings, v_summary, v_projects).
+    """Read-only SELECT on public views (v_findings, v_summary, v_projects).
 
-    Фильтр по текущему проекту (project_id) и LIMIT 1000 добавляются сервером
-    автоматически — в SQL их указывать не нужно. Допустимы WHERE/GROUP BY/
-    ORDER BY/HAVING, напр. "SELECT severity, COUNT(*) AS n FROM v_findings
+    Project filter (project_id) and LIMIT 1000 are added by the server
+    automatically — do not specify them in SQL. WHERE/GROUP BY/ORDER BY/HAVING
+    are allowed, e.g. "SELECT severity, COUNT(*) AS n FROM v_findings
     WHERE status = 'SHOWN' GROUP BY severity".
     """
     state = await _ensure_session()
@@ -1077,7 +1077,7 @@ async def query_findings_db(sql: str, params: list[Any] | None = None) -> dict[s
 async def export_snapshot(
     path: str, format: str = "ndjson", project_id: str | None = None
 ) -> dict[str, Any]:
-    """Экспортирует снапшот находок в ndjson (parquet — в Фазе 2)."""
+    """Export a snapshot of findings in ndjson format (parquet — Phase 2)."""
     state = await _ensure_session()
     if format == "parquet":
         return {

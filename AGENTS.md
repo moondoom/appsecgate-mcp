@@ -11,12 +11,12 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 
 ## Project Map
 - `mcp-server/src/` — код MCP-сервера (тулы, хуки, сканеры)
-- `mcp-server/src/server.py` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
+- `mcp-server/src/appsecgate_mcp/server.py` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
   `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`,
   `query_findings_db`, `export_snapshot`, `get_config`, `update_config`,
   `submit_feedback`, `get_scan_history`, `suppress_finding`)
-- `mcp-server/src/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
-- `mcp-server/src/storage/` — SQLite-схема, views, миграции (их нет)
+- `mcp-server/src/appsecgate_mcp/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
+- `mcp-server/src/appsecgate_mcp/storage/` — SQLite-схема, views, миграции (их нет)
 - `mcp-server/tests/` — 283 теста, все должны быть зелёными
 - `config/default.yaml` — дефолтная конфигурация
 - `docs/` — спецификация и архитектурные решения
