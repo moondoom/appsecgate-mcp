@@ -109,7 +109,7 @@ RUN mkdir -p /opt/appsecgate/trivy-db-seed \
          trivy image --cache-dir /opt/appsecgate/trivy-db-seed --download-java-db-only; \
        fi
 
-# Bundle правил сканеров (атомарная единица, см. docs/session-handoff.md §1).
+# Bundle правил сканеров (атомарная единица, см. mcp-server/rules/manifest.yaml).
 COPY rules/ /opt/appsecgate/rules/
 
 RUN chmod -R a+rX /opt/appsecgate
@@ -119,6 +119,8 @@ RUN groupadd --gid 1000 appsecgate \
     && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/appsecgate --shell /usr/sbin/nologin appsecgate \
     && mkdir -p /home/appsecgate/.cache /home/appsecgate/.semgrep /home/appsecgate/.appsecgate-mcp /workspace \
     && chown -R 1000:1000 /home/appsecgate /workspace
+
+LABEL io.modelcontextprotocol.server.name="io.github.moondoom/appsecgate-mcp"
 
 # Конфиг по умолчанию
 COPY config/default.yaml /etc/appsecgate/default.yaml
