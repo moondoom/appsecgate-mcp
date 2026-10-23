@@ -76,11 +76,11 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 |------|-----------|-------|
 | `make check` | ruff + pytest | перед каждым коммитом |
 | `make format` | форматирование ruff | после изменений |
-| `make docker-build` | сборка образа `animage/appsecgate-mcp:0.1.0` | после коммита |
+| `make docker-build` | сборка образа `moondoom/appsecgate-mcp:0.1.0` | после коммита |
 | `make docker-run` | запуск контейнера с проектом | для отладки |
 | `make docker-down` | остановка контейнера | после отладки |
 
-Каноническое имя образа: `animage/appsecgate-mcp:0.1.0` (задано в `Makefile`
+Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
 283 теста должны оставаться зелёными.

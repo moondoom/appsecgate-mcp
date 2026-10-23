@@ -1,5 +1,5 @@
 SERVER_DIR     := mcp-server
-IMAGE          ?= animage/appsecgate-mcp
+IMAGE          ?= moondoom/appsecgate-mcp
 VERSION        ?= 0.1.0
 TAG            ?= $(IMAGE):$(VERSION)
 PROJECT_PATH   ?= $(CURDIR)

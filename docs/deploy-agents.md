@@ -26,7 +26,7 @@ mcp__<имя_сервера>__<имя_тула>
 ## 2. Предусловия
 
 - Docker-образ собран: `make docker-build` (корень репо).
-  Опубликованный образ: `animage/appsecgate-mcp:0.1.0`.
+  Опубликованный образ: `moondoom/appsecgate-mcp:0.1.0`.
 - Проект, который сканируем, смонтирован в контейнер `:ro`.
 - Сеть отключена (`--network=none`) — правила сканеров поставляются локально
   (Rules Bundle), сервер офлайн.
@@ -55,7 +55,7 @@ args:
   - appsecgate-cache:/home/appsecgate/.cache
   - -v
   - appsecgate-data:/home/appsecgate/.appsecgate-mcp
-  - animage/appsecgate-mcp:0.1.0
+  - moondoom/appsecgate-mcp:0.1.0
   - --transport
   - stdio
   - --project
@@ -112,7 +112,7 @@ mcpServers:
       - appsecgate-cache:/home/appsecgate/.cache
       - -v
       - appsecgate-data:/home/appsecgate/.appsecgate-mcp
-      - animage/appsecgate-mcp:0.1.0
+      - moondoom/appsecgate-mcp:0.1.0
       - --transport
       - stdio
       - --project
@@ -139,7 +139,7 @@ mcpServers:
         "-v", ".:/workspace:ro",
         "-v", "appsecgate-cache:/home/appsecgate/.cache",
         "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
-        "animage/appsecgate-mcp:0.1.0",
+        "moondoom/appsecgate-mcp:0.1.0",
         "--transport", "stdio", "--project", "/workspace"
       ]
     }
@@ -169,7 +169,7 @@ desktop и VS Code-расширения. Пути `.cline/mcp_settings.json` и
         "-v", "/абсолютный/путь/к/проекту:/workspace:ro",
         "-v", "appsecgate-cache:/home/appsecgate/.cache",
         "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
-        "animage/appsecgate-mcp:0.1.0",
+        "moondoom/appsecgate-mcp:0.1.0",
         "--transport", "stdio", "--project", "/workspace"
       ],
       "cwd": "/абсолютный/путь/к/проекту",
@@ -214,7 +214,7 @@ Cline читает его и показывает серверы в отдель
         "-v", ".:/workspace:ro",
         "-v", "appsecgate-cache:/home/appsecgate/.cache",
         "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
-        "animage/appsecgate-mcp:0.1.0",
+        "moondoom/appsecgate-mcp:0.1.0",
         "--transport", "stdio", "--project", "/workspace"
       ]
     }
@@ -264,5 +264,5 @@ Cline читает его и показывает серверы в отдель
 | Тулы НЕ видны | Неверное имя сервера / префикс | Имя должно быть `appsecgate` (без пробелов); префикс `mcp__appsecgate__` |
 | Тулы НЕ видны (Cline) | Сервер не добавлен в `~/.cline/data/settings/cline_mcp_settings.json` (старый путь `.cline/mcp_settings.json` не читается) | Добавить сервер в общий файл и перезапустить Cline/VS Code |
 | `scan_file` вернул пустой `findings` | Правила не зарезолвились (офлайн, Rules Bundle пуст) | Проверить `meta.warnings` и `ruleset_hash`; убедиться, что бандл в образе |
-| `meta.errors` непуст | Недоступен бинарник сканера (semgrep/gitleaks/trivy) | Проверить образ: `docker run --rm animage/appsecgate-mcp semgrep --version` |
+| `meta.errors` непуст | Недоступен бинарник сканера (semgrep/gitleaks/trivy) | Проверить образ: `docker run --rm moondoom/appsecgate-mcp semgrep --version` |
 | Ошибка «project_id mismatch» | Смена `project_path` в одной сессии | Новый проект = новая сессия (инвариант №6) |

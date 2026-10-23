@@ -13,14 +13,20 @@ from pathlib import Path
 from appsecgate_mcp.server import mcp
 
 README = Path(__file__).resolve().parents[2] / "README.md"
-_TOOLS_LINE = re.compile(r"MCP-инструменты \(\d+\):\*\*(.+)")
 
 
 def _readme_tool_names() -> set[str]:
     text = README.read_text(encoding="utf-8")
-    match = _TOOLS_LINE.search(text)
-    assert match, "в README нет строки «MCP-инструменты (N):»"
-    return set(re.findall(r"`([a-z_]+)`", match.group(1)))
+    header_match = re.search(r"## MCP tools \((\d+)\)", text)
+    assert header_match, "в README нет заголовка «## MCP tools (14)»"
+    section_start = header_match.end()
+    next_header = re.search(r"\n## ", text[section_start:])
+    section_text = (
+        text[section_start : section_start + next_header.start()]
+        if next_header
+        else text[section_start:]
+    )
+    return set(re.findall(r"`([a-z_]+)`", section_text))
 
 
 def _registered_tool_names() -> set[str]:

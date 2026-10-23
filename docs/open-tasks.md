@@ -13,7 +13,7 @@ python, scala, swift) в `SemgrepAdapter.supported_languages`, `_LANG_TAGS`,
 
 **Обновление 2026-10-14:**
 
-По итогам E2E-прогона 17/17 сценариев (`docs/E2E-report-2026-10-14.md`)
+По итогам E2E-прогона 17/17 сценариев (`docs/reports/e2e-report-2026-10-14.md`)
 и последующей инвентаризации выявленных проблем добавлены задачи T9–T15.
 Новые наблюдения OBS-5 (недетерминированный дедуп, T10) и ранее
 незафиксированные проблемы T11 (update_config в `:ro`), T12
@@ -58,7 +58,7 @@ T14 (вторая итерация E2E) и T15 (UX rule_id). Самая важн
 **Статус:** план создан (`docs/e2e-test-plan.md`), полигон
 `mcp-server/tests/fixtures/vuln-project` + `other-project` подготовлены,
 E2E **выполнен 2026-10-14 — 17/17 сценариев, 100%**
-(отчёт `docs/E2E-report-2026-10-14.md`). Инструментарий:
+(отчёт `docs/reports/e2e-report-2026-10-14.md`). Инструментарий:
 `scripts/e2e_measure.py` (MCP-клиент, stdio-контейнеры, полный цикл воронки,
 NF-замеры, параллельные сессии). Проверены: scan_file/scan_diff/scan_project,
 query_findings_db (SELECT + блокировка UPDATE), get_fix_context(+batch),

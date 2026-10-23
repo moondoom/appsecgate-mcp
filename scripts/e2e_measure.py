@@ -126,7 +126,7 @@ def _find_first_finding_id(results: list[dict[str, Any] | None]) -> str | None:
 
 def _docker_args(
     project_path: str,
-    image: str = "animage/appsecgate-mcp:0.1.0",
+    image: str = "moondoom/appsecgate-mcp:0.1.0",
     cache_volume: str = "appsecgate-cache",
     data_volume: str = "appsecgate-data",
     mount_path: str = "/workspace",

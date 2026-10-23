@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AppSecGate MCP — Local-first security for AI coding agents</title>
+  <meta property="og:title" content="AppSecGate MCP">
+  <meta property="og:description" content="Local-first security scanner for AI coding agents. Offline MCP server for SAST, secrets, and SCA — no code leaves your machine.">
+  <meta property="og:image" content="assets/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:url" content="https://github.com/moondoom/appsecgate-mcp">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="mcp-server" href="../server.json" type="application/json">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#0a0e27;--surface:#111633;--cyan:#00e5ff;--amber:#ff8c00;--text:#cbd5e1;--muted:#64748b;--r:8px}
+    html{scroll-behavior:smooth}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+    .c{max-width:880px;margin:0 auto;padding:0 24px}
+    header{padding:48px 0 32px;text-align:center;border-bottom:1px solid color-mix(in srgb,var(--cyan)15%,transparent)}
+    header h1{font-size:2.4rem;font-weight:700;background:linear-gradient(135deg,var(--cyan),var(--amber));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    header p{font-size:1.1rem;color:var(--muted);margin-top:12px}
+    header .badge{display:inline-block;margin-top:16px;padding:6px 16px;border:1px solid var(--cyan);border-radius:999px;color:var(--cyan);background:color-mix(in srgb,var(--cyan)8%,var(--surface));font-size:.8rem}
+    section{padding:40px 0}
+    section h2{font-size:1.4rem;font-weight:600;color:var(--cyan);margin-bottom:20px}
+    .ag{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+    .ac{background:var(--surface);border:1px solid color-mix(in srgb,var(--cyan)12%,transparent);border-radius:var(--r);padding:20px}
+    .ac h3{font-size:1.05rem;font-weight:600;color:#e2e8f0;margin-bottom:6px}
+    .ac .d{font-size:.82rem;color:var(--muted);margin-bottom:12px}
+    .ac code{display:block;background:color-mix(in srgb,var(--surface)100%,#000 30%);border:1px solid color-mix(in srgb,var(--cyan)10%,transparent);border-radius:var(--r);padding:10px 14px;font-size:.78rem;color:#e2e8f0;word-break:break-all;line-height:1.4;white-space:pre-wrap}
+    .s{display:flex;flex-direction:column;gap:16px}
+    .st{display:flex;gap:16px;align-items:flex-start;background:var(--surface);border-left:3px solid var(--cyan);border-radius:var(--r);padding:16px 20px}
+    .sn{font-size:1.3rem;font-weight:700;color:var(--amber);min-width:32px}
+    .sb h3{font-size:1rem;font-weight:600;color:#e2e8f0;margin-bottom:4px}
+    .sb p{font-size:.9rem;color:var(--muted)}
+    .l{display:flex;flex-wrap:wrap;gap:12px;list-style:none}
+    .l li a{display:inline-block;padding:8px 18px;border:1px solid color-mix(in srgb,var(--cyan)20%,transparent);border-radius:var(--r);color:var(--cyan);text-decoration:none;font-size:.88rem}
+    .l li a:hover{background:color-mix(in srgb,var(--cyan)12%,var(--surface))}
+    footer{padding:32px 0;border-top:1px solid color-mix(in srgb,var(--cyan)10%,transparent);text-align:center;font-size:.8rem;color:var(--muted)}
+    footer a{color:var(--cyan)}
+    @media(max-width:600px){header h1{font-size:1.6rem}.ag{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="c">
+  <header>
+    <h1>AppSecGate MCP</h1>
+    <p>Local-first security scanner for AI coding agents</p>
+    <span class="badge">✦ Offline · No code leaves your machine</span>
+  </header>
+
+  <section>
+    <h2>Quick Install</h2>
+    <div class="ag"><div class="ac"><h3>Claude Code</h3><p class="d">Add to <code>~/.claude/claude_dotfiles/claude.json</code>:</p><code>{
+  "mcpServers": {
+    "appsecgate": {
+      "command": "docker",
+      "args": ["run","--rm","-i","--network=none",
+        "--read-only","--tmpfs=/tmp:size=100M,mode=1777",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "-v","/path/to/project:/workspace:ro",
+        "-v","appsecgate-cache:/home/appsecgate/.cache",
+        "-v","appsecgate-data:/home/appsecgate/.appsecgate-mcp",
+        "moondoom/appsecgate-mcp:0.1.0"],
+      "env": {}
+    }
+  }
+}</code></div><div class="ac"><h3>Cursor</h3><p class="d"><code>.cursor/mcp.json</code>:</p><code>{
+  "mcpServers": {
+    "appsecgate": {
+      "type": "docker",
+      "command": "moondoom/appsecgate-mcp:0.1.0",
+      "args": ["--transport","stdio","--project","/workspace"],
+      "volumes": [
+        {"host":"/path/to/project",
+         "container":"/workspace","mode":"ro"},
+        {"host":"appsecgate-cache",
+         "container":"/home/appsecgate/.cache"},
+        {"host":"appsecgate-data",
+         "container":"/home/appsecgate/.appsecgate-mcp"}
+      ]
+    }
+  }
+}</code></div><div class="ac"><h3>Cline</h3><p class="d"><code>.cline/mcp.json</code>:</p><code>{
+  "mcpServers": {
+    "appsecgate": {
+      "command": "docker",
+      "args": ["run","--rm","-i","--network=none",
+        "--read-only","--tmpfs=/tmp:size=100M,mode=1777",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "-v","/path/to/project:/workspace:ro",
+        "-v","appsecgate-cache:/home/appsecgate/.cache",
+        "-v","appsecgate-data:/home/appsecgate/.appsecgate-mcp",
+        "moondoom/appsecgate-mcp:0.1.0"],
+      "env": {}
+    }
+  }
+}</code></div><div class="ac"><h3>Continue</h3><p class="d"><code>.continue/mcpServers/appsecgate.yaml</code>:</p><code>mcpServers:
+  appsecgate:
+    command: docker
+    args:
+      - run
+      - --rm
+      - -i
+      - --network=none
+      - --read-only
+      - --tmpfs=/tmp:size=100M,mode=1777
+      - --cap-drop=ALL
+      - --security-opt=no-new-privileges:true
+      - -v
+      - /path/to/project:/workspace:ro
+      - -v
+      - appsecgate-cache:/home/appsecgate/.cache
+      - -v
+      - appsecgate-data:/home/appsecgate/.appsecgate-mcp
+      - moondoom/appsecgate-mcp:0.1.0</code></div></div>
+  </section>
+
+  <section><h2>How it works</h2><div class="s">
+    <div class="st"><span class="sn">1</span><div class="sb"><h3>Scan</h3><p>Agent calls <code>scan_file</code>, <code>scan_diff</code>, or <code>scan_project</code>. Semgrep (SAST), Gitleaks/TruffleHog (secrets), Trivy (SCA) run in isolated subprocesses.</p></div></div>
+    <div class="st"><span class="sn">2</span><div class="sb"><h3>Fingerprint</h3><p>Each finding gets a deterministic logical ID. Repeated scans never create duplicates. Suppressions and escalations stay attached across the finding's lifecycle.</p></div></div>
+    <div class="st"><span class="sn">3</span><div class="sb"><h3>Context</h3><p>Agent requests <code>get_fix_context</code> — receives the code window, rule docs, and raw finding. No LLM calls on the server — just structured data.</p></div></div>
+    <div class="st"><span class="sn">4</span><div class="sb"><h3>Verify</h3><p>After fixing, <code>verify_fix</code> rescans and matches by logical ID. Results logged in <code>shown_findings.db</code> for audit.</p></div></div>
+  </div></section>
+
+  <section><h2>Reference</h2><ul class="l">
+    <li><a href="https://github.com/moondoom/appsecgate-mcp">GitHub</a></li>
+    <li><a href="../server.json">MCP Registry · server.json</a></li>
+    <li><a href="deploy-agents.md">Agent deployment guide</a></li>
+    <li><a href="fix-workflow-design.md">Phase 1 design spec</a></li>
+    <li><a href="architecture.md">Architecture</a></li>
+    <li><a href="../README.md">README</a></li>
+  </ul></section>
+
+  <footer>
+    <p>MIT License · Copyright &copy; 2026 moondoom</p>
+    <p style="margin-top:4px"><a href="https://github.com/moondoom/appsecgate-mcp">moondoom/appsecgate-mcp</a> &middot; v0.1.0</p>
+  </footer>
+</div>
+</body>
+</html>

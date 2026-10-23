@@ -436,4 +436,4 @@ WHERE last_seen_at < :now - :ttl_days
 * `architecture.md` §3.4 (Normalization), §9.1 (Fingerprint)
 * `open-tasks.md` T1, T7, T10, T13, T14
 * `docs/fix-workflow-design.md` §4.10 (project_id)
-* `docs/E2E-report-2026-10-14.md` (OBS-5, B2)
+* `docs/reports/e2e-report-2026-10-14.md` (OBS-5, B2)
