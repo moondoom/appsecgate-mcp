@@ -4,6 +4,7 @@
   "title": "AppSecGate MCP",
   "description": "Local-first security scanner for AI agents. Offline MCP server for SAST, secrets, and SCA.",
   "version": "0.1.0",
+  "websiteUrl": "https://moondoom.github.io/appsecgate-mcp/",
   "repository": {
     "url": "https://github.com/moondoom/appsecgate-mcp",
     "source": "github"

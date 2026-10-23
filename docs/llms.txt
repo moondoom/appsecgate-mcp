@@ -1,0 +1,40 @@
+# AppSecGate MCP
+
+> AppSecGate is a local-first MCP security server for AI coding agents. It scans files, diffs, and projects with Semgrep (SAST), Gitleaks and TruffleHog (secrets), and Trivy (SCA) -- fully offline, without sending your code anywhere. Findings are deduplicated by fingerprint, tracked between scans, and returned to the agent as fix contexts.
+
+## Quick Install
+
+- [Installation for Claude Code, Cursor, Cline, and Continue](README.md#quick-install)
+- [Agent deployment guide -- configs, verification, troubleshooting](docs/deploy-agents.md)
+
+## MCP Tools
+
+- [scan_file](README.md#mcp-tools-14) -- scan a single file
+- [scan_diff](README.md#mcp-tools-14) -- scan staged + unstaged + untracked git changes
+- [scan_project](README.md#mcp-tools-14) -- scan the entire project or a directory
+- [get_fix_context](README.md#mcp-tools-14) -- finding + code window + rule doc for the agent
+- [get_fix_context_batch](README.md#mcp-tools-14) -- context packages for up to 20 findings
+- [verify_fix](README.md#mcp-tools-14) -- rescan the file and verify a fix
+- [verify_fix_batch](README.md#mcp-tools-14) -- verify up to 20 findings
+- [query_findings_db](README.md#mcp-tools-14) -- read-only SQL over public findings views
+- [export_snapshot](README.md#mcp-tools-14) -- export findings snapshot (ndjson)
+- [get_config](README.md#mcp-tools-14) / [update_config](README.md#mcp-tools-14) -- read and update session config
+- [submit_feedback](README.md#mcp-tools-14) -- mark finding as FALSE_POSITIVE / CONFIRMED / WONT_FIX
+- [get_scan_history](README.md#mcp-tools-14) -- shown-findings journal with fix attempts
+- [suppress_finding](README.md#mcp-tools-14) -- create a local suppression
+
+## Scanners
+
+- SAST: Semgrep (bundled offline rules)
+- Secrets: Gitleaks, TruffleHog
+- SCA: Trivy
+
+## Reference
+
+- [Architecture](docs/architecture.md)
+- [Phase 1 design spec](docs/fix-workflow-design.md)
+- [Configuration reference](README.md#configuration)
+
+## License
+
+MIT -- [LICENSE](LICENSE)

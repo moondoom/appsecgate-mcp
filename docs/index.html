@@ -40,6 +40,23 @@
     .l li a:hover{background:color-mix(in srgb,var(--cyan)12%,var(--surface))}
     footer{padding:32px 0;border-top:1px solid color-mix(in srgb,var(--cyan)10%,transparent);text-align:center;font-size:.8rem;color:var(--muted)}
     footer a{color:var(--cyan)}
+    
+    /* when to use / when not */
+    .wg{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .wc{background:var(--surface);border-radius:var(--r);padding:20px}
+    .wc h3{font-size:1rem;font-weight:600;margin-bottom:8px}
+    .wc ul{margin:0;padding-left:18px}
+    .wc li{font-size:.88rem;color:var(--muted);margin-bottom:6px}
+    .wc-no{border-left:3px solid color-mix(in srgb,var(--amber)40%,transparent)}
+    .wc-yes{border-left:3px solid color-mix(in srgb,var(--cyan)30%,transparent)}
+    /* tools table */
+    .tw{overflow-x:auto}
+    .tt{border-collapse:collapse;width:100%;font-size:.85rem}
+    .tt th{text-align:left;padding:10px 12px;color:var(--muted);border-bottom:1px solid color-mix(in srgb,var(--cyan)15%,transparent);font-weight:600}
+    .tt td{padding:8px 12px;border-bottom:1px solid color-mix(in srgb,var(--cyan)8%,transparent)}
+    .tt code{color:var(--cyan);font-size:.82rem}
+    .tt tr:last-child td{border-bottom:none}
+    .tt tr:hover td{background:color-mix(in srgb,var(--surface)100%,#fff 5%)}
     @media(max-width:600px){header h1{font-size:1.6rem}.ag{grid-template-columns:1fr}}
   </style>
 </head>
@@ -50,6 +67,41 @@
     <p>Local-first security scanner for AI coding agents</p>
     <span class="badge">✦ Offline · No code leaves your machine</span>
   </header>
+
+  <section>
+    <h2>When to use AppSecGate</h2>
+    <div class="wg"><div class="wc wc-yes"><h3>✅ Use when</h3><ul>
+      <li>You’re using AI coding agents (Claude Code, Cursor, Cline, Continue) that generate or modify code on your machine</li>
+      <li>You want security scanning to happen <strong>before</strong> commit, not after</li>
+      <li>The project is sensitive and code must never leave your machine (offline-first)</li>
+      <li>You need an auditable trail of findings shown to the developer and their fix attempts</li>
+      <li>You want deterministic deduplication across scans — same finding, same fingerprint, no noise</li>
+    </ul></div><div class="wc wc-no"><h3>❌ NOT when</h3><ul>
+      <li>You need a CI/CD gate that blocks builds — that’s Phase 2 (coming)</li>
+      <li>You want the server to auto-fix findings — AppSecGate finds, the LLM fixes</li>
+      <li>You need a cloud dashboard with team management — that’s Phase 3</li>
+      <li>Your project has zero code (docs-only, design files) — there’s nothing to scan</li>
+    </ul></div></div>
+  </section>
+
+  <section>
+    <h2>14 MCP tools</h2>
+    <div class="tw"><table class="tt"><thead><tr><th>Tool</th><th>What it does</th></tr></thead><tbody>
+      <tr><td><code>scan_file</code></td><td>Scan a single file and return normalized findings.</td></tr>
+      <tr><td><code>scan_diff</code></td><td>Scan staged + unstaged + untracked changes in the current git repository.</td></tr>
+      <tr><td><code>scan_project</code></td><td>Scan the entire project or a specific directory inside it.</td></tr>
+      <tr><td><code>get_fix_context</code></td><td>Return the ContextPack for a finding (finding + code window + rule doc).</td></tr>
+      <tr><td><code>get_fix_context_batch</code></td><td>Return ContextPacks for multiple findings (limit 20).</td></tr>
+      <tr><td><code>verify_fix</code></td><td>Verify a single finding: rescan the file and match by logical ID.</td></tr>
+      <tr><td><code>verify_fix_batch</code></td><td>Verify up to 20 findings in one operation; each file is rescanned once.</td></tr>
+      <tr><td><code>query_findings_db</code></td><td>Read-only SELECT on public views (v_findings, v_summary, v_projects).</td></tr>
+      <tr><td><code>export_snapshot</code></td><td>Export a snapshot of findings in ndjson format (parquet in Phase 2).</td></tr>
+      <tr><td><code>get_config</code> / <code>update_config</code></td><td>Read and update the active session configuration.</td></tr>
+      <tr><td><code>submit_feedback</code></td><td>Submit feedback on a finding: FALSE_POSITIVE / CONFIRMED / WONT_FIX.</td></tr>
+      <tr><td><code>get_scan_history</code></td><td>Return the shown findings log with verification attempts.</td></tr>
+      <tr><td><code>suppress_finding</code></td><td>Create a local suppression (does not affect CI gate in Phase 1).</td></tr>
+    </tbody></table></div>
+  </section>
 
   <section>
     <h2>Quick Install</h2>
@@ -134,6 +186,7 @@
     <li><a href="fix-workflow-design.md">Phase 1 design spec</a></li>
     <li><a href="architecture.md">Architecture</a></li>
     <li><a href="../README.md">README</a></li>
+    <li><a href="llms.txt"><code>llms.txt</code> for agents</a></li>
   </ul></section>
 
   <footer>
