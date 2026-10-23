@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/assets/social-preview.png" alt="AppSecGate MCP" width="640">
-</p>
-
 # AppSecGate MCP
 
 **Local-first security scanning for AI coding agents.**
