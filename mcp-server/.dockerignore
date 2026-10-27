@@ -1,5 +1,6 @@
-# Исключаем из контекста сборки всё, что не нужно образу.
-.git
+# Контекст сборки используется только для COPY из каталогов проекта:
+#   pyproject.toml README.md src/ rules/ config/ scripts/
+# Остальное не должно попадать в контекст.
 .venv
 __pycache__
 *.pyc
@@ -10,8 +11,8 @@ __pycache__
 .buildx-cache
 tests/
 docs/
-*.md
-!README.md
-docker-compose.yml
-.env
 *.db
+.env
+docker-compose.yml
+uv.lock
+examples/
