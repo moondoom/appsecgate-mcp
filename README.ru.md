@@ -1,5 +1,9 @@
 # AppSecGate MCP
 
+[![Release](https://img.shields.io/github/v/release/moondoom/appsecgate-mcp?label=release)](https://github.com/moondoom/appsecgate-mcp/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/moondoom/appsecgate-mcp)](https://hub.docker.com/r/moondoom/appsecgate-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 > **Английская версия — основная:** [README.md](README.md)
 > Ниже — русскоязычная версия для разработчиков, работающих с AI-агентами.
 
