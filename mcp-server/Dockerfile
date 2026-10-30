@@ -77,11 +77,13 @@ WORKDIR /build
 COPY pyproject.toml README.md ./
 
 # Устанавливаем только runtime-зависимости в изолированный venv.
+# setuptools нужен semgrep (pkg_resources в chain import semgrep.commands.ci);
+# без него opentelemetry.context падает StopIteration/ModuleNotFoundError.
 # Кэш uv живёт в BuildKit cache mount, а не в слое.
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv venv /opt/appsecgate-venv && \
     uv pip install --python /opt/appsecgate-venv/bin/python --no-compile \
-        'mcp>=1.2.0,<2' 'pydantic>=2.7' 'PyYAML>=6.0' semgrep
+        'mcp>=1.2.0,<2' 'pydantic>=2.7' 'PyYAML>=6.0' 'setuptools>=75,<76' semgrep
 
 COPY src ./src
 # Пакет приложения ставится из корня проекта (там pyproject.toml); --no-deps —
@@ -89,16 +91,16 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv pip install --python /opt/appsecgate-venv/bin/python --no-compile --no-deps .
 
-# Strip vendor docs/metadata and __pycache__ from installed packages.
-# Removes false-positive sources (doctest examples in METADATA, e.g., pyjwt JWT token)
-# and reduces image size. Keep our own .dist-info for FastMCP version resolution.
-RUN find /opt/appsecgate-venv/lib/python3.12/site-packages \
-        -type d -name '*.dist-info' \
-        ! -name 'appsecgate_mcp*' \
-        ! -name 'mcp*' \
-        -prune -exec rm -rf {} + \
-    && find /opt/appsecgate-venv -type d -name '__pycache__' -prune -exec rm -rf {} + \
-    && PYTHONDONTWRITEBYTECODE=1 /opt/appsecgate-venv/bin/python -c "import appsecgate_mcp.server; from mcp.server.fastmcp import FastMCP; FastMCP('t'); import semgrep; print('smoke: ok')"
+# Strip __pycache__ from installed packages.
+# NB: *.dist-info НЕ удаляются. Раньше их вырезали как «метаданные с doctest»,
+# но это ломает semgrep при импорте: importlib.metadata.version()/entry_points()
+# читают dist-info (opentelemetry_context, semantic_version, setuptools/
+# pkg_resources) — без них StopIteration/PackageNotFoundError (регресс,
+# исправлен 2026-10-30, OBS-6). Сканеры работают только в корне проекта
+# (/workspace); site-packages образа не сканируются, «ложные positive» из
+# METADATA невозможны.
+RUN find /opt/appsecgate-venv -type d -name '__pycache__' -prune -exec rm -rf {} + \
+    && PYTHONDONTWRITEBYTECODE=1 /opt/appsecgate-venv/bin/python -c "import appsecgate_mcp.server; from mcp.server.fastmcp import FastMCP; FastMCP('t'); import semgrep; from semgrep.commands import ci; from opentelemetry import context as _otel_ctx; assert _otel_ctx.get_current() is not None; print('smoke: ok')"
 # ----------------------------------------------------------------------
 # Stage: runtime — сканеры + venv (слои ниже стабильны относительно кода)
 # ----------------------------------------------------------------------

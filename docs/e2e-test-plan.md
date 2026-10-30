@@ -1,7 +1,10 @@
 # План E2E-тестирования AppSecGate MCP на проекте-полигоне
 
-Статус: **выполнен 2026-10-14 — 17/17 сценариев, 100%** (`docs/reports/e2e-report-2026-10-14.md`).
-Зафиксировано 2026-10-13.
+Статус: **итерация 1 выполнена 2026-10-14 — 17/17 сценариев, 100%**
+(`docs/reports/e2e-report-2026-10-14.md`). **Итерация 2 выполнена
+2026-10-30 — 28/28 (100%)** (`docs/reports/e2e-report-2026-10-30.md`, T14):
+staged-diff (B5), verify_fix=fixed/wont_fix, IaC-фикстура (D4), память (E1),
+перепроверка B2 после фикса T10, фикстуры в git (E4).
 Есть 290 юнит/интеграционных тестов (мок-сканеры, tmp-SQLite); E2E на
 реальном проекте и реальных бинарниках здесь не покрывался.
 
@@ -17,6 +20,7 @@ mcp-server/tests/fixtures/vuln-project/
 ├── .appsecgate-mcp/config.yaml   # низкие пороги, локальные gates
 ├── pyproject.toml               # устаревшие зависимости (метаданные проекта)
 ├── requirements.txt             # пины устаревших версий (Trivy/SCA)
+├── main.tf                      # IaC-мисконфигурации (Trivy misconfig, D4)
 ├── secrets.py                   # фиктивные AWS key, AWS secret, GitHub PAT
 ├── sql_injection.py             # SQL-инъекция (Semgrep SAST)
 └── xss.py                       # Jinja2 без autoescape → XSS (Semgrep SAST)
@@ -31,6 +35,7 @@ mcp-server/tests/fixtures/vuln-project/
 | `xss.py`            | sast      | Semgrep       | ≥ 1 находка (jinja2-autoescape-false; CWE-116) |
 | `requirements.txt`  | sca       | Trivy         | ≥ 1 находка (19 CVE: flask/requests/urllib3) |
 | `pyproject.toml`    | sca       | Trivy         | 0 ожидаемо — без lock/manifest Trivy уязвимости не детектит |
+| `main.tf`           | iac       | Trivy         | ≥ 1 находка (AVD-*: S3 public ACL, IAM full access, RDS password) |
 
 ## 2. Предусловия
 
@@ -64,7 +69,7 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ### 4.1 session_start → сканы
 
-- `scan_file` на каждый из 4 файлов по отдельности.
+- `scan_file` на каждый из 5 файлов по отдельности (включая `main.tf` — D4).
 - `scan_diff` на `secrets.py` + `xss.py` (псевдодифф: список файлов).
 - `scan_project` на весь полигон — announce-ответ (§4.3), без пометки SHOWN.
 
@@ -81,6 +86,14 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 - `verify_fix`/`verify_fix_batch`: подаём «исправленный» сниппет
   (параметризованный SQL, экранированный вывод) — ожидаем resolved/valid.
 - Повтор `scan_file` после «исправления»: те же logical_id отсутствуют.
+
+**Итерация 2 (T14):** `verify_fix` на **rw-копии** полигона (проект-полигон
+смонтирован `:ro`, правки только во временной копии):
+- `verify_fix(finding_id, "wont_fix", note)` → `verified_status=wont_fix`,
+  `verified=true` (перескана нет);
+- после реального фикса файла (`verify_fix(finding_id, "fixed")`) →
+  `verified_status=fixed`, `verified=true`;
+- `verify_fix_batch([fixed, not_fixed])` → `summary={fixed:1, not_fixed:1}`.
 
 ### 4.4 Suppression и feedback
 
@@ -108,6 +121,10 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 - Один секрет на разных строках одного файла, но с разным текстом —
   находки сохраняются (пузырь всегда уникален по сниппету/значению).
 
+**B2 (T14, перепроверка после фикса T10):** повторный `scan_file secrets.py`
+в одной сессии → **идентичный** набор fingerprint в обоих ответах
+(детерминированный tie-break `(severity, scanner_priority, rule_id)` в дедупе).
+
 ## 6. Нефункциональные измерения (§6.2)
 
 Замеры выполняются по ходу E2E-прогона (`scripts/e2e_measure.py`):
@@ -122,6 +139,11 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 - Пиковое потребление памяти контейнера (target: < 512 МБ).
 - Размер `shown_findings` + `finding_context` в SQLite после полного цикла.
 - duration_ms из `ScanMeta` каждого скана (обязательное поле для NF-отчёта).
+
+**E1 (T14, память на крупном полигоне):** `scan_project` на копии полигона +
+120 файлов с SQLi (>120 файлов всего) под `--memory=512m`; пиковая память —
+семплинг `docker stats` (0.2 c шаг) по именованному контейнеру. PASS = скан
+завершился без `meta.errors` и без OOM (контейнер жив до конца скана).
 
 ## 7. Параллельные сессии
 
@@ -193,3 +215,31 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 - **Ручной прогон:** MCP-клиент (Cline/Continue) — инициализация (§3),
   контекст-пакеты (§4.3), `update_config` локально (§3.4–3.5).
 - Результаты — в `docs/E2E-report-<дата>.md`.
+## 12. Итерация 2 (T14, 2026-10-30): добавленные сценарии
+
+Новые шаги `scripts/e2e_measure.py` (общие: временная копия полигона через
+`tempfile`, свежий data volume — suppression по fingerprint глобален, OBS-2):
+
+1. **B5 — staged/unstaged/untracked/clean/регрессия** (`run_git_diff_scenarios`):
+   temp-копия, `git init` + baseline-коммит, затем:
+   - staged-файл (`staged_secret.py`, `git add`) + unstaged-правка
+     (`sql_injection.py`) + untracked-файл (`untracked_vuln.py`) → один
+     `scan_diff` видит все три класса;
+   - после `git commit` → `scan_diff` возвращает 0 (граница clean-tree);
+   - `git revert HEAD` + `git reset --soft HEAD~1` → staged-регрессия против
+     старого коммита → `scan_diff` детектит возврат SQLi.
+2. **verify_fix fixed/wont_fix** (`run_fix_verify_scenarios`) — rw-монтаж
+   temp-копии (`read_only=False`): wont_fix (note, без перескана) → fixed
+   (реальная правка файла хостом) → batch `[fixed, not_fixed]`.
+3. **D4 — `main.tf`** в полигоне: Trivy misconfig (AVD-*), `scan_file(main.tf)`
+   в funnel-цикле.
+4. **E1 — память** (`run_memory_scenario`): крупный полигон (>120 py-файлов),
+   `--memory=512m`, семплинг `docker stats` по именованному контейнеру.
+5. **B2 — дедуп** (`dedup_stability_recheck`): два скана `secrets.py` →
+   идентичный набор fingerprint (регресс T10).
+
+Проверочный итог: сканеры, которые реально грузятся в контейнере
+(gitleaks/trivy/semgrep), должны давать находки по всем фикстурам; при падении
+`scan_file sql_injection.py/xss.py` с total=0 — смотреть `meta.errors`/warnings
+(известный регресс: strip dist-info в Dockerfile ломал semgrep, см. OBS-6 в
+E2E-report-2026-10-30).

@@ -123,6 +123,11 @@ class GitleaksAdapter(BaseScanner):
                     snippet=str(match),
                     category=Category.SECRET,
                     metadata={
+                        # "Secret" нужен семейному дедупу (dedup._family_value):
+                        # без него github-pat и generic-api-key на одной строке
+                        # имеют разные сниппеты и не схлопываются в одну находку
+                        # (T1-регрессия, найдено в E2E-2026-10-30).
+                        "Secret": item.get("Secret"),
                         "entropy": item.get("Entropy"),
                         "tags": item.get("Tags", []),
                         "commit": item.get("Commit"),

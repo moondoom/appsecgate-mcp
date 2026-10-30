@@ -81,15 +81,31 @@ class ScanCoordinator:
         self._source_cache = {}
         rel_files = [self._to_relative(f) for f in files]
         scanned = [rel for rel in rel_files if rel is not None]
-        logger.info("scan start mode=%s files=%s", mode, len(scanned))
+        # Удалённые файлы (D в git-diff) не могут дать находок, а semgrep падает
+        # на несуществующем таргете и теряет весь пакет SAST-находок (B5, E2E
+        # 2026-10-30). Исключаем их до планирования сканеров. Фильтр работает
+        # только при известном корне проекта: без него пути не с чем сверить
+        # (тесты с фейковыми сканерами передают несуществующие пути).
+        kept: list[str] = []
+        missing: list[str] = []
+        for rel in scanned:
+            if self.project_root is None or self._path_exists(rel):
+                kept.append(rel)
+            else:
+                missing.append(rel)
+        logger.info("scan start mode=%s files=%s", mode, len(kept))
         meta = ScanMeta(
             mode=mode,
-            scanned_files=scanned,
+            scanned_files=kept,
             started_at=started.isoformat(),
         )
         outside = len(rel_files) - len(scanned)
         if outside:
             meta.warnings.append(f"excluded {outside} file(s) outside project root")
+        if missing:
+            meta.warnings.append(
+                f"excluded {len(missing)} deleted/missing file(s) from scan: {missing}"
+            )
 
         available = await self._select_available(meta)
         logger.info(
@@ -98,7 +114,7 @@ class ScanCoordinator:
             [s.name for s in available],
             meta.scanners_skipped,
         )
-        raw_findings = await self._run_all(available, files, mode, meta)
+        raw_findings = await self._run_all(available, kept, mode, meta)
 
         relative = self._relativize(raw_findings, meta)
         findings = [self._to_finding(rf) for rf in relative]
@@ -199,6 +215,14 @@ class ScanCoordinator:
                 return candidate.resolve().relative_to(root).as_posix()
             except (OSError, ValueError):
                 return None
+
+    def _path_exists(self, rel: str) -> bool:
+        """True, если файл/каталог существует под корнем проекта (для фильтра D-файлов)."""
+        assert self.project_root is not None
+        candidate = Path(rel)
+        if not candidate.is_absolute():
+            candidate = self.project_root / candidate
+        return candidate.exists()
 
     def _to_finding(self, raw: RawFinding) -> Finding:
         fp = self.fingerprint.generate_for(raw.rule_id, raw.file_path, raw.snippet)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.models.finding import Category, Finding, Severity
-from appsecgate_mcp.normalization.dedup import Deduplicator
+from appsecgate_mcp.normalization.dedup import _FAMILY_SECRET_PREFIX, Deduplicator
 from appsecgate_mcp.normalization.normalizer import Normalizer, normalize_severity
 
 
@@ -210,6 +210,52 @@ class TestDeduplicatorFamilies:
         result = Deduplicator().deduplicate_families([low, critical])
         assert len(result) == 1
         assert result[0].severity is Severity.CRITICAL
+
+    def test_gitleaks_truncated_secret_collapses_with_full(self):
+        """Регрессия E2E-2026-10-30: github-pat обрезает Secret, generic-api-key
+        отдаёт полный токен — один токен, разные правила → одна «семья»."""
+        full = "ghp_0123456789abcdef0123456789abcdef0123456789"
+        truncated = full[:_FAMILY_SECRET_PREFIX]  # github-pat: фиксированная длина
+        pat = make_finding(
+            scanner="gitleaks",
+            rule_id="github-pat",
+            category=Category.SECRET,
+            line_start=5,
+            fingerprint="fp-pat",
+            snippet=f"token = \"{full}\"",
+            metadata={"Secret": truncated},
+        )
+        generic = make_finding(
+            scanner="gitleaks",
+            rule_id="generic-api-key",
+            category=Category.SECRET,
+            line_start=5,
+            fingerprint="fp-generic",
+            snippet=f"token = \"{full}\"",
+            metadata={"Secret": full},
+        )
+        result = Deduplicator().deduplicate_families([pat, generic])
+        assert len(result) == 1
+        assert result[0].rule_id == "github-pat"
+
+    def test_different_long_secrets_with_same_prefix_kept(self):
+        """Разные токены, различающиеся ПОСЛЕ 40-го символа, остаются разными."""
+        a = make_finding(
+            scanner="gitleaks",
+            category=Category.SECRET,
+            line_start=5,
+            fingerprint="fp-a",
+            metadata={"Secret": "A" * 40 + "x"},
+        )
+        b = make_finding(
+            scanner="gitleaks",
+            category=Category.SECRET,
+            line_start=5,
+            fingerprint="fp-b",
+            metadata={"Secret": "B" * 40 + "y"},
+        )
+        result = Deduplicator().deduplicate_families([a, b])
+        assert len(result) == 2
 
 
 class TestNormalizer:

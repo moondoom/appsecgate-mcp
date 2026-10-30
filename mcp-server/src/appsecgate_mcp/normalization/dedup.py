@@ -24,6 +24,12 @@ _FAMILY_BUCKET = 20
 # Префикс для ключей без тела проблемы: такие находки не схлопываем.
 _NO_BODY_PREFIX = "\x00"
 
+# Каноническая длина семейного ключа секрета. Gitleaks обрезает Secret по
+# паттерну правила (github-pat: «ghp_» + 36 символов), другие правила/сканеры
+# отдают полное значение — один и тот же токен даёт разные Secret. Сводим
+# семейный ключ к фиксированному префиксу (план §5 / T1; E2E-2026-10-30).
+_FAMILY_SECRET_PREFIX = 40
+
 # Приоритет сканеров при выборе «выжившего» (ADR-0001 §3.2): чем меньше,
 # тем находка предпочтительнее как каноническая. Gitleaks точнее по rule_id
 # для секретов, поэтому его находка побеждает при равном severity.
@@ -58,6 +64,19 @@ def _stable_sort_key(finding: Finding) -> tuple:
     )
 
 
+def _canonical_secret(value: str) -> str:
+    """Каноническое «тело» секрета: без кавычек, усечено до префикса.
+
+    Gitleaks правила с `secretGroup` обрезают значение (github-pat: фиксированная
+    длина паттерна); одно значение, найденное разными правилами, должно давать
+    один семейный ключ (план §5, T1).
+    """
+    clean = value.strip().strip("\"'")
+    if len(clean) > _FAMILY_SECRET_PREFIX:
+        clean = clean[:_FAMILY_SECRET_PREFIX]
+    return normalize_snippet(clean)
+
+
 def _family_value(finding: Finding) -> str:
     """Каноническое «тело проблемы» без учёта rule_id/сканера.
 
@@ -72,7 +91,7 @@ def _family_value(finding: Finding) -> str:
     if finding.category is Category.SECRET:
         secret = finding.metadata.get("Secret")
         if isinstance(secret, str) and secret.strip():
-            return normalize_snippet(secret)
+            return _canonical_secret(secret)
     value = normalize_snippet(finding.snippet)
     if not value:
         return f"{_NO_BODY_PREFIX}{finding.fingerprint}"

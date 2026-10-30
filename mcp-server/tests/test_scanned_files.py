@@ -30,6 +30,7 @@ def _coord(config, project_root: str | None) -> ScanCoordinator:
 async def test_absolute_inside_project_becomes_relative(default_config, tmp_path):
     root = tmp_path / "proj"
     (root / "src").mkdir(parents=True)
+    (root / "src" / "a.py").write_text("x = 1\n")
     coord = _coord(default_config, str(root))
 
     result = await coord.scan([str(root / "src" / "a.py")], mode="file")
@@ -40,7 +41,8 @@ async def test_absolute_inside_project_becomes_relative(default_config, tmp_path
 @pytest.mark.asyncio
 async def test_relative_input_kept_relative(default_config, tmp_path):
     root = tmp_path / "proj"
-    root.mkdir()
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "a.py").write_text("x = 1\n")
     coord = _coord(default_config, str(root))
 
     result = await coord.scan(["src/./a.py"], mode="file")
@@ -51,8 +53,11 @@ async def test_relative_input_kept_relative(default_config, tmp_path):
 @pytest.mark.asyncio
 async def test_path_outside_project_excluded_from_scanned_files(default_config, tmp_path):
     root = tmp_path / "proj"
-    root.mkdir()
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "a.py").write_text("x = 1\n")
     outside = tmp_path / "other" / "x.py"
+    outside.parent.mkdir(parents=True)
+    outside.write_text("y = 1\n")
     coord = _coord(default_config, str(root))
 
     result = await coord.scan([str(outside), "src/a.py"], mode="file")

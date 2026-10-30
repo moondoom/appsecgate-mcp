@@ -223,17 +223,29 @@ Docker-деплое проект смонтирован `:ro` (`docker-compose.y
 - В) Отказаться от записи в проект: конфиг передаётся только через
   env/файл монтирования, `update_config` отклоняет запись.
 
-## T12. `verify_fix`: двойная семантика `status` и `verified_status` (P1, C1)
+## T12. `verify_fix`: двойная семантика `status` и `verified_status` (закрыта)
 
-**Статус:** открыта (по итогам E2E).
+**Статус:** закрыта (2026-10-30, итерация 2 E2E).
 
 Ответ `verify_fix`: `"status": "ok"` (транспортный) +
 `"verified_status": "fixed|not_fixed|wont_fix"` (результат верификации).
 E2E-харнесс изначально читал только `status` и пропускал результат —
-риск для LLM-агентов. Уточнить контракт: либо одно поле с результатом,
-либо явная документированная иерархия (проверять `verified_status`),
-либо `status` повторяет результат. Файлы: `server.py` (`verify_fix`,
-`verify_fix_batch`), спека §5, E2E-харнесс.
+риск для LLM-агентов. Решение: **явная документированная иерархия**
+(смена сигнатуры тула запрещена AGENTS.md без явного указания).
+
+Зафиксированный контракт:
+- `status` — транспортный статус операции (`ok` | `error`), общий для всех
+  MCP-тулов. `ok` НЕ означает «фикс подтверждён».
+- `verified_status` — канонический результат верификации
+  (`fixed` | `not_fixed` | `wont_fix`). Агенты обязаны читать именно его.
+- `verified` — `reported_status == verified_status`; `verified=true` при
+  `not_fixed` значит «находка на месте, заявка подтверждена пересканом» —
+  не «фикс верифицирован».
+
+Контракт внесён: докстринги `verify_fix`/`verify_fix_batch` (`server.py`),
+спека §4.6, тесты `test_verify_fix_response_contract` +
+`test_verify_fix_batch_response_contract` (`tests/test_fix_verify.py`).
+E2E-харнесс (`scripts/e2e_measure.py`) читает `verified_status` с 2026-10-14.
 
 ## T13. SCA: 19 CVE схлопнуты в 1 находку (закрыта)
 
@@ -251,21 +263,40 @@ E2E-харнесс изначально читал только `status` и пр
 Файлы: `normalization/dedup.py`, тесты `test_normalization.py`,
 `test_coordinator.py`, `docs/e2e-test-plan.md`.
 
-## T14. Вторая итерация E2E: staged-diff, verify_fix-fixed, IaC, память (follow-up)
+## T14. Вторая итерация E2E: staged-diff, verify_fix-fixed, IaC, память (закрыта)
 
-**Статус:** открыта (по итогам E2E 17/17; список недопокрытого).
+**Статус:** закрыта (2026-10-30). Отчёт: `docs/reports/e2e-report-2026-10-30.md` —
+**28/28 PASS (100%)** на финальном прогоне.
 
-1. **B5 — staged-покрытие:** полигон собран `git init` без коммитов, diff —
-   только untracked. Добавить staged/unstaged/старый-коммит сценарии.
-2. **verify_fix:** покрыты только `not_fixed`/`error`; добавить успешный
-   `fixed` (перескан после реального фикса) и `wont_fix`.
-3. **D4 — IaC-фикстуры:** критические `.tf`-файлы для Trivy
-   (seed_trivy_db есть, фикстур нет) — Pii/passwords in tf.
-4. **E1 — память:** 482/512 MiB (94%); прогнать scan_project на крупном
-   полигоне (>N файлов) и проверить линейность/риск OOM.
-5. **E4 — фикстуры в git:** закоммитить артефакты E2E (`requirements.txt`,
-   `other-project/`, `.gitignore`, `xss.py` с фиксом, `scripts/`).
-6. Перепроверить B2 после фикса T10 (см. T10).
+1. **B5 — staged-покрытие:** `run_git_diff_scenarios` — staged + unstaged +
+   untracked в одном `scan_diff` (3 файла), граница clean-tree после коммита
+   (0 находок), staged-регрессия против старого коммита (`git revert` +
+   `git reset --soft` → 1 находка). Попутно исправлен **OBS-8**: deleted-файлы
+   из diff передавались сканерам → semgrep терял весь пакет SAST
+   (`orchestration/coordinator.py`, фильтр несуществующих файлов).
+2. **verify_fix:** wont_fix (note, без перескана) + fixed (реальная правка
+   файла на rw-копии полигона) + `verify_fix_batch [fixed, not_fixed]` — все PASS.
+3. **D4 — IaC-фикстуры:** добавлен `vuln-project/main.tf` (public S3 ACL,
+   IAM full access, RDS password) → `scan_file main.tf` = 3 находки
+   (`hashicorp-tf-password`, `AWS-0080`, `AWS-0086`). Попутно исправлен **OBS-7**:
+   gitleaks не клал `metadata.Secret` + github-pat обрезает Secret → T1-дедуп
+   не схлопывал дубль на одной строке (`scanners/gitleaks.py`,
+   `normalization/dedup.py` — канонизация секрета префиксом 40).
+4. **E1 — память:** крупный полигон (124 py-файла) под `--memory=512m` →
+   144 находки, peak **455.8 MiB**, без OOM. Dockerfile-фикс **OBS-6**:
+   strip `*.dist-info` ломал semgrep (StopIteration в opentelemetry.context),
+   все SAST-сканы молча давали 0; добавлен setuptools в venv + усилен
+   smoke-тест сборки.
+5. **E4 — фикстуры в git:** `requirements.txt`, `other-project/`, `.gitignore`,
+   `xss.py`, `main.tf`, `scripts/e2e_measure.py` — в git (часть в коммите
+   T3/96e3625; `main.tf` — в этом коммите).
+6. **B2 после фикса T10:** `dedup_stability_recheck` — два скана secrets.py →
+   идентичный fingerprint `[0691d13f93462eba]`, PASS.
+
+Файлы: `scripts/e2e_measure.py`, `mcp-server/tests/fixtures/vuln-project/main.tf`,
+`mcp-server/src/appsecgate_mcp/{orchestration/coordinator.py,scanners/gitleaks.py,
+normalization/dedup.py}`, `mcp-server/Dockerfile`, `docs/e2e-test-plan.md` §12,
+`docs/reports/e2e-report-2026-10-30.md`.
 
 ## T15. UX: `rule_id` до 130 символов нечитаем в сводках (низкий, C3)
 

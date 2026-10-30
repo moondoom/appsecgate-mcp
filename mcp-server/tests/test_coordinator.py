@@ -83,6 +83,33 @@ async def test_crashing_scanner_isolated(default_config):
 
 
 @pytest.mark.asyncio
+async def test_diff_excludes_deleted_files(default_config, tmp_path):
+    """Регрессия B5: удалённые файлы из git-diff не передаются сканерам.
+
+    semgrep падает (rc!=0) на несуществующем таргете и теряет весь пакет
+    SAST-находок, поэтому deleted-файлы фильтруются до планирования сканеров.
+    """
+    (tmp_path / "existing.py").write_text("x = 1\n")
+
+    seen: list[list[str]] = []
+
+    class RecordingScanner(FakeScanner):
+        async def scan(self, files, mode):
+            seen.append(list(files))
+            return [rf(file_path="existing.py", snippet="x = 1")]
+
+    registry = ScannerRegistry()
+    registry.register(RecordingScanner([], scanner_name="semgrep"))
+    coord = ScanCoordinator(default_config, registry, project_root=str(tmp_path))
+    result = await coord.scan(["existing.py", "deleted.py"], mode="diff")
+
+    assert seen == [["existing.py"]]
+    assert result.meta.scanned_files == ["existing.py"]
+    assert result.total == 1
+    assert any("deleted" in w for w in result.meta.warnings)
+
+
+@pytest.mark.asyncio
 async def test_scan_dedups_same_secret_across_scanners(default_config):
     """Регрессия T1: Gitleaks и TruffleHog на одном секрете — одна находка."""
     registry = ScannerRegistry()
