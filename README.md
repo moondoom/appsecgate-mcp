@@ -258,7 +258,7 @@ make docker-build   # build moondoom/appsecgate-mcp:0.1.0
 - [Agent deployment guide](docs/deploy-agents.md) — all four clients, verification steps, troubleshooting
 - [Architecture](docs/architecture.md)
 - [Phase 1 design spec](docs/fix-workflow-design.md)
-- [E2E report](docs/reports/e2e-report-2026-10-14.md)
+- [E2E report](docs/reports/e2e-report-2026-10-30.md)
 - [Product vision](docs/product-vision.md)
 - [Open tasks](docs/open-tasks.md)
 
