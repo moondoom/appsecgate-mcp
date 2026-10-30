@@ -3,7 +3,8 @@
 Одинаковые проблемы могут давать разные сканеры (например, Gitleaks и
 TruffleHog могут найти один и тот же hardcoded secret). Дубликаты
 схлопываются по (file_path, line_start); среди дубликатов остаётся
-находка с наибольшей severity (tie-break — первая встреченная).
+находка с наибольшей severity. Выбор «выжившего» детерминирован
+(ADR-0001 §3.2): порядок поступления raw-находок не влияет на результат.
 
 Дополнительно схлопываются «семьи» проблем — находки разных сканеров и
 правил, которые описывают одну и ту же проблему (одно значение секрета
@@ -22,6 +23,39 @@ _FAMILY_BUCKET = 20
 
 # Префикс для ключей без тела проблемы: такие находки не схлопываем.
 _NO_BODY_PREFIX = "\x00"
+
+# Приоритет сканеров при выборе «выжившего» (ADR-0001 §3.2): чем меньше,
+# тем находка предпочтительнее как каноническая. Gitleaks точнее по rule_id
+# для секретов, поэтому его находка побеждает при равном severity.
+SCANNER_PRIORITY: dict[str, int] = {
+    "gitleaks": 0,
+    "trufflehog": 1,
+    "semgrep": 2,
+    "trivy": 3,
+}
+
+# Внутри Gitleaks конкретные паттерны приоритетнее generic.
+RULE_PRIORITY: dict[str, int] = {
+    "github-pat": 0,
+    "aws-access-key": 0,
+    "private-key": 0,
+    "generic-api-key": 10,
+}
+
+
+def _stable_sort_key(finding: Finding) -> tuple:
+    """Стабильный ключ сортировки находок (ADR-0001 §3.2).
+
+    Порядок (по возрастанию): severity (CRITICAL раньше всех) → приоритет
+    сканера → приоритет правила → rule_id лексикографически. Не зависит от
+    порядка поступления raw-находок, поэтому «выживший» детерминирован.
+    """
+    return (
+        -SEVERITY_ORDER.get(finding.severity, 0),
+        SCANNER_PRIORITY.get(finding.scanner, 99),
+        RULE_PRIORITY.get(finding.rule_id, 50),
+        finding.rule_id,
+    )
 
 
 def _family_value(finding: Finding) -> str:
@@ -72,15 +106,18 @@ class Deduplicator:
             key=lambda f: (f.file_path, f.line_start // _FAMILY_BUCKET, _family_value(f)),
         )
 
-    @staticmethod
-    def _collapse(findings: list[Finding], *, key) -> list[Finding]:
-        """Общая логика: первый встреченный побеждает, больший severity — раньше."""
+    @classmethod
+    def _collapse(cls, findings: list[Finding], *, key) -> list[Finding]:
+        """Общая логика: первый в детерминированном порядке побеждает.
+
+        Вход сортируется по ``_stable_sort_key``; по каждому ключу ``key``
+        остаётся первая находка — она же наилучшая по severity/сканеру/
+        правилу. Результат не зависит от порядка поступления raw-находок
+        (фикс T10, ADR-0001 §3.2).
+        """
         seen: dict[tuple, Finding] = {}
-        for finding in findings:
+        for finding in sorted(findings, key=_stable_sort_key):
             k = key(finding)
-            existing = seen.get(k)
-            if existing is None:
-                seen[k] = finding
-            elif SEVERITY_ORDER.get(finding.severity, 0) > SEVERITY_ORDER.get(existing.severity, 0):
+            if k not in seen:
                 seen[k] = finding
         return list(seen.values())

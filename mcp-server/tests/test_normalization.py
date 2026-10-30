@@ -60,6 +60,46 @@ class TestDeduplicator:
         assert len(result) == 1
         assert result[0].scanner == "gitleaks"
 
+    def test_scanner_priority_independent_of_input_order(self):
+        """Регрессия T10: при равном severity gitleaks побеждает trufflehog
+        в любом порядке поступления находок."""
+        gl = make_finding(severity=Severity.HIGH, scanner="gitleaks", fingerprint="gl")
+        th = make_finding(severity=Severity.HIGH, scanner="trufflehog", fingerprint="th")
+        dedup = Deduplicator()
+        assert dedup.deduplicate([gl, th])[0].fingerprint == "gl"
+        assert dedup.deduplicate([th, gl])[0].fingerprint == "gl"
+
+    def test_rule_priority_independent_of_input_order(self):
+        """Регрессия T10 (B1/OBS-5): github-pat и generic-api-key на одной
+        строке → всегда github-pat, независимо от порядка raw-находок."""
+        specific = make_finding(
+            scanner="gitleaks",
+            rule_id="github-pat",
+            severity=Severity.HIGH,
+            category=Category.SECRET,
+            line_start=5,
+            fingerprint="fp-specific",
+            snippet='token = "ghp_12345"',
+            metadata={"Secret": "ghp_12345"},
+        )
+        generic = make_finding(
+            scanner="gitleaks",
+            rule_id="generic-api-key",
+            severity=Severity.HIGH,
+            category=Category.SECRET,
+            line_start=5,
+            fingerprint="fp-generic",
+            snippet='token = "ghp_12345"',
+            metadata={"Secret": "ghp_12345"},
+        )
+        dedup = Deduplicator()
+        forward = dedup.deduplicate([specific, generic])
+        backward = dedup.deduplicate([generic, specific])
+        assert [f.fingerprint for f in forward] == ["fp-specific"]
+        assert [f.fingerprint for f in backward] == ["fp-specific"]
+        assert forward[0].rule_id == "github-pat"
+        assert backward[0].rule_id == "github-pat"
+
 
 class TestDeduplicatorFamilies:
     """Уровень 2: одни и те же проблемы из разных сканеров/правил (T1)."""

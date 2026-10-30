@@ -121,3 +121,43 @@ async def test_scan_dedups_same_secret_across_scanners(default_config):
     assert result.total == 1
     # Больший severity (gitleaks=high, trufflehog=medium) побеждает.
     assert result.findings[0].scanner == "gitleaks"
+
+
+@pytest.mark.asyncio
+async def test_scan_fingerprints_stable_across_runs(default_config):
+    """Регрессия T10: два скана одного файла → идентичный набор fingerprint.
+
+    Фейковый gitleaks отдаёт находки в разном порядке между прогонами
+    (как реальный Gitleaks: то github-pat, то generic-api-key первым).
+    Детерминированный дедуп даёт одного «выжившего», поэтому fingerprint
+    не «плывёт» между сканами (ADR-0001 §3.2).
+    """
+
+    def findings(rule_first: str) -> list[RawFinding]:
+        common = dict(
+            scanner="gitleaks",
+            raw_severity="high",
+            file_path="a.py",
+            line_start=5,
+            snippet='token = "ghp_12345"',
+            category=Category.SECRET,
+            metadata={"Secret": "ghp_12345"},
+        )
+        first, second = (
+            ("github-pat", "generic-api-key")
+            if rule_first == "github-pat"
+            else ("generic-api-key", "github-pat")
+        )
+        return [rf(rule_id=first, **common), rf(rule_id=second, **common)]
+
+    def build(order: str) -> ScanCoordinator:
+        registry = ScannerRegistry()
+        registry.register(FakeScanner(findings(order), scanner_name="gitleaks"))
+        return ScanCoordinator(default_config, registry)
+
+    run_a = await build("generic-first").scan(["a.py"], mode="file")
+    run_b = await build("github-first").scan(["a.py"], mode="file")
+    assert run_a.total == run_b.total == 1
+    assert run_a.findings[0].fingerprint == run_b.findings[0].fingerprint
+    assert run_a.findings[0].rule_id == "github-pat"
+    assert run_b.findings[0].rule_id == "github-pat"

@@ -4,6 +4,8 @@
 Каждая задача — отдельный этап/PR. Перед реализацией — Plan-мод
 (см. AGENTS.md, «Workflow: Plan vs Act»).
 
+**Обновление 2026-10-30:** T10 решена (см. статус под задачей).
+
 **Обновление 2026-10-13:** T1, T2, T3 решены (см. статус под каждой
 задачей). T4 снята по решению владельца — новых правил не добавляем,
 фактический охват приведён к срезу бандла (c, csharp, go, javascript,
@@ -165,12 +167,21 @@ announce-форматом. Проверить намерение: если annou
 
 **Дизайн:** [ADR-0001](adr/ADR-0001-fingerprint-and-semantic-dedup.md).
 
-**Статус:** открыта критическая (по итогам E2E, OBS-5). Реализовать по ADR-0001 (§3.2, детерминированный tie-break в `_collapse()`).
+**Статус:** решено ✅ (2026-10-30) по ADR-0001 §3.2. `Deduplicator._collapse()`
+сортирует находки по стабильному ключу
+`(-severity_rank, SCANNER_PRIORITY, RULE_PRIORITY, rule_id)` перед выбором
+«выжившего»; порядок поступления raw-находок больше не влияет на winner.
+Регресс: `TestDeduplicator::test_scanner_priority_independent_of_input_order`,
+`TestDeduplicator::test_rule_priority_independent_of_input_order`,
+`test_scan_fingerprints_stable_across_runs` (два скана → идентичный fingerprint).
+Файлы: `normalization/dedup.py`. Связанная B2 («5 строк при 4 находках») —
+перепроверить при T14 (вторая итерация E2E).
 
 **Симптом (B1):** один и тот же секрет на одной строке получает то
 `github-pat`, то `generic-api-key` fingerprint между прогонами. В дедупе
 «выжившего» выбирает `_collapse()` в `normalization/dedup.py` по порядку
 raw-находок Gitleaks — а порядок строк Gitleaks нестабилен между прогонами.
+
 
 **Почему это ломает:** `fingerprint = sha256(rule_id + …)` — при смене
 rule_id меняется fingerprint → suppression по старому fp не срабатывает,
