@@ -74,6 +74,26 @@ async def git_tracked_files(
     return [_ for _ in result.stdout.split("\x00") if _]
 
 
+async def git_changed_files_vs_base(
+    cwd: str | Path | None = None,
+    base_ref: str = "origin/main",
+    *,
+    head: str = "HEAD",
+) -> list[str]:
+    """Файлы, изменённые в ``head`` относительно ``base_ref`` (CI, ADR-0003 §5.1).
+
+    Три точки (`git diff <base>...<head>`) — diff на стороне ``head`` после
+    общего предка: ровно то, что CI хочет проверить в PR/ветке. Untracked
+    файлы намеренно НЕ включаются (в CI всё закоммичено). Несуществующий
+    ``base_ref`` → ``GitError`` (CI отвечает exit 2).
+    """
+    paths = await _git_name_only_z(
+        ["git", "diff", "--name-only", "-z", f"{base_ref}...{head}"],
+        cwd,
+    )
+    return sorted(set(paths))
+
+
 async def is_git_repo(cwd: str | Path | None = None) -> bool:
     """Проверяет, находится ли cwd внутри git-репозитория."""
     try:

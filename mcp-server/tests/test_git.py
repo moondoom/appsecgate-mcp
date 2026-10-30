@@ -9,6 +9,7 @@ import pytest
 from appsecgate_mcp.git import (
     GitError,
     git_changed_files,
+    git_changed_files_vs_base,
     git_diff,
     is_git_repo,
 )
@@ -72,3 +73,33 @@ async def test_git_error_outside_repo(tmp_path):
     plain.mkdir()
     with pytest.raises(GitError):
         await git_changed_files(plain)
+
+
+async def test_changed_files_vs_base(repo):
+    (repo / "base.txt").write_text("base\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "base")  # базовый коммит для diff ...HEAD
+
+    (repo / "new.txt").write_text("new\n")
+    _git(repo, "add", "new.txt")
+    _git(repo, "commit", "-m", "feature")
+
+    files = await git_changed_files_vs_base(repo, "base")
+    assert files == ["new.txt"]
+
+
+async def test_changed_files_vs_base_empty_when_no_diff(repo):
+    (repo / "base.txt").write_text("base\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "base")
+    _git(repo, "checkout", "base")
+
+    files = await git_changed_files_vs_base(repo, "base")
+    assert files == []
+
+
+async def test_changed_files_vs_base_unknown_ref(repo):
+    with pytest.raises(GitError):
+        await git_changed_files_vs_base(repo, "no-such-ref")

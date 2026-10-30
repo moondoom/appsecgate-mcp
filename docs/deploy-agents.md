@@ -284,4 +284,44 @@ Agent recommendation: in summary responses, refer to the issue as
 | `scan_file` returned empty `findings` | Rules did not resolve (offline, Rules Bundle empty) | Check `meta.warnings` and `ruleset_hash`; verify the bundle is in the image |
 | `meta.errors` is non-empty | Scanner binary unavailable (semgrep/gitleaks/trivy) | Check the image: `docker run --rm moondoom/appsecgate-mcp semgrep --version` |
 | `project_id mismatch` error | `project_path` changed within the same session | New project = new session (invariant #6) |
+
+## 8. CI gate (Phase 2, ADR-0003)
+
+The same image runs as a CI gate. It scans the PR diff against the base branch
+and fails the build on blockable findings (severity or "shown locally and not
+fixed"). Exit codes: `0` pass, `1` blocked, `2` infrastructure error.
+
+```bash
+docker run --rm --network=none --read-only \
+  --tmpfs=/tmp:size=100M,mode=1777 \
+  --cap-drop=ALL --security-opt=no-new-privileges:true \
+  -v "$PWD":/workspace:ro \
+  moondoom/appsecgate-mcp:0.1.0 \
+  ci --project /workspace --base-ref "origin/main" --format text
+```
+
+Options: `--base-ref` (default: `gates.ci.diff_base_ref`, i.e. `origin/main`),
+`--shown-snapshot PATH` (default `<project>/.appsecgate-mcp/shown.ndjson`),
+`--require-shown-snapshot` (fail-closed when the snapshot is missing),
+`--format text|ndjson`. Ready-to-use workflow:
+`.github/workflows/appsecgate-ci.yml`.
+
+### Shown snapshot (written by the agent, not the server)
+
+For the `unresolved_local` gate the agent maintains
+`.appsecgate-mcp/shown.ndjson` in the project (invariant #1: the server never
+writes project files). One redacted record per shown finding:
+
+```json
+{"fp":"0691d13f93462eba","rule_id":"gitleaks.github-pat","file":"src/main.py",
+ "line":42,"severity":"high","shown_at":"2026-10-30T12:00:00Z",
+ "verified_status":null,"suppression_scope":null}
+```
+
+- Collect data via `query_findings_db` (SELECT `v_findings`) + `get_scan_history`
+  (verification attempts, suppressions); `verified_status` ∈ `fixed`/`not_fixed`/
+  `wont_fix`, `suppression_scope` ∈ `local`/`ci`/`global`.
+- Append-only: never remove previously shown fingerprints; commit the file so
+  CI can read it. Missing snapshot degrades to severity-gate with a warning.
+
 | `update_config` returns `status: readonly` | Project is mounted `:ro` (canonical Docker) — not an error | The change is not applied. Ask the user to edit `.appsecgate-mcp/config.yaml` on the host, mount the project `rw` for local dev, or set `APPSECGATE_*` env vars |

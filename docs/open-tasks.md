@@ -293,3 +293,31 @@ normalization/dedup.py}`, `mcp-server/Dockerfile`, `docs/e2e-test-plan.md` §12,
 `test_build_scan_output_carries_short_rule_id` и обновлённый
 `test_build_announce_output` (`tests/test_context_and_query.py`).
 
+
+---
+
+# Фаза 2, этап 1 — CI-контур и двойные gates (ADR-0003)
+
+**Дизайн:** [ADR-0003](adr/ADR-0003-ci-unresolved-local-delivery.md)
+(Accepted, 2026-10-30). Один этап — один PR. Вне этапа: master-сервер и
+синхронизация (`docs/architecture.md` §9.5).
+
+| # | Содержание | Статус |
+|---|---|---|
+| CI-1 | Принятие ADR-0003, обновление `docs/adr/README.md`, `docs/architecture.md` §8 | ✅ решено |
+| CI-2 | CLI `appsecgate ci`: diff против base-ref (`git.py`), exit 0/1/2, `--format text\|ndjson` | ✅ решено |
+| CI-3 | shown-source абстракция: snapshot-парсер + подключение к `GateEngine` | ✅ решено |
+| CI-4 | Suppression/verify_fix в CI по таблице §5.2 (snapshot-поля) | ✅ решено |
+| CI-5 | Конфиг `gates.ci.diff_base_ref` + env override | ✅ решено |
+| CI-6 | Пример `.github/workflows/appsecgate-ci.yml` + README + `deploy-agents.md` | ✅ решено |
+| CI-7 | Тесты: `test_gate`, `test_shown_source`, `test_git`, `test_ci_cli`; `make check` зелёный | ✅ решено |
+
+Файлы: `orchestration/{ci.py,shown_source.py,gate.py}`, `server/ci.py`,
+`server/cli.py`, `git.py`, `config/models.py`, `config/default.yaml`,
+`tests/test_ci_cli.py`, `tests/test_shown_source.py`,
+`docs/adr/ADR-0003-ci-unresolved-local-delivery.md`.
+
+Осталось на будущее (следующие этапы Фазы 2, вне этого PR):
+- Master-сервер и сетевая синхронизация показанного (§9.5).
+- E2E CI-полигон по мотивам T14 (фиктивный PR → блокировка/пропуск).
+

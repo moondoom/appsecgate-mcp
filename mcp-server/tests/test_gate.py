@@ -7,6 +7,11 @@ import pytest
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.models.finding import Category, Finding, Severity
 from appsecgate_mcp.orchestration.gate import GateEngine
+from appsecgate_mcp.orchestration.shown_source import (
+    ShownRecord,
+    ShownSnapshot,
+    SnapshotShownSource,
+)
 
 
 class FakeShownStore:
@@ -26,6 +31,10 @@ def make_finding(severity: Severity, fingerprint: str = "fp") -> Finding:
         scanner="semgrep",
         category=Category.SAST,
     )
+
+
+def make_snapshot_source(*records: ShownRecord) -> SnapshotShownSource:
+    return SnapshotShownSource(ShownSnapshot(records=list(records)))
 
 
 @pytest.mark.asyncio
@@ -63,3 +72,75 @@ async def test_summary_counts():
     summary = await engine.evaluate_all(findings, mode="ci")
     assert summary.block_count == 2
     assert summary.should_fail is True
+
+
+# --- CI с snapshot-источником (ADR-0003 §5.2/§5.3) ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_ci_blocks_unresolved_local_from_snapshot():
+    source = make_snapshot_source(ShownRecord(fingerprint="fp-seen"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action == "block"
+    assert d.reason == "unresolved_local"
+
+
+@pytest.mark.asyncio
+async def test_ci_fixed_clears_unresolved_local():
+    source = make_snapshot_source(ShownRecord(fingerprint="fp-seen", verified_status="fixed"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action != "block"
+
+
+@pytest.mark.asyncio
+async def test_ci_ci_scope_clears_unresolved_local():
+    source = make_snapshot_source(ShownRecord(fingerprint="fp-seen", suppression_scope="ci"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action != "block"
+
+
+@pytest.mark.asyncio
+async def test_ci_global_scope_clears_unresolved_local():
+    source = make_snapshot_source(ShownRecord(fingerprint="fp-seen", suppression_scope="global"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action != "block"
+
+
+@pytest.mark.asyncio
+async def test_ci_local_scope_does_not_clear_unresolved_local():
+    """Двойной контур: local-подавление CI-блок не снимает (ADR-0003 §5.2)."""
+    source = make_snapshot_source(ShownRecord(fingerprint="fp-seen", suppression_scope="local"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action == "block"
+    assert d.reason == "unresolved_local"
+
+
+@pytest.mark.asyncio
+async def test_ci_wont_fix_blocks_with_wont_fix_reason():
+    source = make_snapshot_source(ShownRecord(fingerprint="fp-seen", verified_status="wont_fix"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action == "block"
+    assert d.reason == "wont_fix"
+
+
+@pytest.mark.asyncio
+async def test_ci_not_fixed_blocks_unresolved_local():
+    source = make_snapshot_source(ShownRecord(fingerprint="fp-seen", verified_status="not_fixed"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action == "block"
+    assert d.reason == "unresolved_local"
+
+
+@pytest.mark.asyncio
+async def test_ci_not_shown_is_not_blocked():
+    source = make_snapshot_source(ShownRecord(fingerprint="other"))
+    engine = GateEngine(Config(), shown_store=source)
+    d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
+    assert d.action == "info"

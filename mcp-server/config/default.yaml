@@ -55,6 +55,7 @@ gates:
     warn_on: [medium]
     info_on: [low, info]
     block_on_unresolved_local: true
+    diff_base_ref: origin/main
 
 # Пример подавления (в проекте переопределяется при необходимости):
 # suppress:

@@ -241,9 +241,22 @@ scanners:
     severity_threshold: HIGH
 
 gates:
-  block_on: [CRITICAL, HIGH]
-  warn_on: [MEDIUM]
+  local:
+    warn_on: [CRITICAL, HIGH, MEDIUM]
+    block_on: []            # локально не блокируем никогда
+  ci:
+    block_on: [CRITICAL, HIGH]
+    warn_on: [MEDIUM]
+    block_on_unresolved_local: true   # "знал и не починил" (Фаза 2)
+    diff_base_ref: origin/main        # база для `appsecgate ci`
 ```
+
+**CI gate (Фаза 2, ADR-0003).** `appsecgate-mcp ci` сканирует diff против
+`gates.ci.diff_base_ref` (или `--base-ref`), блокирует по `gates.ci.block_on`
+и по показанным-локально находкам из `.appsecgate-mcp/shown.ndjson`
+(snapshot пишет агент; без него — только severity-gate с warning).
+Exit codes: `0` pass, `1` blocked, `2` инфраструктурная ошибка. Формат вывода:
+`text` или `ndjson`. Пример workflow: `.github/workflows/appsecgate-ci.yml`.
 
 ## Build from source
 

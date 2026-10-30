@@ -83,6 +83,10 @@ def main() -> None:
         from appsecgate_mcp.hooks import hook_main  # ленивый импорт: нет цикла с server
 
         raise SystemExit(hook_main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "ci":
+        from appsecgate_mcp.server.ci import ci_main  # ленивый импорт: CI — отдельный процесс
+
+        raise SystemExit(ci_main(sys.argv[2:]))
     args = _build_parser().parse_args()
     configure_logging(args.log_level, args.log_file)
     logger.info("start appsecgate-mcp transport=%s", getattr(args, "transport", "stdio"))

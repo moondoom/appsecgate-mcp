@@ -1,0 +1,34 @@
+# Пример CI-gate для потребительского проекта (Фаза 2, ADR-0003).
+# Использовать этот файл в проверяемом проекте, не в этом репозитории:
+#   curl -O https://raw.githubusercontent.com/moondoom/appsecgate-mcp/main/.github/workflows/appsecgate-ci.yml
+#
+# Контракт: `appsecgate-mcp ci` возвращает
+#   0 = pass, 1 = blocked (находки), 2 = ошибка инфраструктуры.
+# Любой ненулевой код GitHub считает провалом шага — PR блокируется.
+name: AppSecGate CI gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  appsecgate:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth 0: для diff <base>...HEAD нужен merge-base с базовой веткой.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run AppSecGate CI gate
+        run: |
+          docker run --rm --network=none --read-only \
+            --tmpfs=/tmp:size=100M,mode=1777 \
+            --cap-drop=ALL --security-opt=no-new-privileges:true \
+            -v "$PWD":/workspace:ro \
+            moondoom/appsecgate-mcp:0.1.0 \
+            ci --project /workspace \
+               --base-ref "origin/${{ github.base_ref }}" \
+               --format ndjson

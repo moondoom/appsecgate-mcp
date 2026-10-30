@@ -79,6 +79,9 @@ class CiGateConfig(GateRuleConfig):
     block_on: list[str] = Field(default_factory=lambda: ["critical", "high"])
     warn_on: list[str] = Field(default_factory=lambda: ["medium"])
     block_on_unresolved_local: bool = True
+    # Базовая ветка для diff в `appsecgate ci` (ADR-0003 §7, Q3). Перекрывается
+    # аргументом CLI `--base-ref` и env `APPSECGATE_GATES_CI_DIFF_BASE_REF`.
+    diff_base_ref: str = "origin/main"
 
 
 class GatesConfig(_StrictModel):

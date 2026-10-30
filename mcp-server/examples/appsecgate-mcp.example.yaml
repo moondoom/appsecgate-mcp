@@ -39,6 +39,7 @@ gates:
     block_on: [critical, high]
     warn_on: [medium]
     block_on_unresolved_local: true   # killer-feature: "знал и не починил"
+    diff_base_ref: origin/main        # базовая ветка для `appsecgate ci`
 
 suppress:
   - rule: generic.secrets

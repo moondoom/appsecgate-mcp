@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.models.finding import Finding
+from appsecgate_mcp.orchestration.shown_source import ShownRecord
 
 
 @dataclass
@@ -70,14 +71,45 @@ class GateEngine:
         if self._matches(finding, ci.block_on):
             return GateDecision(finding.fingerprint, "block", "ci_severity")
         if ci.block_on_unresolved_local and self.shown_store is not None:
-            try:
-                if await self.shown_store.was_shown(finding.fingerprint):
-                    return GateDecision(finding.fingerprint, "block", "unresolved_local")
-            except Exception:
-                pass
+            shown = await self._lookup_shown(finding.fingerprint)
+            if shown is not None and not self._resolved_in_ci(shown):
+                reason = "wont_fix" if shown.verified_status == "wont_fix" else "unresolved_local"
+                return GateDecision(finding.fingerprint, "block", reason)
         if self._matches(finding, ci.warn_on):
             return GateDecision(finding.fingerprint, "warn", "ci_warn")
         return GateDecision(finding.fingerprint, "info", "ci_info")
+
+    async def _lookup_shown(self, fingerprint: str) -> ShownRecord | None:
+        """Возвращает запись о показанной находке из любого источника.
+
+        Локальный ``shown_store`` отвечает через ``was_shown`` (bool),
+        snapshot-источник (ADR-0003 §5.3) — через ``record`` (детали).
+        Ошибка источника не роняет gate: находка считается «не показанной».
+        """
+        store = self.shown_store
+        if hasattr(store, "record"):
+            try:
+                return await store.record(fingerprint)
+            except Exception:
+                return None
+        try:
+            shown = await store.was_shown(fingerprint)
+        except Exception:
+            return None
+        return ShownRecord(fingerprint=fingerprint) if shown else None
+
+    @staticmethod
+    def _resolved_in_ci(shown: ShownRecord) -> bool:
+        """«Закрытая» находка в CI (ADR-0003 §5.2): fixed или suppression ci/global.
+
+        Scope ``local`` и статус ``not_fixed``/``wont_fix`` блок НЕ снимают —
+        это и есть двойной контур «знал и не починил».
+        """
+        if shown.verified_status == "fixed":
+            return True
+        if shown.suppression_scope in ("ci", "global"):
+            return True
+        return False
 
     async def evaluate_all(self, findings: list[Finding], mode: str = "local") -> GateSummary:
         """Оценивает весь набор и агрегирует решения в `GateSummary`."""
