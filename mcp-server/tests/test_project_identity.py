@@ -10,7 +10,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+from pathlib import Path
 
 import pytest
 
@@ -59,6 +61,79 @@ def test_compute_project_id_canonicalizes_path(tmp_path):
     assert server._compute_project_id(str(real / ".")) == server._compute_project_id(str(real))
 
 
+# ---------------------------------------------------------------------------
+# T9: project_id через явный alias/id или git-идентичность
+# ---------------------------------------------------------------------------
+def _git_repo(tmp_path, name: str = "my-repo") -> Path:
+    root = tmp_path / name
+    (root / ".git").mkdir(parents=True)
+    (root / ".git" / "config").write_text(
+        "[core]\n\trepositoryformatversion = 0\n"
+        '[remote "origin"]\n\turl = https://github.com/acme/my-repo.git\n',
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_git_identity_from_origin_url(tmp_path):
+    repo = _git_repo(tmp_path)
+    assert server._git_identity(str(repo)) == "my-repo"
+
+
+def test_git_identity_falls_back_to_dirname(tmp_path):
+    root = tmp_path / "no-remote-repo"
+    (root / ".git").mkdir(parents=True)
+    (root / ".git" / "config").write_text(
+        "[core]\n\trepositoryformatversion = 0\n", encoding="utf-8"
+    )
+    assert server._git_identity(str(root)) == "no-remote-repo"
+
+
+def test_git_identity_found_in_parent_dir(tmp_path):
+    repo = _git_repo(tmp_path)
+    nested = repo / "src" / "deep"
+    nested.mkdir(parents=True)
+    assert server._git_identity(str(nested)) == "my-repo"
+
+
+def test_git_identity_none_without_git(tmp_path):
+    root = tmp_path / "plain"
+    root.mkdir()
+    assert server._git_identity(str(root)) is None
+
+
+def test_resolve_project_identity_uses_git(tmp_path):
+    repo = _git_repo(tmp_path)
+    pid, alias = server._resolve_project_identity(str(repo))
+    assert alias == "my-repo"
+    assert pid == hashlib.sha256(b"git:my-repo").hexdigest()[:16]
+    assert len(pid) == 16
+
+
+def test_resolve_project_identity_explicit_alias_wins_over_git(tmp_path):
+    repo = _git_repo(tmp_path)
+    pid, alias = server._resolve_project_identity(str(repo), explicit_alias="my-app")
+    assert alias == "my-app"
+    assert pid == hashlib.sha256(b"alias:my-app").hexdigest()[:16]
+
+
+def test_resolve_project_identity_explicit_id_wins_over_all(tmp_path):
+    repo = _git_repo(tmp_path)
+    pid, alias = server._resolve_project_identity(
+        str(repo), explicit_id="my-id", explicit_alias="my-app"
+    )
+    assert pid == "my-id"
+    assert alias == "my-app"
+
+
+def test_resolve_project_identity_fallback_to_path(tmp_path):
+    root = tmp_path / "plain"
+    root.mkdir()
+    pid, alias = server._resolve_project_identity(str(root))
+    assert alias == "plain"
+    assert pid == server._compute_project_id(str(root))
+
+
 @pytest.mark.asyncio
 async def test_project_id_and_alias_set_on_initialize(fresh_session, tmp_path):
     root = tmp_path / "my-project"
@@ -67,6 +142,30 @@ async def test_project_id_and_alias_set_on_initialize(fresh_session, tmp_path):
 
     assert fresh_session.project_id == server._compute_project_id(str(root))
     assert fresh_session.project_alias == "my-project"
+    await fresh_session.close()
+
+
+@pytest.mark.asyncio
+async def test_initialize_with_explicit_alias(fresh_session, tmp_path):
+    """T9: явный alias → project_id = sha256('alias:' + alias)[:16]."""
+    root = tmp_path / "proj-x"
+    root.mkdir()
+    fresh_session.project_alias_override = "my-app"
+    await fresh_session.initialize(str(root))
+
+    assert fresh_session.project_alias == "my-app"
+    assert fresh_session.project_id == hashlib.sha256(b"alias:my-app").hexdigest()[:16]
+    await fresh_session.close()
+
+
+@pytest.mark.asyncio
+async def test_initialize_uses_git_identity(fresh_session, tmp_path):
+    """T9: git-проект получает project_id от имени репозитория, не от пути."""
+    repo = _git_repo(tmp_path)
+    await fresh_session.initialize(str(repo))
+
+    assert fresh_session.project_alias == "my-repo"
+    assert fresh_session.project_id == hashlib.sha256(b"git:my-repo").hexdigest()[:16]
     await fresh_session.close()
 
 

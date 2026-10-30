@@ -94,6 +94,26 @@ async def test_valid_updates_change_file(project):
     assert server._session.config.scanners.sast.severity_threshold == "high"
 
 
+async def test_update_config_readonly_returns_recommendation(project, monkeypatch):
+    """T11: проект :ro → status=readonly (не ошибка), файл не создаётся.
+
+    Статус и формулировка должны убедить агента, что это особенность окружения
+    (канонический Docker-деплой), а не проблема — нужно спросить пользователя.
+    """
+    from appsecgate_mcp.server.tools import config as config_mod
+
+    conf = _config_file(project)
+    monkeypatch.setattr(config_mod, "_os_access", lambda _path, _mode: False)
+
+    out = await server.update_config({"scanners": {"sast": {"severity_threshold": "high"}}})
+
+    assert out["status"] == "readonly"
+    assert out["applied"] is False
+    assert "not an error" in out["reason"]
+    assert "ask the user" in out["how_to_change"]
+    assert not conf.exists()
+
+
 async def test_reinit_failure_rolls_back_file(project, monkeypatch):
     conf = _write_initial(project)
     before = conf.read_text(encoding="utf-8")

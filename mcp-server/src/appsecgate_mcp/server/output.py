@@ -35,6 +35,8 @@ async def _build_announce_output(state: SessionState, result: ScanResult) -> dic
             "finding_id": f.fingerprint,
             "logical_id": None,
             "rule_id": f.rule_id,
+            # Короткое имя правила для читаемости сводок (T15).
+            "rule": f.short_rule_id(),
             "file_path": f.file_path,
             "severity": f.severity.value,
             "scanner": f.scanner,
@@ -81,7 +83,11 @@ async def _build_scan_output(state: SessionState, result: ScanResult) -> dict[st
                 meta["warnings"].append(warning)
     payload: dict[str, Any] = {
         "summary": result.to_summary(),
-        "findings": [f.model_dump(mode="json") for f in result.findings],
+        # Короткое имя правила в каждую находку сводки (T15); полный rule_id
+        # остаётся в model_dump (rule_id).
+        "findings": [
+            {**f.model_dump(mode="json"), "rule": f.short_rule_id()} for f in result.findings
+        ],
         "meta": meta,
     }
     if gate is not None:

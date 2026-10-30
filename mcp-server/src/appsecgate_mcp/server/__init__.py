@@ -44,8 +44,10 @@ from appsecgate_mcp.server.session import (  # noqa: F401
     SessionState,
     _compute_project_id,
     _ensure_session,
+    _git_identity,
     _resolve_default_project,
     _resolve_inside_project,
+    _resolve_project_identity,
     _retention_cutoff,
     _session,
 )

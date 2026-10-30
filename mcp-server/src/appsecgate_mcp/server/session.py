@@ -8,7 +8,6 @@ test_update_config), поэтому и ``_session``, и зависящие от 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import os
 import uuid
@@ -25,6 +24,13 @@ from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
 from appsecgate_mcp.orchestration.gate import GateEngine
 from appsecgate_mcp.rules import TrivyDbStatus, seed_trivy_db, trivy_db_status
 from appsecgate_mcp.scanners.registry import ScannerRegistry
+from appsecgate_mcp.server.project_identity import (  # noqa: F401 (реэкспорт в фасад)
+    _compute_project_id,
+    _find_git_dir,
+    _git_identity,
+    _repo_name_from_git_url,
+    _resolve_project_identity,
+)
 from appsecgate_mcp.storage.query import init_views
 from appsecgate_mcp.storage.stores import (
     FeedbackStore,
@@ -88,16 +94,6 @@ def _resolve_default_project() -> str:
     return str(Path.cwd().resolve())
 
 
-def _compute_project_id(project_path: str) -> str:
-    """Стабильная проектная идентичность: ``sha256(realpath(project_path))[:16]``.
-
-    Проект определяется физическим путём (симлинки раскрываются через
-    ``resolve()``), поэтому два разных представления одного и того же каталога
-    дают одинаковый ``project_id``.
-    """
-    return hashlib.sha256(str(Path(project_path).resolve()).encode()).hexdigest()[:16]
-
-
 def _resolve_inside_project(path: str, project: str) -> Path:
     """Разрешает путь и проверяет, что он лежит внутри корня проекта.
 
@@ -127,6 +123,10 @@ class SessionState:
         self.project_path = _resolve_default_project()
         self.project_id: str | None = None
         self.project_alias: str | None = None
+        # Явная идентичность из CLI/окружения (T9): если задана — перекрывает
+        # git/путь при _resolve_project_identity. Приоритет: override > env.
+        self.project_id_override: str | None = None
+        self.project_alias_override: str | None = None
         self.config: Config | None = None
         self.registry: ScannerRegistry | None = None
         self.coordinator: ScanCoordinator | None = None
@@ -165,8 +165,16 @@ class SessionState:
             await self.close()
 
         project = str(Path(project_path).resolve()) if project_path else self.project_path
-        project_id = _compute_project_id(project)
-        logger.info("session init project_id=%s", project_id)
+        explicit_id = (
+            self.project_id_override or os.environ.get("APPSECGATE_PROJECT_ID") or ""
+        ).strip() or None
+        explicit_alias = (
+            self.project_alias_override or os.environ.get("APPSECGATE_PROJECT_ALIAS") or ""
+        ).strip() or None
+        project_id, project_alias = _resolve_project_identity(
+            project, explicit_id=explicit_id, explicit_alias=explicit_alias
+        )
+        logger.info("session init project_id=%s alias=%s", project_id, project_alias)
 
         if self.project_id is not None and self.project_id != project_id:
             raise ValueError(
@@ -174,7 +182,7 @@ class SessionState:
                 f"зафиксирован {self.project_id}, получен {project_id}"
             )
         self.project_id = project_id
-        self.project_alias = Path(project).name
+        self.project_alias = project_alias
         self.project_path = project
 
         config = self.config_loader.load(project)
@@ -227,7 +235,7 @@ class SessionState:
         self.shown_store.init_schema()
         self.feedback_store = FeedbackStore(self.databases["feedback"])
         self.feedback_store.init_schema()
-        self.suppression_store = SuppressionStore(self.databases["shown"])
+        self.suppression_store = SuppressionStore(self.databases["shown"], project_id)
         self.suppression_store.init_schema()
         self.scan_cache_store = ScanCacheStore(self.databases["scan_cache"])
         self.scan_cache_store.init_schema()

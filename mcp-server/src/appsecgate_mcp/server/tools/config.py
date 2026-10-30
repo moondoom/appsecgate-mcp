@@ -21,6 +21,9 @@ from appsecgate_mcp.server.tools.common import ensure_session
 # не трогая os.replace глобально.
 _replace_file = os.replace
 
+# Шов для тестов: проверка доступности записи в проект (T11).
+_os_access = os.access
+
 
 def _atomic_write(path: Path, text: str) -> None:
     """Атомарная запись: временный файл в той же директории, затем os.replace."""
@@ -43,6 +46,18 @@ def _format_validation_errors(exc: ValidationError) -> list[str]:
         loc = ".".join(str(part) for part in err["loc"]) or "<root>"
         messages.append(f"{loc}: {err['msg']}")
     return messages
+
+
+def _is_project_writable(project_path: str) -> bool:
+    """Проверяет доступность записи в корень проекта без реальной записи.
+
+    В каноническом Docker-деплое проект смонтирован ``:ro`` — ``os.access``
+    вернёт False, и ``update_config`` вернёт рекомендацию вместо падения (T11).
+    """
+    try:
+        return _os_access(project_path, os.W_OK)
+    except OSError:
+        return False
 
 
 def _restore_config(path: Path, previous_text: str | None) -> None:
@@ -77,6 +92,27 @@ async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
     """
     state = await ensure_session()
     project_conf = Path(state.project_path) / PROJECT_CONFIG_REL
+
+    if not _is_project_writable(state.project_path):
+        # Канонический деплой монтирует проект :ro — это НЕ ошибка сервера
+        # и не проблема окружения: так задумано (инвариант №1). Отдаём понятный
+        # агенту статус readonly с рекомендацией спросить пользователя (T11).
+        return {
+            "status": "readonly",
+            "applied": False,
+            "config_path": str(project_conf),
+            "reason": (
+                "project is mounted read-only; the server cannot write "
+                ".appsecgate-mcp/config.yaml (project files are never written). "
+                "This is expected in the canonical Docker deployment, not an error."
+            ),
+            "how_to_change": (
+                "The change was NOT applied. To adjust settings, ask the user to "
+                "edit .appsecgate-mcp/config.yaml in the host project, mount the "
+                "project read-write for local (Docker-free) use, or set APPSECGATE_* "
+                "env variables."
+            ),
+        }
 
     existing: dict[str, Any] = {}
     previous_text: str | None = None

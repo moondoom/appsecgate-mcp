@@ -79,6 +79,15 @@ class Finding(BaseModel):
         """Короткий идентификатор для показа разработчику."""
         return self.fingerprint or f"{self.scanner}:{self.rule_id}:{self.file_path}"
 
+    def short_rule_id(self) -> str:
+        """Короткое человекочитаемое имя правила для сводок (T15).
+
+        Берём последний сегмент ``rule_id`` после последней точки:
+        ``opengrep.rb.gems.security.rule-…`` → ``rule-…``. Полный ``rule_id``
+        остаётся в машиночитаемых полях ответа.
+        """
+        return self.rule_id.rsplit(".", 1)[-1] or self.rule_id
+
 
 class ScannerError(BaseModel):
     """Информация о сканере, который не смог отработать."""

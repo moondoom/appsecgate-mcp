@@ -81,6 +81,41 @@ async def test_context_builder_builds_pack(tmp_path):
     db.close()
 
 
+async def test_context_builder_redacts_secret_window(tmp_path):
+    """T5: окно кода secret-находки не содержит сырых секретов.
+
+    Строки находки маскируются целиком; соседние строки окна прогоняются через
+    redact_text — известные паттерны (AKIA…, wJalr…) не утекают наружу.
+    """
+    (tmp_path / "app.py").write_text(
+        "aws_key = 'AKIA1234567890ABCDEF'\n"
+        "secret = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'\n"
+        "\n"
+        "x = 1\n",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "shown.db")
+    db.connect()
+    store = FindingContextStore(db)
+    store.init_schema()
+    finding = _make_finding("fp-secret", category=Category.SECRET, line_start=1, line_end=2)
+    finding.snippet = "AKIA1234567890ABCDEF"
+    await store.upsert("pid-1", "logical-1", finding)
+
+    builder = ContextBuilder(store, project_root=str(tmp_path), project_id="pid-1")
+    pack = await builder.build("fp-secret")
+    assert pack is not None
+    assert pack.window is not None
+    joined = "\n".join(pack.window.lines)
+    assert "AKIA" not in joined
+    assert "wJalr" not in joined
+    assert "[REDACTED]" in joined
+    # Соседняя строка окна сохранена (только redacted), код вокруг находки виден.
+    assert "x = 1" in joined
+    assert pack.redacted is True
+    db.close()
+
+
 async def test_context_builder_license_returns_none(tmp_path):
     db = Database(tmp_path / "shown.db")
     db.connect()
@@ -220,6 +255,32 @@ async def test_build_announce_output():
     assert len(out["top_findings"]) == 20
     assert out["truncated"] is True
     assert out["total_available"] == 25
+    # T15: короткое имя правила в сводке; полный rule_id сохранён.
+    assert out["top_findings"][0]["rule_id"] == "r"
+    assert out["top_findings"][0]["rule"] == "r"
+
+
+# ---------------------------------------------------------------------------
+# T15: короткое имя правила в scan_output
+# ---------------------------------------------------------------------------
+async def test_build_scan_output_carries_short_rule_id():
+    """T15: в каждой находке полного ответа rule_id остаётся полным, 'rule' — short name."""
+    findings = [
+        Finding(
+            fingerprint="fp-1",
+            rule_id="opengrep.rb.gems.security.rule-omni",
+            severity=Severity.HIGH,
+            file_path="a.rb",
+            scanner="semgrep",
+            category=Category.SAST,
+        )
+    ]
+    state = server.SessionState()
+    output = await server._build_scan_output(state, ScanResult(findings=findings))
+
+    item = output["findings"][0]
+    assert item["rule_id"] == "opengrep.rb.gems.security.rule-omni"
+    assert item["rule"] == "rule-omni"
 
 
 # ---------------------------------------------------------------------------

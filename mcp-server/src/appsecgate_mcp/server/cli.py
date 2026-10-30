@@ -45,6 +45,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Корень проекта для сканирования",
     )
     parser.add_argument(
+        "--project-id",
+        default=os.environ.get("APPSECGATE_PROJECT_ID"),
+        help=(
+            "Явный project_id (T9). Перекрывает git/путь. Стабилен между сессиями "
+            "независимо от пути монтирования."
+        ),
+    )
+    parser.add_argument(
+        "--project-alias",
+        default=os.environ.get("APPSECGATE_PROJECT_ALIAS"),
+        help=(
+            "Явное имя проекта (T9): project_id = sha256('alias:' + имя)[:16]. "
+            "Без него имя берётся из git-репозитория или имени каталога."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         default=os.environ.get("APPSECGATE_LOG_LEVEL", "INFO"),
         help="Уровень логирования (DEBUG/INFO/WARNING/ERROR). По умолчанию INFO.",
@@ -76,6 +92,10 @@ def main() -> None:
 
     if args.project:
         server_mod._session.project_path = str(Path(args.project).resolve())
+    if args.project_id:
+        server_mod._session.project_id_override = args.project_id
+    if args.project_alias:
+        server_mod._session.project_alias_override = args.project_alias
 
     transport = args.transport
     if transport == "sse":

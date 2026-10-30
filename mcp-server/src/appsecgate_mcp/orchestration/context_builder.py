@@ -20,6 +20,7 @@ from appsecgate_mcp.models.context import (
     SCAData,
 )
 from appsecgate_mcp.models.finding import Category, Finding, Severity
+from appsecgate_mcp.normalization.redactor import REDACTED, redact_text
 from appsecgate_mcp.storage.stores import FindingContextStore
 
 # Окно кода вокруг находки (строк) в обе стороны.
@@ -65,7 +66,14 @@ def _detect_language(file_path: str) -> str:
     return _LANG_BY_EXT.get(Path(file_path).suffix.lower(), "")
 
 
-def _build_window(source: str, file_path: str, line_start: int, line_end: int) -> CodeWindow | None:
+def _build_window(
+    source: str,
+    file_path: str,
+    line_start: int,
+    line_end: int,
+    *,
+    redact_secret_lines: bool = False,
+) -> CodeWindow | None:
     if not source:
         return None
     lines = source.splitlines()
@@ -73,7 +81,18 @@ def _build_window(source: str, file_path: str, line_start: int, line_end: int) -
         return None
     start = max(1, line_start - _WINDOW_RADIUS)
     end = min(len(lines), line_end + _WINDOW_RADIUS)
-    formatted = [f"{i:>4} │ {lines[i - 1]}" for i in range(start, end + 1)]
+    formatted = []
+    for i in range(start, end + 1):
+        text = lines[i - 1]
+        if redact_secret_lines:
+            # Строки секретной находки маскируем целиком; остальные строки окна
+            # прогоняем через redact_text, чтобы известные паттерны и
+            # high-entropy-токены (AKIA…, ghp_…) не утекли в соседних строках (T5).
+            if line_start <= i <= line_end:
+                text = REDACTED
+            else:
+                text = redact_text(text)
+        formatted.append(f"{i:>4} │ {text}")
     return CodeWindow(
         file_path=file_path,
         language=_detect_language(file_path),
@@ -191,7 +210,15 @@ class ContextBuilder:
         metadata = _parse_metadata(row.get("metadata_json"))
 
         source = await self._read_source(finding.file_path)
-        window = _build_window(source, finding.file_path, finding.line_start, finding.line_end)
+        # Окно для secret-находок строится с redaction: строки находки — целиком
+        # [REDACTED], остальные строки окна — через redact_text (T5, инвариант №4).
+        window = _build_window(
+            source,
+            finding.file_path,
+            finding.line_start,
+            finding.line_end,
+            redact_secret_lines=finding.category is Category.SECRET,
+        )
 
         sca = _build_sca_data(metadata) if finding.category is Category.SCA else None
 
