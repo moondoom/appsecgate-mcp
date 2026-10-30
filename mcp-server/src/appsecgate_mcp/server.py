@@ -972,6 +972,16 @@ async def verify_fix(finding_id: str, status: str, note: str = "") -> dict[str, 
     """Verify a single finding: rescan the file and match by (logical_id).
 
     status: fixed | not_fixed | wont_fix. ``wont_fix`` requires a note.
+
+    Response contract (T12) — agents MUST read ``verified_status``, not ``status``:
+      - ``status``           — transport status of the operation: "ok" | "error".
+      - ``verified_status``  — canonical verification result:
+        fixed | not_fixed | wont_fix.
+      - ``verified``         — bool: whether ``reported_status`` agrees with the
+        rescan. ``verified=true`` with ``not_fixed`` means "finding is still
+        present and the agent's claim was confirmed" — NOT "fix verified".
+      - ``new_fingerprints`` — fingerprints still matching the same ``logical_id``
+        after the rescan (empty when fixed or wont_fix).
     """
     state = await _ensure_session()
     if state.fix_attempts_store is None or state.shown_store is None:
@@ -999,6 +1009,13 @@ async def verify_fix_batch(attempts: list[dict[str, Any]]) -> dict[str, Any]:
     """Verify up to 20 findings; each file is rescanned once.
 
     attempts: [{"finding_id": str, "status": fixed|not_fixed|wont_fix, "note": str}].
+
+    Response contract (T12) — agents MUST read per-attempt ``verified_status``,
+    not the top-level ``status``:
+      - ``status``  — transport status of the operation: "ok" | "error".
+      - ``results`` — per-attempt outcomes; each item carries ``verified_status``
+        (fixed | not_fixed | wont_fix) and ``verified`` (reported == rescan).
+      - ``summary`` — counts of outcomes keyed by ``verified_status``.
     """
     state = await _ensure_session()
     if state.fix_attempts_store is None or state.shown_store is None:

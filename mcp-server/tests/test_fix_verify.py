@@ -156,6 +156,87 @@ async def test_verify_fix_wont_fix_records_attempt(tmp_path, monkeypatch):
     db.close()
 
 
+async def test_verify_fix_response_contract(tmp_path, monkeypatch):
+    """T12: `status` — транспорт, `verified_status` — результат верификации."""
+    db, _path, shown, attempts = _setup(tmp_path)
+    await shown.record_shown(_finding("fp-1"), logical_id="lid-1")
+
+    class _StubHitCoordinator(_StubCoordinator):
+        async def scan(self, files, mode="file", *, persist=True) -> ScanResult:
+            for f in files:
+                self.scan_calls[f] = self.scan_calls.get(f, 0) + 1
+            return ScanResult(findings=[_finding("fp-1", file_path="a.py")])
+
+    st = _StubState(shown, attempts, db)
+    st.coordinator = _StubHitCoordinator()
+    st.project_path = str(tmp_path)
+
+    async def ensure(project_path=None):
+        return st
+
+    monkeypatch.setattr(server, "_ensure_session", ensure)
+    monkeypatch.setattr(
+        server,
+        "compute_logical_id",
+        lambda rule_id, file_path, line_start, source: "lid-1",
+    )
+
+    out = await server.verify_fix("fp-1", "not_fixed", note="")
+    # Контракт: status = транспорт операции, НЕ результат верификации.
+    assert out["status"] == "ok"
+    assert out["verified_status"] == "not_fixed"
+    assert out["verified"] is True  # reported == verified_status
+    assert out["new_fingerprints"] == ["fp-1"]
+    assert set(out) == {
+        "status",
+        "logical_id",
+        "fingerprint",
+        "reported_status",
+        "verified_status",
+        "verified",
+        "new_fingerprints",
+        "reason",
+    }
+    db.close()
+
+
+async def test_verify_fix_batch_response_contract(tmp_path, monkeypatch):
+    """T12: batch-конверт — результаты в `results[]` + `summary` по verified_status."""
+    db, _path, shown, attempts = _setup(tmp_path)
+    await shown.record_shown(_finding("fp-1"), logical_id="lid-1")
+
+    class _StubHitCoordinator(_StubCoordinator):
+        async def scan(self, files, mode="file", *, persist=True) -> ScanResult:
+            for f in files:
+                self.scan_calls[f] = self.scan_calls.get(f, 0) + 1
+            return ScanResult(findings=[_finding("fp-1", file_path="a.py")])
+
+    st = _StubState(shown, attempts, db)
+    st.coordinator = _StubHitCoordinator()
+    st.project_path = str(tmp_path)
+
+    async def ensure(project_path=None):
+        return st
+
+    monkeypatch.setattr(server, "_ensure_session", ensure)
+    monkeypatch.setattr(
+        server,
+        "compute_logical_id",
+        lambda rule_id, file_path, line_start, source: "lid-1",
+    )
+
+    out = await server.verify_fix_batch(
+        [{"finding_id": "fp-1", "status": "not_fixed", "note": "still there"}]
+    )
+    assert out["status"] == "ok"
+    assert out["summary"] == {"not_fixed": 1}
+    result = out["results"][0]
+    assert result["verified_status"] == "not_fixed"
+    assert result["verified"] is True
+    assert result["reported_status"] == "not_fixed"
+    db.close()
+
+
 async def test_verify_fix_invalid_status(tmp_path, monkeypatch):
     db, _path, shown, attempts = _setup(tmp_path)
     st = _StubState(shown, attempts, db)
