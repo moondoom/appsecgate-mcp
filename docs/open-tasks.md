@@ -318,6 +318,25 @@ normalization/dedup.py}`, `mcp-server/Dockerfile`, `docs/e2e-test-plan.md` §12,
 `docs/adr/ADR-0003-ci-unresolved-local-delivery.md`.
 
 Осталось на будущее (следующие этапы Фазы 2, вне этого PR):
-- Master-сервер и сетевая синхронизация показанного (§9.5).
 - E2E CI-полигон по мотивам T14 (фиктивный PR → блокировка/пропуск).
+
+---
+
+# Фаза 2, этап 2 — Центральный (master) сервер (ADR-0004)
+
+**Дизайн:** [ADR-0004](adr/ADR-0004-master-server-sync.md) (Proposed,
+2026-10-30). MS-1 = принятие ADR (этот пункт). Статусы этапов заполняются по
+мере реализации. Инвариант №2 не пересматривается: сеть — только у
+edge-процесса на хосте, MCP-сервер остаётся `network_mode: none`.
+
+| # | Содержание | Статус |
+|---|---|---|
+| MS-1 | Принятие ADR-0004 + обновление `docs/adr/README.md`, `docs/architecture.md` §8/§9.5 | ✅ решено |
+| MS-2 | Схема master-БД + события/агрегаты/аудит; unit-тесты агрегата (§5.3) | ⬜ не начато |
+| MS-3 | Edge `appsecgate-mcp sync`: экспорт локальных БД → события, outbox, idempotent push (urllib) | ⬜ не начато |
+| MS-4 | Master REST API (FastAPI): `/v1/events|findings|suppressions|config|audit`, `/healthz` | ⬜ не начато |
+| MS-5 | Pull вниз: CI/global suppressions + политики применяются локально (§4.6) | ⬜ не начато |
+| MS-6 | CI-источник: `--shown-source master` в `appsecgate ci`; контрактные тесты | ⬜ не начато |
+| MS-7 | Docker Compose (master + edge), документация развёртывания | ⬜ не начато |
+| MS-8 | DefectDojo/ASOC экспорт (vision §5.2.4) — после MS-7 | ⬜ не начато |
 
