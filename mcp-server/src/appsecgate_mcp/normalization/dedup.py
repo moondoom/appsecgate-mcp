@@ -83,13 +83,31 @@ class Deduplicator:
     """Убирает находки-дубликаты разных сканеров в одном файле."""
 
     def deduplicate(self, findings: list[Finding]) -> list[Finding]:
-        """Уровень 1: ключ — точная пара (file_path, line_start).
+        """Уровень 1: кросс-сканерные дубликаты на одной строке.
 
-        Если два сканера дали находку в одной строке, остаётся находка
-        с большей severity; при равной severity — первая по порядку
-        сканеров-приоритетов.
+        Если два РАЗНЫХ сканера дали находку в одной строке — это, скорее
+        всего, одна проблема (например, секрет от Gitleaks и TruffleHog):
+        остаётся находка с большей severity, при равной — по приоритету
+        сканера/правила (детерминированно, ADR-0001 §3.2).
+
+        Находки одного сканера на одной строке НЕ схлопываем: это разные
+        проблемы (например, все CVE из Trivy в одном lock-файле имеют
+        `line_start=1` — T13). Их «семьи» по телу проблемы склеивает уровень 2
+        (`deduplicate_families`).
         """
-        return self._collapse(findings, key=lambda f: (f.file_path, f.line_start))
+        groups: dict[tuple[str, int], list[Finding]] = {}
+        for f in findings:
+            groups.setdefault((f.file_path, f.line_start), []).append(f)
+
+        result: list[Finding] = []
+        for group in groups.values():
+            if len({f.scanner for f in group}) > 1:
+                # Кросс-сканерный дубликат: выживает лучший в детерминированном порядке.
+                result.append(min(group, key=_stable_sort_key))
+            else:
+                # Один сканер: каждая находка на строке — отдельная проблема (T13).
+                result.extend(sorted(group, key=_stable_sort_key))
+        return result
 
     def deduplicate_families(self, findings: list[Finding]) -> list[Finding]:
         """Уровень 2: ключ — (file_path, окно строк, тело проблемы).

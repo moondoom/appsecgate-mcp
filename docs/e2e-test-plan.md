@@ -99,8 +99,8 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
    `test_scan_dedups_same_secret_across_scanners`).
 2. Ожидание: два правила Gitleaks (`github-pat`, `generic-api-key`) на **одной
    строке** (один и тот же секрет) — **одна** находка в ответе скана, не две
-   (дедуп уровня 1 по `(file_path, line_start)`; «семьи» уровня 2 склеивают
-   по `(file, window//20, тело)`).
+   (уровень 1 схлопывает только дубликаты РАЗНЫХ сканеров; «семьи» одного
+   сканера по-прежнему склеивает уровень 2 по `(file, window//20, тело)` — T13).
 3. Подтверждено E2E: `scan_file secrets.py` → total=1 (`github-pat`).
 
 Проверка семантики дедупа:

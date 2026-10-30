@@ -161,3 +161,27 @@ async def test_scan_fingerprints_stable_across_runs(default_config):
     assert run_a.findings[0].fingerprint == run_b.findings[0].fingerprint
     assert run_a.findings[0].rule_id == "github-pat"
     assert run_b.findings[0].rule_id == "github-pat"
+
+
+@pytest.mark.asyncio
+async def test_scan_keeps_all_cves_from_single_lockfile(default_config):
+    """Регрессия T13: все CVE Trivy в requirements.txt (line_start=1 у всех,
+    без сниппета) видны как отдельные находки, а не схлопываются в top-1."""
+    cves = [
+        rf(
+            scanner="trivy",
+            rule_id=f"CVE-{i}",
+            raw_severity="high",
+            file_path="requirements.txt",
+            line_start=1,
+            snippet="",
+            category=Category.SCA,
+        )
+        for i in range(19)
+    ]
+    registry = ScannerRegistry()
+    registry.register(FakeScanner(cves, scanner_name="trivy"))
+    coord = ScanCoordinator(default_config, registry)
+    result = await coord.scan(["requirements.txt"], mode="file")
+    assert result.total == 19
+    assert {f.rule_id for f in result.findings} == {f"CVE-{i}" for i in range(19)}

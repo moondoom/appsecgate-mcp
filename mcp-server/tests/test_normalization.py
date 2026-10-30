@@ -69,9 +69,32 @@ class TestDeduplicator:
         assert dedup.deduplicate([gl, th])[0].fingerprint == "gl"
         assert dedup.deduplicate([th, gl])[0].fingerprint == "gl"
 
+    def test_same_scanner_same_line_findings_kept(self):
+        """Регрессия T13: несколько CVE Trivy в одном lock-файле (line_start=1
+        у всех) — разные проблемы одного сканера, уровень 1 их не схлопывает."""
+        a = make_finding(
+            scanner="trivy",
+            rule_id="CVE-2024-0001",
+            line_start=1,
+            category=Category.SCA,
+            fingerprint="fp-cve-1",
+        )
+        b = make_finding(
+            scanner="trivy",
+            rule_id="CVE-2024-0002",
+            line_start=1,
+            category=Category.SCA,
+            fingerprint="fp-cve-2",
+        )
+        result = Deduplicator().deduplicate([a, b])
+        assert len(result) == 2
+        assert {f.rule_id for f in result} == {"CVE-2024-0001", "CVE-2024-0002"}
+
     def test_rule_priority_independent_of_input_order(self):
-        """Регрессия T10 (B1/OBS-5): github-pat и generic-api-key на одной
-        строке → всегда github-pat, независимо от порядка raw-находок."""
+        """Регрессия T10 (B1/OBS-5): github-pat и generic-api-key — один и тот же
+        секрет из одного сканера. Уровень 1 их сохраняет (разные правила на
+        одной строке — разные находки), уровень 2 (семьи) схлопывает по значению
+        секрета → всегда github-pat, независимо от порядка raw-находок."""
         specific = make_finding(
             scanner="gitleaks",
             rule_id="github-pat",
@@ -93,8 +116,12 @@ class TestDeduplicator:
             metadata={"Secret": "ghp_12345"},
         )
         dedup = Deduplicator()
-        forward = dedup.deduplicate([specific, generic])
-        backward = dedup.deduplicate([generic, specific])
+
+        def run(pair):
+            return dedup.deduplicate_families(dedup.deduplicate(pair))
+
+        forward = run([specific, generic])
+        backward = run([generic, specific])
         assert [f.fingerprint for f in forward] == ["fp-specific"]
         assert [f.fingerprint for f in backward] == ["fp-specific"]
         assert forward[0].rule_id == "github-pat"
