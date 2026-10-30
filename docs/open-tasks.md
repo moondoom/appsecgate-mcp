@@ -4,7 +4,9 @@
 Каждая задача — отдельный этап/PR. Перед реализацией — Plan-мод
 (см. AGENTS.md, «Workflow: Plan vs Act»).
 
-**Обновление 2026-10-30:** T10 решена (см. статус под задачей).
+**Обновление 2026-10-30 (решения владельца):** T5, T7, T9, T11, T15
+решены (см. статусы под задачами); T8 отложена — нужно больше контекста
+для решения (announce-семантика scan_project зафиксирована как есть).
 
 **Обновление 2026-10-13:** T1, T2, T3 решены (см. статус под каждой
 задачей). T4 снята по решению владельца — новых правил не добавляем,
@@ -73,21 +75,16 @@ verify_fix (not_fixed), suppress + rescan, feedback, history, export_snapshot,
   (цель < 512 MiB); SQLite после цикла — строки/размеры в отчёте §4.
 - 290 юнит-тестов остаются зелёными (`make check`).
 
-## T5. Redaction gap: `get_fix_context` window содержит сырые секреты (новое)
+## T5. Redaction gap: `get_fix_context` window содержит сырые секреты (решена ✅)
 
-**Статус:** открыта (по итогам E2E, OBS-1).
-
-`get_fix_context` возвращает snippet как `[REDACTED]`, но `window.lines`
-(окно кода, строится из живого исходника) содержит сырые значения секретов
-(`AKIA…`, `wJalr…`, `ghp_…` — подтверждено на полигоне). Инструкция `ContextPack`
-«не восстанавливать redacted-значения» расходится с содержимым окна.
-
-Варианты решения (на выбор владельца):
-1. Маскировать в окне строки, где сработал секретный детект (или все строки
-   secret-находки `line_start..line_end`).
-2. Явно задокументировать, что окно кода — сырой проект (агент и так имеет
-   доступ к ФС), и убрать инструкцию про redaction из окна.
-Файлы: `orchestration/context_builder.py` (`_build_window`), `models/context.py`.
+**Статус:** решена (2026-10-30). Выбран вариант 1: для secret-находок
+`_build_window` маскирует строки `line_start..line_end` целиком как
+`[REDACTED]`, остальные строки окна прогоняет через `redact_text`
+(известные паттерны и high-entropy-токены — `AKIA…`, `wJalr…`, `ghp_…` —
+не утекают и в соседних строках). Для не-secret-категорий окно остаётся
+сырым кодом проекта (агент и так имеет доступ к ФС).
+Файлы: `orchestration/context_builder.py`; тест
+`test_context_builder_redacts_secret_window` (`tests/test_context_and_query.py`).
 
 ## T6. `update_config` не отклоняет неизвестные поля (закрыта)
 
@@ -111,66 +108,46 @@ Pydantic v2 `extra=ignore` (в `Config` нет `extra="forbid"`), поле ти�
 зелёные; `config/default.yaml`, `examples/` и фикстурные конфиги схеме
 соответствуют (проверено).
 
-## T7. Скоп suppression: глобальный по fingerprint или проектный? (вопрос)
+## T7. Скоп suppression: глобальный по fingerprint или проектный? (решена ✅)
 
-**Статус:** открыт вопрос (по итогам E2E, OBS-2).
+**Статус:** решена (2026-10-30). Решение владельца: **нужен `project_id`.**
+`suppressions` получает проектную ось — PK становится
+`(project_id, fingerprint)`; `SuppressionStore` несёт `project_id`
+(как `ShownFindingsStore`); `create/get/delete/list_all/is_suppressed/
+filter_active` фильтруют по проекту. Старая схема без `project_id`
+пересоздаётся (No-migration). Одинаковый fingerprint в разных проектах
+подавляется независимо.
+Файлы: `storage/stores/suppression.py`, `server/session.py`; тесты
+`tests/test_suppressions.py`.
 
-`suppressions.fingerprint` — PK без `project_id`; `filter_active` фильтрует
-находки ВСЕХ проектов/сессий по fingerprint. Один и тот же код (одинаковый
-fingerprint) в другом проекте подавляется автоматически. Семантически это
-«одна и та же проблема», но для мультипроектной установки нужно подтверждение:
-- если дизайн «глобально» — задокументировать (это не баг);
-- если «по проекту» — добавить `project_id` в `suppressions` и фильтр.
-Артефактный эффект: E2E-параллельные сессии влияли друг на друга (см. plan §7).
+## T8. `scan_project`: announce-only, но persist пишет в shown_findings (отложена)
 
-## T8. `scan_project`: announce-only, но persist пишет в shown_findings (вопрос)
+**Статус:** отложена (2026-10-30, решение владельца). Нужно больше контекста
+для принятия решения. Текущая семантика зафиксирована как есть:
+`scan_project` отвечает announce-форматом и пишет находки в `shown_findings`
+(статус SHOWN) — так работает сейчас; вопрос переносится за рамки Фазы 1.
 
-**Статус:** открыт вопрос (по итогам E2E, OBS-4).
+## T9. `project_id` в Docker не зависит от проекта (решена ✅, P0)
 
-`server.scan_project` вызывает `coordinator.scan([rel], mode="project")` без
-`persist=False` — находки пишутся в shown_findings (статус SHOWN), хотя
-комментарий и arch §4.3 декларируют «announce-only, без записи». Ответ остаётся
-announce-форматом. Проверить намерение: если announce-only — передавать
-`persist=False`; если запись разрешена — исправить комментарий/спеку.
+**Статус:** решена (2026-10-30). Решение владельца: **используем переданный
+алиас либо определяем его через git** (вариант А + Б). Новый приоритет в
+`_resolve_project_identity`:
 
-## T9. `project_id` в Docker не зависит от проекта (P0, вопрос владельцу)
+1. явный `project_id` (`APPSECGATE_PROJECT_ID` / `--project-id`) — как есть;
+2. явный alias (`APPSECGATE_PROJECT_ALIAS` / `--project-alias`) →
+   `project_id = sha256('alias:' + alias)[:16]`;
+3. имя git-репозитория (`.git/config`, `origin` URL → последний компонент;
+   иначе имя каталога `.git`) → `project_id = sha256('git:' + имя)[:16]`;
+   `.git` ищется вверх по дереву — работает и для bind-mount `.:/workspace:ro`;
+4. фолбэк: `sha256(realpath(project_path))[:16]` (прежнее поведение).
 
-**Статус:** открыта критическая (по итогам E2E; см. также T7).
+`project_alias` в Docker теперь = имя host-репозитория, а не `workspace`.
+Инвариант №6 (фиксация project_id в сессии) сохранён.
 
-**Механизм.** `project_id = sha256(realpath(project_path))[:16]`
-(`docs/architecture.md`, принципы). Но реальный host-проект в сервер
-**не передаётся** нигде по пути запуска:
-
-- `docker-compose.yml` (docker-run.sh / compose MCP): env
-  `APPSECGATE_PROJECT_PATH=/workspace` зашит жёстко; bind-mount
-  `.:/workspace:ro` кладёт ЛЮБОЙ host-проект в один контейнерный путь.
-- Конфиги в `docs/deploy-agents.md`: те же
-  `-v .:/workspace:ro` + `--project /workspace`.
-- `_resolve_default_project()` в `server.py` тоже отдаёт `/workspace`
-  раньше, чем cwd.
-
-**Следствия (эмпирически подтверждены в E2E):**
-1. Два разных host-проекта, смонтированных в `/workspace` при общем
-   volume `appsecgate-data`, получают **один и тот же** `project_id`
-   (= `sha256("/workspace")[:16]`) → проектные записи, context, snapshot,
-   suppressions перемешиваются между несвязанными проектами.
-2. Один и тот же host-проект на двух машинах/в двух путях монтирования
-   получает **разные** `project_id` → история верификаций и suppressions
-   «теряется» между средами (непериодичность).
-3. `project_alias` = basename = всегда `workspace` — бесполезен.
-4. E2E-харнесс обходит баг: монтирует параллельные проекты в разные
-   `mount_path` (`/workspace` vs `/workspace-b`) и свежие data-volume.
-
-**Варианты решения (нужно решение владельца + правка §4.10):**
-- А) Передавать идентичность явно: `--project-alias`/`APPSECGATE_PROJECT_ID`
-  или `<project_name>` на старте; клиент (Continue/Cline) знает реальное имя.
-- Б) Считать из содержимого смонтированного проекта: имя git-репозитория
-  (`.git/config`) или хэш от него — детерминированно, без env.
-- В) Оставить «один контейнер = один проект»: требовать для каждого
-  проекта отдельный data-volume и/или key; задокументировать ограничение.
-Файлы: `server.py` (`_compute_project_id`/`_resolve_default_project`),
-`docker-compose.yml`, `scripts/e2e_measure/client.py` (`_docker_args`),
-`docs/deploy-agents.md`, `docs/architecture.md`.
+Файлы: `server/session.py` (`_resolve_project_identity`, `_git_identity`,
+`_find_git_dir`, `_repo_name_from_git_url`), `server/cli.py`
+(`--project-id`/`--project-alias`), тесты `tests/test_project_identity.py`,
+документация `docs/deploy-agents.md`, `docs/architecture.md` §1.
 
 ## T10. Недетерминированный дедуп → нестабильные fingerprint (P0, B1/OBS-5)
 
@@ -205,23 +182,24 @@ cортировка raw-находок перед `_collapse()` по стаби�
 правил Gitleaks (github-pat > generic-api-key). Регресс-тест: два скана
 одного файла → идентичный набор fingerprint. Затем перепроверить B2.
 
-## T11. `update_config` пишет в проект: конфликт с `:ro` и инвариантом №1 (P1, A2/D3)
+## T11. `update_config` пишет в проект: конфликт с `:ro` и инвариантом №1 (решена ✅, P1)
 
-**Статус:** открыта (по итогам E2E).
+**Статус:** решена (2026-10-30). Решение владельца: **проверяем запись и даём
+рекомендацию, что пользователь может поменять настройки самостоятельно** —
+агент не должен подумать, что это проблема. В каноническом деплое (проект
+`:ro`) `update_config` НЕ пишет в проект (инвариант №1) и возвращает
+не-ошибку:
 
-`update_config` вызывает `_atomic_write` в `.appsecgate-mcp/config.yaml`
-**внутри проекта** (дизайн §3.5). Локально работает. В каноническом
-Docker-деплое проект смонтирован `:ro` (`docker-compose.yml`,
-`docs/deploy-agents.md`) → запись упадёт с ошибкой ФС, а
-если маунт случайно `rw` — это нарушение инварианта №1 («сервер НЕ пишет
-файлы проекта. Никогда»).
+- `status: readonly` + `applied: false` + `config_path`;
+- `reason`: «project is mounted read-only … expected in the canonical Docker
+  deployment, not an error»;
+- `how_to_change`: изменить настройки может пользователь — отредактировать
+  `.appsecgate-mcp/config.yaml` в host-проекте, смонтировать проект `rw`
+  (только для локального dev-запуска) или задать `APPSECGATE_*` env.
 
-**Варианты (вопрос владельцу):**
-- А) Конфиг пишется в data-volume (вне проекта), проект остаётся `:ro`.
-- Б) Задокументировать: `update_config` работает только при rw-монтаже
-  проекта (local/dev); в Docker вернуть явную ошибку «read-only project».
-- В) Отказаться от записи в проект: конфиг передаётся только через
-  env/файл монтирования, `update_config` отклоняет запись.
+Проверка — `os.access(project_path, W_OK)` (без реальной записи в проект).
+На rw-проектах поведение не меняется (валидация → атомарная запись → reload).
+Файлы: `server/tools/config.py`; тест `test_update_config_readonly_returns_recommendation`.
 
 ## T12. `verify_fix`: двойная семантика `status` и `verified_status` (закрыта)
 
@@ -298,13 +276,20 @@ E2E-харнесс (`scripts/e2e_measure/`) читает `verified_status` с 20
 normalization/dedup.py}`, `mcp-server/Dockerfile`, `docs/e2e-test-plan.md` §12,
 `docs/reports/e2e-report-2026-10-30.md`.
 
-## T15. UX: `rule_id` до 130 символов нечитаем в сводках (низкий, C3)
+## T15. UX: `rule_id` до 130 символов нечитаем в сводках (решена ✅, низкий, C3)
 
-**Статус:** открыта (низкий приоритет, polish).
+**Статус:** решена (2026-10-30).
 
-`rule_id` вида `opengrep.rb.gems.security.rule-…` длиной до 130 символов
-раздувает `top_findings` и ContextPack и плохо читается агентами. Решение:
-короткое человекочитаемое имя (`rule_id` → short name) в сводках при
-сохранении полного `rule_id/permalink` в машиночитаемых полях. Файлы:
-`models/finding.py`, `server.py` (`_build_scan_output`), спека §4.4.
+Короткое человекочитаемое имя (`Finding.short_rule_id()` — последний сегмент
+`rule_id` после последней точки: `opengrep.rb.gems.security.rule-…` →
+`rule-…`) добавлено в сводки при сохранении полного `rule_id` в
+машиночитаемых полях:
+
+- `_build_scan_output` — каждая находка получает доп. поле `"rule"` (полный
+  `rule_id` остаётся в `model_dump`);
+- `_build_announce_output` — `top_findings` получают `"rule"`.
+
+Файлы: `models/finding.py`, `server/output.py`; тесты
+`test_build_scan_output_carries_short_rule_id` и обновлённый
+`test_build_announce_output` (`tests/test_context_and_query.py`).
 

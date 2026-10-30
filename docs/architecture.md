@@ -406,6 +406,23 @@ class ConfigLoader:
         return Config.model_validate(merged)
 ```
 
+**`update_config` в каноническом деплое (T11):** проект смонтирован `:ro`,
+сервер НЕ пишет в него (инвариант №1). `update_config` сначала проверяет
+доступность записи (`os.access(project_path, W_OK)`) и на `:ro`-проекте
+возвращает **не-ошибку** `status: readonly` с рекомендацией агенту: изменение
+не применено; настройки может изменить пользователь (править
+`.appsecgate-mcp/config.yaml` в host-проекте, смонтировать проект `rw` для
+локального dev или задать `APPSECGATE_*` env). На rw-проекте поведение
+прежнее: валидация схемы → атомарная запись → переинициализация сессии.
+
+**Проектная идентичность (T9):** `project_id`/`project_alias` определяются с
+приоритетом: явный `project_id`/alias (`APPSECGATE_PROJECT_ID` /
+`APPSECGATE_PROJECT_ALIAS`, `--project-id` / `--project-alias`) → имя
+git-репозитория (`.git/config`, `origin` URL; ищется вверх по дереву —
+работает для bind-mount `.:/workspace:ro`) → фолбэк
+`sha256(realpath(project_path))[:16]`. Это даёт стабильный идентификатор
+проекта в Docker независимо от контейнерного пути.
+
 ---
 
 ## 4. Потоки данных

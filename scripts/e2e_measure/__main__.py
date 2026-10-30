@@ -44,10 +44,11 @@ def main() -> None:
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             project_path=resolved,
         )
-        # Свежий data volume на каждый прогон: shown_findings.db/suppressions живут
-        # там, и без изоляции suppression по fingerprint (SuppressionStore, PK без
-        # project_id) переживает прогоны и искажает следующие. Кэш-волум (контентно-
-        # адресуемый) шарим — это безопасно.
+        # Свежий data volume на каждый прогон: shown_findings.db живёт там,
+        # и чистая история (SHOWN/верификации) между прогонами важнее, чем
+        # переиспользование. Suppressions после T7 изолированы по project_id,
+        # но показанная история остаётся общей для проекта. Кэш-волум
+        # (контентно-адресуемый) шарим — это безопасно.
         data_volume = f"appsecgate-data-e2e-{uuid.uuid4().hex[:12]}"
         try:
             subprocess_run(
@@ -58,10 +59,10 @@ def main() -> None:
             raise
 
         try:
-            # Параллельные сессии запускаем ДО основного прогона: вызванное в нём
-            # suppress_finding хранится по fingerprint БЕЗ project_id (SuppressionStore),
-            # т.е. глобально. Если бы параллельный скан шёл после, находка с тем же
-            # fingerprint в other-project была бы подавлена — ложное «0 находок».
+            # Параллельные сессии запускаем ДО основного прогона: после T7
+            # suppressions изолированы по project_id (SuppressionStore), но
+            # показанная история (SHOWN) у other-project должна быть чистой на
+            # старте — поэтому параллельный скан идёт раньше мутаций funnel.
             if other_resolved and not args.skip_parallel:
                 logger.info("=" * 60)
                 logger.info("E2E: parallel sessions (before mutations)")
@@ -74,9 +75,10 @@ def main() -> None:
             funnel = await run_e2e_session(resolved, data_volume)
             report.results.extend(funnel.results)
             # T14 iteration-2: verify fixed/wont_fix, staged-diff (B5), память (E1).
-            # Свежий volume: suppression по fingerprint глобален (OBS-2) — после
-            # suppress_finding из funnel-прогона находки в temp-копиях полигона
-            # (тот же контент → тот же fingerprint) оказались бы подавлены.
+            # Свежий volume: после T7 suppressions изолированы по project_id,
+            # но чистая история SHOWN нужна для verify-сценариев — находки из
+            # funnel-прогона (тот же контент → тот же fingerprint) не должны
+            # считаться «уже показанными».
             t14_volume = f"appsecgate-data-e2e-t14-{uuid.uuid4().hex[:12]}"
             subprocess_run(
                 ["docker", "volume", "create", t14_volume], check=True, capture_output=True

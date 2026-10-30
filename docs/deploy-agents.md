@@ -33,9 +33,23 @@ and configs therefore use `appsecgate` verbatim.
   (Rules Bundle), the server is fully offline.
 - For local (Docker-free) development: `uv run appsecgate-mcp`.
 
+### Project identity (T9)
+
+`project_id` is stable across sessions and environments:
+
+- if the project is a git repository, the identity is derived from its name
+  (`origin` URL, or the directory name) — no configuration needed, works with
+  the `.:/workspace:ro` mount;
+- to override it explicitly, pass `--project-alias <name>` (or
+  `--project-id <id>`); the same flags are available as
+  `APPSECGATE_PROJECT_ALIAS` / `APPSECGATE_PROJECT_ID` env vars.
+
 ## 3. Common config block
 
-All client examples share the same Docker command:
+All client examples share the same Docker command. **Optionally** add
+`--project-alias <repo-name>` so that different host repositories mapped to
+`/workspace` keep independent `project_id` values even when they share the
+`appsecgate-data` volume:
 
 ```yaml
 # Shared block (identical for every client)
@@ -230,6 +244,7 @@ should present the "issue name" using `rule_id` + `message`.
 |---------------|---------|--------|
 | `finding_id` | finding identifier for `get_fix_context`/`verify_fix`; **equals `fingerprint`** | `9f3a2c88d1b0e4aa` |
 | `rule_id` | scanner rule name — the "issue name" (nomenclature varies per scanner) | `aws-access-token` |
+| `rule` | short human-readable rule name (last segment of `rule_id`, T15); present in scan summaries alongside the full `rule_id` | `aws-access-token` |
 | `message` | human-readable description from the scanner | `AWS Access Key detected` |
 | `severity` | `critical` / `high` / `medium` / `low` / `info` | `high` |
 | `category` | `sast` / `secret` / `sca` / `iac` | `secret` |
@@ -253,6 +268,10 @@ Agent recommendation: in summary responses, refer to the issue as
    of findings; `meta.errors` is empty.
 5. `query_findings_db` for `project_id` — records appear after scan
    (`shown_findings`).
+6. `update_config` on a `:ro` mount returns `status: readonly` with a
+   recommendation — this is **not an error**. The change is not applied;
+   settings can be changed by the user (edit `.appsecgate-mcp/config.yaml` in
+   the host project or set `APPSECGATE_*` env vars).
 
 ## 7. Troubleshooting
 
@@ -265,3 +284,4 @@ Agent recommendation: in summary responses, refer to the issue as
 | `scan_file` returned empty `findings` | Rules did not resolve (offline, Rules Bundle empty) | Check `meta.warnings` and `ruleset_hash`; verify the bundle is in the image |
 | `meta.errors` is non-empty | Scanner binary unavailable (semgrep/gitleaks/trivy) | Check the image: `docker run --rm moondoom/appsecgate-mcp semgrep --version` |
 | `project_id mismatch` error | `project_path` changed within the same session | New project = new session (invariant #6) |
+| `update_config` returns `status: readonly` | Project is mounted `:ro` (canonical Docker) — not an error | The change is not applied. Ask the user to edit `.appsecgate-mcp/config.yaml` on the host, mount the project `rw` for local dev, or set `APPSECGATE_*` env vars |
