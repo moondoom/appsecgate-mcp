@@ -5,7 +5,7 @@
 (`docs/reports/e2e-report-2026-10-30.md`, T14):
 staged-diff (B5), verify_fix=fixed/wont_fix, IaC-фикстура (D4), память (E1),
 перепроверка B2 после фикса T10, фикстуры в git (E4).
-Есть 290 юнит/интеграционных тестов (мок-сканеры, tmp-SQLite); E2E на
+Есть 310 юнит/интеграционных тестов (мок-сканеры, tmp-SQLite); E2E на
 реальном проекте и реальных бинарниках здесь не покрывался.
 
 Цель: пройти весь цикл воронки §7.3 — scan → context → fix → verify — на
@@ -127,7 +127,7 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ## 6. Нефункциональные измерения (§6.2)
 
-Замеры выполняются по ходу E2E-прогона (`scripts/e2e_measure.py`):
+Замеры выполняются по ходу E2E-прогона (`scripts/e2e_measure/`):
 - Длительность `scan_project` берётся из `meta.duration_ms` ответа скана.
 - Пиковая память — семплинг `docker stats --no-stream` по контейнерам образа
   во время прогона (0.1 c шаг).
@@ -176,7 +176,7 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ## 9. Организация
 
-- Прогон выполняется через `scripts/e2e_measure.py` (автоматизация; MCP-клиент
+- Прогон выполняется через `scripts/e2e_measure/` (автоматизация; MCP-клиент
   поднимает контейнеры в stdio-режиме).
 - Ручные сценарии (§3.4–3.5 — `update_config` локально; §4.3 — контекст-пакет).
 - Результаты зафиксированы в `docs/reports/e2e-report-2026-10-30.md`.
@@ -207,7 +207,7 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 ## 11. Инструментарий
 
-- **Автоматический:** `scripts/e2e_measure.py` — полный цикл воронки
+- **Автоматический:** `scripts/e2e_measure/` — полный цикл воронки
   (`scan_file`/`scan_diff`/`scan_project`, `query_findings_db`, `get_fix_context`
   + batch, `verify_fix`, `suppress_finding`, `submit_feedback`,
   `get_scan_history`, `export_snapshot`), NF-замеры (§6), параллельные сессии
@@ -217,7 +217,7 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 - Результаты — в `docs/E2E-report-<дата>.md`.
 ## 12. Итерация 2 (T14, 2026-10-30): добавленные сценарии
 
-Новые шаги `scripts/e2e_measure.py` (общие: временная копия полигона через
+Новые шаги `scripts/e2e_measure/` (общие: временная копия полигона через
 `tempfile`, свежий data volume — suppression по fingerprint глобален, OBS-2):
 
 1. **B5 — staged/unstaged/untracked/clean/регрессия** (`run_git_diff_scenarios`):

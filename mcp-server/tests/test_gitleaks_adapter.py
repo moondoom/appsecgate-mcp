@@ -78,7 +78,7 @@ def test_parse_carries_secret_for_family_dedup(tmp_path: Path) -> None:
                 "File": "secrets.py",
                 "StartLine": 14,
                 "Secret": "ghp_0123456789abcdef0123456789abcdef0123456789",
-                "Match": "GITHUB_TOKEN = \"ghp_0123456789abcdef0123456789abcdef0123456789\"",
+                "Match": 'GITHUB_TOKEN = "ghp_0123456789abcdef0123456789abcdef0123456789"',
             },
             {
                 "RuleID": "generic-api-key",

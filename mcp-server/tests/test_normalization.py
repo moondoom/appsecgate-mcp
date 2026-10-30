@@ -222,7 +222,7 @@ class TestDeduplicatorFamilies:
             category=Category.SECRET,
             line_start=5,
             fingerprint="fp-pat",
-            snippet=f"token = \"{full}\"",
+            snippet=f'token = "{full}"',
             metadata={"Secret": truncated},
         )
         generic = make_finding(
@@ -231,7 +231,7 @@ class TestDeduplicatorFamilies:
             category=Category.SECRET,
             line_start=5,
             fingerprint="fp-generic",
-            snippet=f"token = \"{full}\"",
+            snippet=f'token = "{full}"',
             metadata={"Secret": full},
         )
         result = Deduplicator().deduplicate_families([pat, generic])

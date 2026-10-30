@@ -32,7 +32,7 @@
 ## Reference
 
 - [Architecture](docs/architecture.md)
-- [Phase 1 design spec](docs/fix-workflow-design.md)
+- [E2E test plan](docs/e2e-test-plan.md)
 - [Configuration reference](README.md#configuration)
 
 ## License

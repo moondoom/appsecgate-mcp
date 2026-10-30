@@ -193,8 +193,8 @@ AppSecGate и русская error-строка — поверх английс�
 ## 8. Ссылки
 
 - `AGENTS.md` — инварианты, Definition of Done.
-- `docs/fix-workflow-design.md` — спецификация Фазы 1 (§5 — MCP-тулы,
-  §8.4 — English instructions).
+- `docs/architecture.md` — архитектура; `README.md` — MCP-тулы
+  (§ «MCP tools (14)») и English instructions.
 - `docs/adr/ADR-0001-fingerprint-and-semantic-dedup.md` — формат ADR.
 - Внешние: `harness/metrics.py`, `harness/scenarios.py`, coding-tools MCP.
 

@@ -435,6 +435,6 @@ WHERE last_seen_at < :now - :ttl_days
 
 * `architecture.md` §3.4 (Normalization), §9.1 (Fingerprint)
 * `open-tasks.md` T1, T7, T10, T13, T14
-* `docs/fix-workflow-design.md` §4.10 (project_id)
+* `docs/architecture.md` (Storage Layer) + `server.py::_compute_project_id` (project_id)
 * `docs/reports/e2e-report-2026-10-30.md` (B2 recheck, итерация 2)
 * `docs/open-tasks.md` T10 (OBS-5/B1)

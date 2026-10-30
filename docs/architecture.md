@@ -559,7 +559,7 @@ services:
 - ✅ Параллельный запуск сканеров
 - ✅ Нормализация + fingerprint
 - ✅ Три SQLite-базы
-- ❌ Auto-fix (не реализовано — фикс генерирует AI-агент своей LLM, см. fix-workflow-design §4.2)
+- ❌ Auto-fix (не реализовано — фикс генерирует AI-агент своей LLM; сервер не вызывает LLM, инвариант №3)
 - ✅ Хуки `SessionStart`, `PreToolUse`, `PostToolUse`
 - ✅ Офлайн-режим
 - ✅ Конфигурация через `config.yaml`

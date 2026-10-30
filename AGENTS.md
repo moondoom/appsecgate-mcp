@@ -6,20 +6,24 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 Сервер находит, хранит, трекает и верифицирует находки.
 Фикс генерирует и применяет AI-агент своей LLM — сервер этого НЕ делает.
 
-Полная спецификация: `docs/fix-workflow-design.md`.
-Перед любым изменением — прочитать соответствующий раздел спеки.
+Полная архитектура: `docs/architecture.md`. Открытые задачи: `docs/open-tasks.md`.
+Перед любым изменением — прочитать соответствующий раздел документации.
 
 ## Project Map
 - `mcp-server/src/` — код MCP-сервера (тулы, хуки, сканеры)
-- `mcp-server/src/appsecgate_mcp/server.py` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
+- `mcp-server/src/appsecgate_mcp/server/` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
   `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`,
   `query_findings_db`, `export_snapshot`, `get_config`, `update_config`,
-  `submit_feedback`, `get_scan_history`, `suppress_finding`)
+  `submit_feedback`, `get_scan_history`, `suppress_finding`; сессия — `session.py`,
+  регистрация тулов — `tools/`, точка входа — `cli.py`). Публичный API реэкспортируется
+  из `server.py` (модуль-фасад) — импорты вида `from appsecgate_mcp.server import mcp`
+  остаются валидными.
 - `mcp-server/src/appsecgate_mcp/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
-- `mcp-server/src/appsecgate_mcp/storage/` — SQLite-схема, views, миграции (их нет)
-- `mcp-server/tests/` — 283 теста, все должны быть зелёными
+- `mcp-server/src/appsecgate_mcp/storage/` — SQLite-схема, views; store-классы в
+  подмодулях `storage/stores/` (по классу на модуль)
+- `mcp-server/tests/` — 310 тестов, все должны быть зелёными
 - `config/default.yaml` — дефолтная конфигурация
-- `docs/` — спецификация и архитектурные решения
+- `docs/` — архитектура, ADR, открытые задачи, отчёты
 
 ## Glossary
 - **Finding** — одна находка сканера (rule_id + file + snippet)
@@ -48,7 +52,8 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `ruff`: line-length 100, select E/F/I/W/UP/B.
 - `pytest`: `asyncio_mode=auto`.
 - Сканеры запускаются только через `subprocess` без shell (`scanners/runner.py`).
-- Store-классы в `storage/stores.py`, доступ к SQLite только через `storage/db.py`.
+- Store-классы в `storage/stores/` (по классу на модуль), доступ к SQLite
+  только через `storage/db.py`.
 - Все пути в ответах и fingerprint относительные от корня проекта, с прямыми слэшами.
 - Конфиг `update_config` сначала валидируется, потом пишется атомарно (`_atomic_write`), при сбое откатывается.
 
@@ -83,11 +88,27 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
-283 теста должны оставаться зелёными.
+310 тестов должны оставаться зелёными.
 Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
+## File Size Limits
+Ограничения на размер текстовых файлов репозитория (контролируются тестом
+`mcp-server/tests/test_file_size_limits.py`, `make check`):
+
+| Категория | Лимит | Исключения |
+|-----------|-------|-----------|
+| Python (`.py`) | ≤ 400 строк **и** ≤ 20 КБ | — |
+| Документация (`.md`/`.html`/`.txt`) | ≤ 500 строк **и** ≤ 40 КБ | `docs/product-vision.md` (исторический артефакт), `docs/architecture.md` (живой справочник) |
+| `AGENTS.md` | ≤ 200 строк | — |
+| Жёсткий потолок (все текстовые файлы) | ≤ 1500 строк **и** ≤ 60 КБ | — |
+
+Превысил лимит — **разбей на модули**, а не отключай проверку. Исключение можно
+добавить только для файла, который нецелесообразно дробить (исторический артефакт,
+живой справочник), и только с комментарием-обоснованием в тесте.
+
+
 ## Rules
-- Один PR = один этап из роадмапа спеки (§8).
+- Один PR = один этап из роадмапа (см. `docs/open-tasks.md` и `docs/architecture.md` §8).
 - Не менять сигнатуры существующих MCP-тулов без явного указания.
 - Не удалять таблицы `shown_findings`, `suppressions`, `feedback`.
 - Не добавлять поля в `Config` без явного указания — `update_config`
@@ -97,7 +118,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 - Не вызывать `subprocess` с `shell=True`.
 - Не писать в `/tmp` файлы > 10 МБ (tmpfs 100M).
 - Не логировать промпты или сырые секреты.
-- Не «улучшать» схему БД — только пересоздание по спеке.
+- Не «улучшать» схему БД — только пересоздание по `docs/architecture.md`.
 - Не рефакторить то, что не просили.
 - Не добавлять `try/except` вокруг инвариантов «на всякий случай».
 
@@ -113,28 +134,28 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 ## Definition of Done
 Задача завершена, когда:
 1. `make check` зелёный.
-2. Все 283 теста + новые (если добавлены) проходят.
-3. Изменения соответствуют одному этапу спеки (§8).
+2. Все 310 тестов + новые (если добавлены) проходят.
+3. Изменения соответствуют одному этапу роадмапа (`docs/open-tasks.md`).
 4. Не нарушен ни один инвариант.
 5. Нет новых production-зависимостей.
 
 Если хоть один пункт не выполнен — задача НЕ завершена.
 
 ## Common tasks
-- **Добавить MCP-тул** → `mcp-server/src/server.py` (`@mcp.tool`), тест,
-  обновление спеки §5.
+- **Добавить MCP-тул** → `mcp-server/src/appsecgate_mcp/server/tools/` (`@mcp.tool`),
+  тест, обновление README.md (раздел «MCP tools (14)»).
 - **Добавить сканер** → `mcp-server/src/scanners/`, обёртка, тест с моком.
 - **Пофиксить тест** → сначала понять, ПОЧЕМУ упал. Если код прав —
   тест обновляется. Если тест прав — код фиксится. Не наоборот.
-- **Обновить спеку** → `docs/fix-workflow-design.md`, версия в шапке,
-  запись в списке изменений.
+- **Обновить документацию** → README.md / `docs/architecture.md` /
+  `docs/open-tasks.md`; архитектурные решения — `docs/adr/`.
 
 ## When to stop and ask
 - Задача требует нарушить инвариант.
 - Тест падает, и непонятно, кто прав — код или тест.
 - Задача требует новой production-зависимости.
 - Задача выходит за рамки одного этапа роадмапа.
-- Неясно, к какому разделу спеки относится изменение.
+- Неясно, к какому разделу документации относится изменение.
 - Открытые задачи проекта — в отдельном файле `docs/open-tasks.md`, не в AGENTS.md.
 
 ## Agent File Access (Cline / AI agents)

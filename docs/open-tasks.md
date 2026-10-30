@@ -46,11 +46,10 @@ T14 (вторая итерация E2E) и T15 (UX rule_id). Самая важн
 примерами конфигов для Continue, Claude Code, Cline, Cursor (кодовые блоки,
 не рабочие файлы), словарём полей находки, шагами проверки и диагностикой.
 Уточнено: «название проблемы» = `rule_id` + `message` (machine-readable на сервере,
-агент формирует сводку). Рабочий конфиг `.continue/mcpServers/appsecgate.yaml`
-переименован в `appsecgate`. README и `mcp-server/README.md` обновлены ссылками.
+агент формирует сводку). Имя сервера — `appsecgate`. README и `mcp-server/README.md` обновлены ссылками.
 
-- В репо только `.continue/mcpServers/appsecgate.yaml` (имя сервера обновлено
-  на `appsecgate`). Примеры конфигов в документе, не в рабочей директории.
+- Рабочий `.continue/`-конфиг удалён из репозитория (2026-10-30);
+  примеры конфигов — в `docs/deploy-agents.md`, не в рабочей директории.
 - Инструкция содержит: каноническое имя MCP-сервера, готовые конфиги под
   каждый клиент, словарь полей находки, шаги проверки, диагностику.
 - Корректное название проблемы: `rule_id` (+ `message` в скобках) — сервер
@@ -62,7 +61,7 @@ T14 (вторая итерация E2E) и T15 (UX rule_id). Самая важн
 `mcp-server/tests/fixtures/vuln-project` + `other-project` подготовлены,
 E2E **выполнен 2026-10-14 — 17/17 сценариев, 100%**
 (итоговый отчёт `docs/reports/e2e-report-2026-10-30.md`). Инструментарий:
-`scripts/e2e_measure.py` (MCP-клиент, stdio-контейнеры, полный цикл воронки,
+`scripts/e2e_measure/` (MCP-клиент, stdio-контейнеры, полный цикл воронки,
 NF-замеры, параллельные сессии). Проверены: scan_file/scan_diff/scan_project,
 query_findings_db (SELECT + блокировка UPDATE), get_fix_context(+batch),
 verify_fix (not_fixed), suppress + rescan, feedback, history, export_snapshot,
@@ -139,13 +138,13 @@ announce-форматом. Проверить намерение: если annou
 **Статус:** открыта критическая (по итогам E2E; см. также T7).
 
 **Механизм.** `project_id = sha256(realpath(project_path))[:16]`
-(`docs/fix-workflow-design.md` §4.10). Но реальный host-проект в сервер
+(`docs/architecture.md`, принципы). Но реальный host-проект в сервер
 **не передаётся** нигде по пути запуска:
 
 - `docker-compose.yml` (docker-run.sh / compose MCP): env
   `APPSECGATE_PROJECT_PATH=/workspace` зашит жёстко; bind-mount
   `.:/workspace:ro` кладёт ЛЮБОЙ host-проект в один контейнерный путь.
-- `.continue/mcpServers/appsecgate.yaml` и `docs/deploy-agents.md`: те же
+- Конфиги в `docs/deploy-agents.md`: те же
   `-v .:/workspace:ro` + `--project /workspace`.
 - `_resolve_default_project()` в `server.py` тоже отдаёт `/workspace`
   раньше, чем cwd.
@@ -170,8 +169,8 @@ announce-форматом. Проверить намерение: если annou
 - В) Оставить «один контейнер = один проект»: требовать для каждого
   проекта отдельный data-volume и/или key; задокументировать ограничение.
 Файлы: `server.py` (`_compute_project_id`/`_resolve_default_project`),
-`docker-compose.yml`, `scripts/e2e_measure.py` (`_docker_args`),
-`.continue/mcpServers/appsecgate.yaml`, `docs/deploy-agents.md`, спека §4.10.
+`docker-compose.yml`, `scripts/e2e_measure/client.py` (`_docker_args`),
+`docs/deploy-agents.md`, `docs/architecture.md`.
 
 ## T10. Недетерминированный дедуп → нестабильные fingerprint (P0, B1/OBS-5)
 
@@ -213,7 +212,7 @@ cортировка raw-находок перед `_collapse()` по стаби�
 `update_config` вызывает `_atomic_write` в `.appsecgate-mcp/config.yaml`
 **внутри проекта** (дизайн §3.5). Локально работает. В каноническом
 Docker-деплое проект смонтирован `:ro` (`docker-compose.yml`,
-`.continue/mcpServers/appsecgate.yaml`) → запись упадёт с ошибкой ФС, а
+`docs/deploy-agents.md`) → запись упадёт с ошибкой ФС, а
 если маунт случайно `rw` — это нарушение инварианта №1 («сервер НЕ пишет
 файлы проекта. Никогда»).
 
@@ -246,7 +245,7 @@ E2E-харнесс изначально читал только `status` и пр
 Контракт внесён: докстринги `verify_fix`/`verify_fix_batch` (`server.py`),
 спека §4.6, тесты `test_verify_fix_response_contract` +
 `test_verify_fix_batch_response_contract` (`tests/test_fix_verify.py`).
-E2E-харнесс (`scripts/e2e_measure.py`) читает `verified_status` с 2026-10-14.
+E2E-харнесс (`scripts/e2e_measure/`) читает `verified_status` с 2026-10-14.
 
 ## T13. SCA: 19 CVE схлопнуты в 1 находку (закрыта)
 
@@ -289,12 +288,12 @@ E2E-харнесс (`scripts/e2e_measure.py`) читает `verified_status` с 
    все SAST-сканы молча давали 0; добавлен setuptools в venv + усилен
    smoke-тест сборки.
 5. **E4 — фикстуры в git:** `requirements.txt`, `other-project/`, `.gitignore`,
-   `xss.py`, `main.tf`, `scripts/e2e_measure.py` — в git (часть в коммите
+   `xss.py`, `main.tf`, `scripts/e2e_measure/` — в git (часть в коммите
    T3/96e3625; `main.tf` — в этом коммите).
 6. **B2 после фикса T10:** `dedup_stability_recheck` — два скана secrets.py →
    идентичный fingerprint `[0691d13f93462eba]`, PASS.
 
-Файлы: `scripts/e2e_measure.py`, `mcp-server/tests/fixtures/vuln-project/main.tf`,
+Файлы: `scripts/e2e_measure/`, `mcp-server/tests/fixtures/vuln-project/main.tf`,
 `mcp-server/src/appsecgate_mcp/{orchestration/coordinator.py,scanners/gitleaks.py,
 normalization/dedup.py}`, `mcp-server/Dockerfile`, `docs/e2e-test-plan.md` §12,
 `docs/reports/e2e-report-2026-10-30.md`.

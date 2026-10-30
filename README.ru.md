@@ -90,7 +90,7 @@ docker run --rm -i --network=none --read-only \
 
 ```bash
 make setup          # создание uv-окружения
-make check          # ruff + pytest (283 теста)
+make check          # ruff + pytest (310 тестов)
 make docker-build   # moondoom/appsecgate-mcp:0.1.0
 ```
 
@@ -106,7 +106,6 @@ appsecgate-mcp/
     publishing.md            # План публикации
     deploy-agents.md         # Развертывание для AI-агентов
     architecture.md          # Архитектура
-    fix-workflow-design.md   # Спецификация Фазы 1
     open-tasks.md            # Открытые задачи
     e2e-test-plan.md         # План E2E
     reports/                 # Отчеты (E2E, замеры)
@@ -115,7 +114,7 @@ appsecgate-mcp/
   mcp-server/                # Код сервера
     src/appsecgate_mcp/      # MCP-тулы, сканеры, storage
     config/default.yaml      # Конфигурация по умолчанию
-    tests/                   # 283 теста
+    tests/                   # 310 тестов
   Makefile
   docker-compose.yml
 ```
@@ -124,7 +123,7 @@ appsecgate-mcp/
 
 - [Развертывание для AI-агентов](docs/deploy-agents.md) -- все четыре клиента
 - [Архитектура](docs/architecture.md)
-- [Спецификация Фазы 1](docs/fix-workflow-design.md)
+- [План E2E-тестирования](docs/e2e-test-plan.md)
 - [Видение продукта](docs/product-vision.md)
 - [План публикации](docs/publishing.md)
 

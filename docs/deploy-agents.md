@@ -2,9 +2,9 @@
 
 Guide for connecting the MCP server to AI coding agents (task T2,
 `docs/open-tasks.md`). Configuration examples are provided in this document;
-the only actively maintained config is
-`.continue/mcpServers/appsecgate.yaml` (the `.continue/` directory is in
-`.gitignore`, so the file remains local and is never committed).
+copy them into your client's config directory. A local Continue config
+(`.continue/mcpServers/appsecgate.yaml`) may be kept under `.gitignore` —
+Continue remains a supported client, but is not used in development.
 
 ## 1. Canonical server name
 
@@ -86,9 +86,8 @@ args:
 
 ### Continue
 
-Working config: `.continue/mcpServers/appsecgate.yaml` (local file,
-`.continue/` is in `.gitignore`). Copy it to
-`<project>/.continue/mcpServers/` (or `~/.continue/mcpServers/`):
+Create `<project>/.continue/mcpServers/appsecgate.yaml`
+(or `~/.continue/mcpServers/`) with the following content:
 
 ```yaml
 name: appsecgate
