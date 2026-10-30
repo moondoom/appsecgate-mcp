@@ -4,19 +4,30 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from appsecgate_mcp.rules import DistributionMode, ResolvedRules
 
 
-class StackConfig(BaseModel):
+class _StrictModel(BaseModel):
+    """Базовая модель конфигурации: лишние поля отвергаются, а не молча дропаются.
+
+    `extra="forbid"` (AGENTS.md: «лишнее поле сломает валидацию») — неизвестный
+    ключ в YAML/env ломает валидацию на любом уровне вложенности, а не теряется
+    тихо и не попадает в записываемый `config.yaml`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class StackConfig(_StrictModel):
     """Определение стека проекта."""
 
     languages: list[str] = Field(default_factory=list)
     frameworks: list[str] = Field(default_factory=list)
 
 
-class RuleProfileConfig(BaseModel):
+class RuleProfileConfig(_StrictModel):
     """Явный профиль правил для подпроекта (дизайн v1 §6.2).
 
     Декларация, не автоопределение: пользователь указывает путь и языки.
@@ -27,7 +38,7 @@ class RuleProfileConfig(BaseModel):
     languages: list[str] = Field(default_factory=list)
 
 
-class ScannerConfig(BaseModel):
+class ScannerConfig(_StrictModel):
     """Настройки отдельного сканера."""
 
     enabled: bool = True
@@ -38,7 +49,7 @@ class ScannerConfig(BaseModel):
     extra_options: dict[str, Any] = Field(default_factory=dict)
 
 
-class ScannersConfig(BaseModel):
+class ScannersConfig(_StrictModel):
     """Корневой блок scanners в config.yaml."""
 
     sast: ScannerConfig = Field(default_factory=ScannerConfig)
@@ -47,7 +58,7 @@ class ScannersConfig(BaseModel):
     iac: ScannerConfig = Field(default_factory=ScannerConfig)
 
 
-class GateRuleConfig(BaseModel):
+class GateRuleConfig(_StrictModel):
     """Правила gate: при каких severity что делать."""
 
     block_on: list[str] = Field(default_factory=list)
@@ -70,14 +81,14 @@ class CiGateConfig(GateRuleConfig):
     block_on_unresolved_local: bool = True
 
 
-class GatesConfig(BaseModel):
+class GatesConfig(_StrictModel):
     """Двойной контур gates."""
 
     local: LocalGateConfig = Field(default_factory=LocalGateConfig)
     ci: CiGateConfig = Field(default_factory=CiGateConfig)
 
 
-class SuppressRuleConfig(BaseModel):
+class SuppressRuleConfig(_StrictModel):
     """Одно правило подавления из config.yaml."""
 
     rule: str = ""
@@ -86,7 +97,7 @@ class SuppressRuleConfig(BaseModel):
     scope: str = "local"
 
 
-class SLAConfig(BaseModel):
+class SLAConfig(_StrictModel):
     """Таймеры эскалации (не используются в Фазе 1, но валидируются)."""
 
     dev_response: str = "24h"
@@ -95,7 +106,7 @@ class SLAConfig(BaseModel):
     lead_response: str = "10d"
 
 
-class RulesConfig(BaseModel):
+class RulesConfig(_StrictModel):
     """Настройки Rules Bundle (дизайн v1 §3.1).
 
     `path` — корень дефолтных правил; `distribution_mode` — режим поставки;
@@ -108,7 +119,7 @@ class RulesConfig(BaseModel):
     profiles: list[RuleProfileConfig] = Field(default_factory=list)
 
 
-class NetworkSyncConfig(BaseModel):
+class NetworkSyncConfig(_StrictModel):
     """Параметры онлайн-синхронизации (дизайн v1 §2.2)."""
 
     trivy_db: bool = True
@@ -116,7 +127,7 @@ class NetworkSyncConfig(BaseModel):
     max_db_age_days: int = 30
 
 
-class NetworkConfig(BaseModel):
+class NetworkConfig(_StrictModel):
     """Режим работы сети: `offline` по умолчанию (дизайн v1 §2.1)."""
 
     mode: str = "offline"  # offline | online
@@ -127,7 +138,7 @@ class NetworkConfig(BaseModel):
         return self.mode.strip().lower() == "online"
 
 
-class Config(BaseModel):
+class Config(_StrictModel):
     """Корневая модель конфигурации."""
 
     version: int = 2

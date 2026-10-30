@@ -39,6 +39,12 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
       APPSECGATE_SCANNERS_SAST_ENABLED=false
       APPSECGATE_GATES_CI_BLOCK_ON_UNRESOLVED_LOCAL=true
     Схема: APPSECGATE_<SECTION>_<SUBSECTION>_<KEY>=value, регистр не важен.
+
+    Override применяется только если весь путь уже присутствует в данных
+    (default + project) и промежуточные узлы — словари. Иначе переменная
+    пропускается: инфраструктурные переменные (`APPSECGATE_MCP_HOME`,
+    `APPSECGATE_PROJECT_PATH`, `APPSECGATE_LOG_LEVEL`) не должны попадать
+    в конфиг как `mcp.home` и т.п. — с `extra="forbid"` они бы ломали загрузку.
     """
     result = deepcopy(data)
     for env_key, env_value in os.environ.items():
@@ -52,10 +58,11 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         for part in parts[:-1]:
             child = node.get(part)
             if not isinstance(child, dict):
-                child = {}
-                node[part] = child
+                # Неизвестный/неконфигурный путь — инфраструктурная env-переменная.
+                break
             node = child
-        node[parts[-1]] = _parse_env_value(env_value)
+        else:
+            node[parts[-1]] = _parse_env_value(env_value)
     return result
 
 

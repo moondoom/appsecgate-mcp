@@ -89,18 +89,27 @@ verify_fix (not_fixed), suppress + rescan, feedback, history, export_snapshot,
    доступ к ФС), и убрать инструкцию про redaction из окна.
 Файлы: `orchestration/context_builder.py` (`_build_window`), `models/context.py`.
 
-## T6. `update_config` не отклоняет неизвестные поля (новое)
+## T6. `update_config` не отклоняет неизвестные поля (закрыта)
 
-**Статус:** открыта (по итогам E2E, OBS-3).
+**Статус:** закрыта. `extra="forbid"` во всех конфиг-моделях + фильтр env-overrides.
 
 `update_config({"totally_unknown_field": 42})` → `status: updated`:
 Pydantic v2 `extra=ignore` (в `Config` нет `extra="forbid"`), поле тихо
 дропается при валидации, но записывается в `config.yaml` (пишется merged-dict).
 Ошибки **типов** (`timeout_seconds: "abc"`) корректно дают `status: invalid`.
 
-Ожидание AGENTS.md — «лишнее поле сломает валидацию». Решение: добавить
-`model_config = ConfigDict(extra="forbid")` в `Config` (проверить влияние на
-`config/default.yaml` и тесты) либо reject на уровне merge в `update_config`.
+**Решение:** `_StrictModel` (база для всех конфиг-моделей) с
+`model_config = ConfigDict(extra="forbid")` — неизвестное поле ломает валидацию
+на любом уровне вложенности, а не молча дропается. Дополнительно
+`_apply_env_overrides` теперь применяет override только по уже существующим в
+данных путям: инфраструктурные переменные (`APPSECGATE_MCP_HOME` → `mcp.home`,
+`APPSECGATE_PROJECT_PATH`, `APPSECGATE_LOG_LEVEL`) больше не просачиваются в
+конфиг — иначе `extra="forbid"` уронил бы загрузку.
+
+**Проверка:** 5 новых тестов (reject top-level/nested в `update_config` и
+`Config.model_validate`, env-override по существующим путям); все 298 тестов
+зелёные; `config/default.yaml`, `examples/` и фикстурные конфиги схеме
+соответствуют (проверено).
 
 ## T7. Скоп suppression: глобальный по fingerprint или проектный? (вопрос)
 

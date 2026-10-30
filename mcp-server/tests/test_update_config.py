@@ -59,6 +59,30 @@ async def test_invalid_updates_do_not_create_config_dir(project):
     assert not conf.parent.exists()
 
 
+async def test_unknown_top_level_field_rejected(project):
+    """T6: update_config с неизвестным полем → invalid, файл не меняется."""
+    conf = _write_initial(project)
+    before = conf.read_text(encoding="utf-8")
+
+    out = await server.update_config({"totally_unknown_field": 42})
+
+    assert out["status"] == "invalid"
+    assert any("totally_unknown_field" in e for e in out["errors"])
+    assert conf.read_text(encoding="utf-8") == before
+
+
+async def test_unknown_nested_field_rejected(project):
+    """T6: лишнее поле отвергается и на вложенном уровне."""
+    conf = _write_initial(project)
+    before = conf.read_text(encoding="utf-8")
+
+    out = await server.update_config({"scanners": {"sast": {"bogus_option": 1}}})
+
+    assert out["status"] == "invalid"
+    assert any("bogus_option" in e for e in out["errors"])
+    assert conf.read_text(encoding="utf-8") == before
+
+
 async def test_valid_updates_change_file(project):
     conf = _write_initial(project)
 

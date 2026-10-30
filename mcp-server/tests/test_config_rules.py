@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
+from pydantic import ValidationError
 
 from appsecgate_mcp.config.loader import ConfigLoader
 from appsecgate_mcp.config.models import Config
@@ -127,3 +129,33 @@ def test_load_config_file_resolves_rules(tmp_path: Path):
 
     assert config.resolved_rules is not None
     assert config.resolved_rules.version == "1.0.0"
+
+
+def test_config_rejects_unknown_top_level_field():
+    """T6: `extra="forbid"` — неизвестное поле ломает валидацию, а не дропается."""
+    with pytest.raises(ValidationError):
+        Config.model_validate({"version": 2, "totally_unknown_field": 42})
+
+
+def test_config_rejects_unknown_nested_field():
+    """T6: лишнее поле отвергается и на вложенных уровнях."""
+    with pytest.raises(ValidationError):
+        Config.model_validate({"scanners": {"sast": {"bogus_option": 1}}})
+
+
+def test_env_override_applies_only_to_existing_paths(tmp_path: Path, monkeypatch):
+    """T6: документированный env-override работает, а инфраструктурные
+    APPSECGATE_*-переменные не просачиваются в конфиг как mcp.home (иначе
+    `extra="forbid"` уронил бы загрузку)."""
+    default = tmp_path / "default.yaml"
+    default.write_text(
+        yaml.safe_dump({"version": 2, "scanners": {"sast": {"enabled": True, "tool": "semgrep"}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("APPSECGATE_SCANNERS_SAST_ENABLED", "false")
+    monkeypatch.setenv("APPSECGATE_MCP_HOME", str(tmp_path / "home"))
+
+    config = ConfigLoader(default_config_path=default).load(tmp_path / "proj")
+
+    assert config.scanners.sast.enabled is False
+    assert "mcp" not in config.model_dump()
