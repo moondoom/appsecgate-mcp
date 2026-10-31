@@ -4,19 +4,56 @@
 > детали реализации — `docs/history/implementation-notes.md`.
 > Дизайн-решения — `docs/adr/`.
 
+## Фактическое состояние
+
+- Фаза 1 и технические этапы CI-1…CI-7, MS-1…MS-7 завершены.
+- В MCP зарегистрировано 14 тулов; `check_gate` пока не реализован.
+- `GET /v1/findings` поддерживает фильтр `state`, но ещё не поддерживает
+  `branch` и `commit`.
+- `make check`: 482 теста mcp-server + 140 тестов appsecgate-master — зелёные.
+- ADR-0007…ADR-0009 содержат проектные решения, но не означают реализацию.
+
 ## Сводка
 
-| # | Пункт | Тип | Блокер | Где детали |
+| # | Пункт | Статус | Блокер | Где детали |
 |---|---|---|---|---|
+| OR-1 | MCP-тул `check_gate` | не начат | agent mode | ADR-0008 §4, ADR-0009 §3 |
+| OR-2 | `GET /v1/findings?branch=&commit=` | не начат | agent mode | ADR-0008 §5 |
+| OR-5 | Документация двух режимов оркестрации | не начата | нет | ADR-0008 §9 |
+| OR-6 | Примеры classic PR/release/cron | частично: есть PR | нет | ADR-0008 §9 |
+| AG-3 | Шаблон AppSecGate policy для AGENTS.md | не начат | нет | ADR-0009 §4 |
+| OR-7/AG-4 | Пример CI-agent | не начат | OR-1 | ADR-0008 §9, ADR-0009 §13 |
+| AG-5/AG-8 | Server-agent MVP: report + workflow | не начат | OR-1, OR-2 | ADR-0009 §13 |
+| AG-6/AG-9 | Triage, action log и audit push | после MVP | AG-5 | ADR-0009 §13 |
+| — | E2E CI-полигон (фиктивный PR) | не начат | нет | ADR-0003 §9 |
+| ADR-0007 | Per-branch state | Proposed, Фаза 3 | classic multi-version | `adr/ADR-0007-*.md` |
+| ADR-0010 | RW-agent | Пауза, ADR не создан | RW/fix mode | ADR-0009 §7 |
 | MS-8 | DefectDojo/ASOC экспорт | отложено | нет | ADR-0004 §8 |
-| — | E2E CI-полигон (фиктивный PR) | этап Фазы 2 | нет | ADR-0003 §9 |
-| ADR-0007 | Per-branch state | Proposed | блокирует classic | `adr/ADR-0007-*.md` |
-| ADR-0008 | Orchestrator presets | Proposed | **блокер Фазы 2** | `adr/ADR-0008-*.md` |
-| ADR-0009 | Агенты (dev/server/CI), `check_gate`, branch/commit в API | не создан | блокирует agent mode | тезисы C4–C9 |
 | P1/P2 | Semantic dedup (эмбеддинги) | план | нет | ADR-0001 §11 |
-| — | SonarQube, боевое слаживание, дашборды | направления статьи | нет | статья §«И что дальше» |
+| — | SonarQube, боевое слаживание, дашборды | направления | нет | product vision |
 
 ## Детали
+
+### OR-1 / OR-2 — блокеры agent mode
+Реализовать контракт `GateSummary` и `recommended_action`, затем добавить
+опциональные `branch`/`commit` в master API без изменения поведения запросов
+без этих параметров. AG-1/AG-2 из ADR-0009 — те же задачи, отдельно не ведутся.
+
+### OR-3 / OR-4 — закрыты документацией
+ADR-0003 переведён в classic hard-gate; snapshot-разделы помечены историческими.
+ADR-0006 разделяет advisory agent mode и enforced classic gate.
+
+### OR-5 / OR-6 — документация и примеры
+Описать в deployment-документах выбор agent mode vs classic hard-gate. Существующий
+`.github/workflows/appsecgate-ci.yml` покрывает PR; нужны release/cron-примеры.
+
+### ADR-0007 — Per-branch state
+Proposed, Фаза 3. Модель `(project, branch, fingerprint)` описана; реализация
+PB-1…PB-6 не начата. До неё classic multi-version остаётся ограничением Фазы 2.
+
+### ADR-0009 — модель агентов
+ADR создан и имеет статус Proposed. Реализация ведётся через OR-1/OR-2 и
+AG-3…AG-9; server-agent и CI-agent в репозитории пока отсутствуют.
 
 ### MS-8 — DefectDojo/ASOC
 Отложено 2026-10-31, вне плана. Вернуть при актуализации vision (§5.2.4).
@@ -24,23 +61,6 @@
 ### E2E CI-полигон
 По мотивам T14: фиктивный PR-дифф → проверка блокировки/пропуска `appsecgate ci`.
 См. ADR-0003 §9.
-
-### ADR-0007 — Per-branch state
-Proposed, заглушка. Требует доработки (см. ревью): альтернативы, модель данных,
-влияние на гейт-матрицу ADR-0006 §2.3, snapshot/master. Блокирует classic
-multi-version (Фаза 3).
-
-### ADR-0008 — Orchestrator presets
-Proposed, **блокер Фазы 2**. Требует: таблица пресетов (5 осей × 3), удаление
-`snapshot` из `shown-source` (удалён MS-6), явная судьба `escalate` (master
-Paused) и `fix`/`rw` (внешний orchestrator, ADR-0010), маппинг policy →
-GateDecision, конфиг-схема, критерии приёмки.
-
-### ADR-0009 — Агенты
-Не создан. Зафиксировать: три типа агентов (dev/server/CI), MCP-тул `check_gate`,
-`GET /v1/findings?branch=&commit=` как контракт «актуальная версия»,
-policy enforcement (AGENTS.md + `recommended_action` + action log), server-agent
-`appsecgate-agent` (MVP = report mode без LLM), RW-агент — пауза (ADR-0010).
 
 ### Semantic dedup P1/P2 (ADR-0001)
 P0 выполнен (tie-break, T10). P1/P2 (эмбеддинги, `finding_embeddings`, σ по
@@ -52,6 +72,4 @@ SonarQube-интеграция, боевое слаживание (50–100 пр
 
 ## Ссылки на закрытые задачи
 
-T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15 —
-`docs/history/phase-1-2-completed.md`.
-CI-1..CI-7, MS-1..MS-7 — там же.
+T1…T15, CI-1…CI-7, MS-1…MS-7 — `docs/history/phase-1-2-completed.md`.

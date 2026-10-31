@@ -1,7 +1,7 @@
 # Deploying AppSecGate MCP for AI Agents
 
-Guide for connecting the MCP server to AI coding agents (task T2,
-`docs/open-tasks.md`). Configuration examples are provided in this document;
+Guide for connecting the MCP server to AI coding agents (completed task T2,
+`docs/history/phase-1-2-completed.md`). Configuration examples are provided in this document;
 copy them into your client's config directory. A local Continue config
 (`.continue/mcpServers/appsecgate.yaml`) may be kept under `.gitignore` —
 Continue remains a supported client, but is not used in development.

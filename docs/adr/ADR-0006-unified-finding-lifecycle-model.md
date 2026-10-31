@@ -133,6 +133,8 @@
 
 **Правило `<unknown>`:** `branch="<unknown>"` **никогда** не равен CI-branch → при `skip-if-same-branch` всегда **block** (консервативно и детерминированно).
 
+**Режим применения (ADR-0008):** в classic hard-gate (ADR-0008 §2.2) матрица **enforced** — exit 1 при `block`. В agent mode (ADR-0008 §2.1) — **advisory**: агент получает `GateSummary` через `check_gate` (ADR-0009 §3) и должен следовать, но LLM может отклониться.
+
 ---
 
 ## 3. Алгоритмы мерджа
@@ -244,13 +246,16 @@ match (reported, actual):
 
 | Направление | Кто | Что |
 |---|---|---|
-| local → snapshot | агент | append event (`branch`, `commit`, `event_id`) |
+| ~~local → snapshot~~ | — | **удалено MS-6**: snapshot-канала нет |
 | local → master | edge `sync` | push event (`client_event_id`) |
 | master → local | edge `pull` | `ci`/`global` suppressions + config |
-| snapshot → CI | CI | replay → gate |
+| ~~snapshot → CI~~ | — | **удалено MS-6**: CI всегда тянет с master (ADR-0008 §7) |
 | master → CI | CI | `GET /v1/findings` → gate |
 
-**Контрактный инвариант:** для одинакового `(project, branch, commit)` snapshot-replay и master-aggregate дают **одинаковый** `status` per `fp`. Тест `test_snapshot_master_parity`.
+**Контрактный инвариант:** master-aggregate per `(project, fp)` — единственный источник
+истины для CI; локальный state с ним не рассинхронизируется через push/pull
+(ADR-0004). Тест `test_snapshot_master_parity` живёт в **master-пакете** и проверяет
+event-log агрегат, а не файл snapshot.
 
 ---
 
@@ -258,19 +263,17 @@ match (reported, actual):
 
 ### 4.1. Влияние на ADR-0003
 
+- **§5.1 (CLI)** — остаётся как **classic hard-gate** (ADR-0008 §2.2): CI всегда тянет «показанное» с master (`GET /v1/findings`, fail-closed exit 2); `--base-ref` через merge-base, warn не влияет на exit code.
 - **§5.2** — заменена §2.3 этого ADR.
-- **§5.1** — заменена ADR-0004 §6 (MS-6, решение владельца 2026-10-31): CI всегда тянет «показанное» с master (`GET /v1/findings`, fail-closed exit 2); snapshot-канал удалён; `--base-ref` через merge-base, warn не влияет на exit code.
-- **§5.3** — `record` → `lookup(fp) -> SnapshotEntry | None`.
-- **§6.1** — snapshot = event-log (§3.3), поля `schema_version`, `event_id`, `event`, `branch`, `commit`, `severity`, `suppression_scope`, `suppression_expires_at`, `missed_scan_count`.
-- **§6.3** — монотонность enforced через append-only check (§3.3).
-- **§6.4** — retention 30d только для `FIXED`/`SUPPRESSED`/`WONT_FIX`.
-- **Статус:** `Paused (superseded in parts by ADR-0006)`.
+- **§5.3 / §6 (snapshot)** — **удалено MS-6** (решение владельца 2026-10-31), историческое.
+- **Статус ADR-0003:** **`Repurposed as classic hard-gate`** (ADR-0008), не «Partially superseded».
 
 ### 4.2. Влияние на ADR-0004
 
 - **§5.1** — события расширяются: `not_found_in_scope`, `suppressed`, `suppression_expired`, `verify_wont_fix`, `reopened`; во все `finding_*` — `first_seen_branch/commit`, `last_seen_branch/commit`, `missed_scan_count`.
 - **§5.3** — заменена §3.4 этого ADR.
-- **§6** — CI всегда `master` (ADR-0004 §6, решение владельца 2026-10-31): `GET /v1/findings`, fail-closed; snapshot-канал удалён.
+- **§6** — CI всегда `master` (ADR-0004 §6, решение владельца 2026-10-31): `GET /v1/findings`, fail-closed; snapshot-канал удалён; `--shown-source {master, local}` (ADR-0008 §7).
+- **§5.2 (API)** — расширяется `GET /v1/findings?branch=&commit=` (ADR-0008 §5).
 - **Статус:** `Paused (superseded in parts by ADR-0006)`.
 
 ### 4.3. Влияние на ADR-0005
@@ -300,9 +303,9 @@ match (reported, actual):
 - `test_verify_fix_wont_fix_noop`.
 - `test_suppression_expired_ci_global`, `test_suppression_expired_local_is_noop`.
 - `test_retention_unresolved_does_not_expire`.
-- `test_snapshot_append_only_violation` → exit 1.
-- `test_snapshot_schema_mismatch` → drop + warning.
-- `test_snapshot_master_parity`.
+- ~~`test_snapshot_append_only_violation`~~ — **удалён MS-6** (snapshot-канал).
+- ~~`test_snapshot_schema_mismatch`~~ — **удалён MS-6** (snapshot-канал).
+- `test_snapshot_master_parity` — остаётся в **master-пакете** (про event-log агрегат, не про файл snapshot).
 - `test_gate_unknown_branch_blocks`.
 
 ---
@@ -313,9 +316,11 @@ match (reported, actual):
 2. **`skip-if-same-branch` при `<unknown>`** — закрыто (block, §2.3).
 3. **Консолидация тулов.** `suppress_finding` уже покрывает `wont_fix` через `scope=wont_fix`; консолидация с `verify_fix` — не в Фазе 2. Модель готова: `WONT_FIX` — first-class статус, не атрибут `fix_attempts`.
 4. **Known limitations:**
-   - classic multi-version → ADR-0007 (per-branch state);
-   - orchestrator-пресеты → ADR-0008 (**блокер Фазы 2**);
-   - RW-orchestrator — вне Фазы 2;
+   - **Multi-version (per-branch state)** — запланировано в **ADR-0007** (Фаза 3); до реализации classic с несколькими ветвями не поддерживается.
+   - **Orchestrator-пресеты** — **ADR-0008** (есть); блокер Фазы 2 снят.
+   - **RW-orchestrator** — **ADR-0010** (Пауза); каркас в ADR-0009 §7.
+   - **Офлайн-CI** — **не поддерживается** после MS-6; master обязателен.
+   - **Agent mode policy advisory** — для enforced gate использовать classic hard-gate (ADR-0008 §2.2).
    - `verified_since_last_scan` — отдельный PR.
 
 ---
@@ -324,16 +329,16 @@ match (reported, actual):
 
 | # | Содержание | Зависит |
 |---|---|---|
-| **SM-1** | Матрица §2.1 + `suppression_expired` + `unsuppressed` через `suppress_finding(action=...)` + `test_status_matrix` + `test_unsuppress_via_suppress_finding` | — |
-| **SM-2** | Гейт-матрица §2.3 + конфиг-ключи §1.7 + `test_gate_matrix` | SM-1 |
-| **SM-3** | `verify_fix` merge (§3.2), no-op для `WONT_FIX`, `test_verify_fix_no_inversion` | SM-1 |
-| **SM-4** | Snapshot event-log (§3.3) + append-only check + `merge=union` + `schema_version` | SM-1 |
-| **SM-5** | Master merge (§3.4) + `test_snapshot_master_parity` | SM-4 |
-| **SM-6** | Документация: ADR-0006, статусы в `docs/adr/README.md`, `architecture.md` | SM-1..5 |
+| **SM-1** ✅ | Матрица §2.1 + `suppression_expired` + `unsuppressed` через `suppress_finding(action=...)` + `test_status_matrix` + `test_unsuppress_via_suppress_finding` | — |
+| **SM-2** ✅ | Гейт-матрица §2.3 + конфиг-ключи §1.7 + `test_gate_matrix` | SM-1 |
+| **SM-3** ✅ | `verify_fix` merge (§3.2), no-op для `WONT_FIX`, `test_verify_fix_no_inversion` | SM-1 |
+| **SM-4** ⛔ | ~~Snapshot event-log (§3.3)~~ — **superseded by MS-6** (snapshot удалён) | SM-1 |
+| **SM-5** ✅ | Master merge (§3.4) — **выполнен в MS-2..5** (ADR-0004); `test_snapshot_master_parity` в master-пакете остаётся (это про event-log агрегат, не про файл snapshot) | ~~SM-4~~ |
+| **SM-6** ✅ | Документация: ADR-0006, статусы в `docs/adr/README.md`, `architecture.md` | SM-1..5 |
 
 ---
 
-## 7. Принятые решения (Q1–Q9)
+## 7. Принятые решения (Q1–Q12)
 
 | # | Вопрос | Решение |
 |---|---|---|
@@ -346,13 +351,17 @@ match (reported, actual):
 | Q7 | Retention | 30d только для `FIXED`/`SUPPRESSED`/`WONT_FIX`; `SHOWN`/`POTENTIALLY_FIXED`/`REOPENED` не истекают |
 | Q8 | Консолидация тулов | future work; модель готова (`WONT_FIX` first-class) |
 | Q9 | Интерфейс `unsuppressed` | расширение `suppress_finding(action)`; новый тул не создаём |
+| Q10 | Policy в agent mode | **Advisory**; enforced — classic hard-gate (ADR-0008) |
+| Q11 | Per-branch state | **ADR-0007** (Фаза 3); Фаза 2 — глобальный PK |
+| Q12 | Snapshot-канал | **Удалён MS-6**; master — единственный источник истины |
 
 ---
 
 ## 8. Итог
 
-- Единая модель **жизненного цикла находки** для local / snapshot / master; гейт-логика и конфликт-резолюция — в одном месте.
-- Snapshot = event-log; append-only enforced; `schema_version` защищает от рассинхрона.
+- Единая модель **жизненного цикла находки** для local / master; гейт-логика и конфликт-резолюция — в одном месте.
+- Snapshot **удалён MS-6**; master — единственный источник истины. Офлайн-CI не поддерживается (ограничение Фазы 2).
+- Два режима оркестрации (ADR-0008): agent mode (advisory) и classic hard-gate (enforced).
 - `verify_fix` явный (через `actual`), no-op для `WONT_FIX`; снятие `WONT_FIX`/`SUPPRESSED` — через `suppress_finding(action="unsuppress")` или `suppression_expired`.
 - Retention не снимает `unresolved_local`; `<unknown>` branch консервативно блокирует.
 - Конфиг-ключи покрывают спорные случаи (`wont_fix_action`, `potentially_fixed_on_block_severity`), defaults — безопасные.
@@ -363,7 +372,8 @@ match (reported, actual):
 ## 9. Ссылки
 
 - ADR-0001 (fingerprint & dedup), ADR-0005 (state machine `shown_findings`)
-- ADR-0003 (CI-контур, snapshot — Paused, superseded in parts by ADR-0006), ADR-0004 (master — Paused, superseded in parts by ADR-0006)
+- ADR-0003 (CI-контур — Repurposed as classic hard-gate, ADR-0008), ADR-0004 (master — Paused, superseded in parts by ADR-0006)
+- ADR-0007 (per-branch state), ADR-0008 (orchestrator modes), ADR-0009 (agent implementation), ADR-0010 (RW-agent — Пауза)
 - `docs/architecture.md` §3.5, §4.1, §8, §9.5
 - `orchestration/gate.py`, `server/ci.py`, `storage/stores/shown.py`, `server/tools/verify_fix.py`, `server/tools/suppress.py`, `git.py`
 

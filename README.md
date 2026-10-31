@@ -26,9 +26,9 @@ returned to the agent as fix contexts.
 
 **Do NOT use it when:**
 
-- You need CI blocking — Phase 1 is warn-only locally; CI gating comes in Phase 2.
-- You need centralized policy, team dashboards, or ASOC sync — that is the Master Server (Phase 2).
-- You need large-scale GUI triage.
+- You need large-scale GUI triage, RBAC, team dashboards, or ASOC sync.
+  Local scanning, centralized policy, and classic CI blocking are already
+  implemented; dashboards and ASOC integration are not.
 
 ## Demo
 
@@ -300,4 +300,3 @@ MIT — see [LICENSE](LICENSE). Bundled scanner rules are third-party (see
 [third-party notices](mcp-server/rules/THIRD_PARTY_NOTICES.md)).
 
 Русскоязычная версия: [README.ru.md](README.ru.md).
-Restart Cline after the change.

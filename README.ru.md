@@ -90,7 +90,7 @@ docker run --rm -i --network=none --read-only \
 
 ```bash
 make setup          # создание uv-окружения
-make check          # ruff + pytest (355 тестов)
+make check          # ruff + pytest (622 теста в двух пакетах)
 make docker-build   # moondoom/appsecgate-mcp:0.1.0
 ```
 
@@ -114,7 +114,7 @@ appsecgate-mcp/
   mcp-server/                # Код сервера
     src/appsecgate_mcp/      # MCP-тулы, сканеры, storage
     config/default.yaml      # Конфигурация по умолчанию
-    tests/                   # 355 тестов
+    tests/                   # 482 теста
   Makefile
   docker-compose.yml
 ```

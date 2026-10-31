@@ -3,7 +3,7 @@
 > **Версия:** 1.0 (draft)
 > **Статус:** Architecture Design
 > **Дата:** 2026-10-09
-> **Область:** Фаза 1 — Локальный MCP-сервер
+> **Область:** локальный MCP-сервер (Фаза 1) и реализованные контуры CI/master (Фаза 2)
 
 ---
 
@@ -604,13 +604,18 @@ services:
   **MS-4 выполнен** (2026-10-31): FastAPI master API — идемпотентный приём,
   проектная Bearer-аутентификация, findings/suppressions/config/audit и healthz.
   **MS-5 выполнен** (2026-10-31): sync также скачивает CI/global suppressions
-  и master policy в data-dir; MCP применяет их локально без сети
-- ⏳ CI-контур и двойные gates — **этап 1 Фазы 2**, реализуется по
-  [ADR-0003](adr/ADR-0003-ci-unresolved-local-delivery.md)
-- ❌ Сканирование образов
-- ❌ RBAC
-- ❌ Web UI
-- ❌ Интеграция с ASOC
+  и master policy в data-dir; MCP применяет их локально без сети.
+  **MS-6 выполнен** (2026-10-31): `appsecgate ci` всегда тянет «показанное»
+  с master (`GET /v1/findings`), snapshot-канал удалён, fail-closed exit 2.
+  **MS-7 выполнен** (2026-10-31): Docker Compose master + edge, Dockerfile
+  master, документация развёртывания (`docs/deploy-master.md`).
+  **MS-8 отложен** (DefectDojo/ASOC) — вне плана, вернуть при актуализации vision.
+- ✅ CI-контур и двойные gates — реализован по
+  [ADR-0003](adr/ADR-0003-ci-unresolved-local-delivery.md) (CI-1…CI-7)
+- ❌ Сканирование образов (container image scanning)
+- ❌ RBAC (Фаза 3)
+- ❌ Web UI + BI (Фаза 4)
+- ❌ Интеграция с ASOC (MS-8, отложена)
 - ❌ ГОСТ-модуль
 
 ---

@@ -8,8 +8,8 @@
 
 Запускает Semgrep, Gitleaks, TruffleHog и Trivy параллельно, нормализует
 находки в единый формат `Finding`, ведёт журнал показанного (`shown_findings.db`),
-применяет локальные suppression и автофикс, а также двойной контур gates
-(warn-only локально, block в CI).
+применяет локальные suppression и двойной контур gates (warn-only локально,
+block в CI). Фикс генерирует внешний AI-агент; сервер не вызывает LLM.
 
 ## Разработка
 
