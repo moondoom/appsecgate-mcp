@@ -1,9 +1,10 @@
-"""CI-режим (Фаза 2, ADR-0003): блокировка по severity и unresolved_local.
+"""CI-режим (Фаза 2, ADR-0004 MS-6): блокировка по severity и unresolved_local.
 
-Отдельный процесс, не MCP-тул: `appsecgate-mcp ci` запускается из workflow
-без доступа к локальному shown_findings.db. Вход — diff против base-ветки,
-опциональный snapshot показанного (пишет агент). Выход — exit code:
-0 = pass, 1 = blocked, 2 = ошибка инфраструктуры (git/конфиг/сканеры).
+Отдельный процесс, не MCP-тул: `appsecgate-mcp ci` запускается из workflow.
+Вход — diff против base-ветки, «показанное» — всегда с master (`GET
+/v1/findings`, единственный канал; snapshot удалён решением владельца
+2026-10-31). Выход — exit code: 0 = pass, 1 = blocked,
+2 = ошибка инфраструктуры (git/конфиг/сканеры/master).
 """
 
 from __future__ import annotations
@@ -18,9 +19,9 @@ from appsecgate_mcp.models.finding import ScanResult
 from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
 from appsecgate_mcp.orchestration.gate import GateEngine, GateSummary
 from appsecgate_mcp.orchestration.shown_source import (
-    ShownSnapshotError,
-    SnapshotShownSource,
-    parse_shown_snapshot,
+    MasterFindingsError,
+    MasterShownSource,
+    fetch_findings,
 )
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 
@@ -42,52 +43,21 @@ class CiResult:
     error: str | None = None
 
 
-def _load_shown_source(
-    shown_snapshot: str | None,
-    *,
-    require: bool,
-    warnings: list[str],
-) -> tuple[SnapshotShownSource | None, str | None]:
-    """Парсит snapshot (если передан) в источник показанного (ADR-0003 §5.3).
-
-    Snapshot опционален (вариант В): при отсутствии/битости — warning +
-    ``None`` (severity-only), если не включён ``require`` (тогда exit 2).
-    Возвращает ``(source, error)``: error непуст только при fail-closed.
-    """
-    if not shown_snapshot:
-        return None, None
-    path = Path(shown_snapshot)
-    if not path.is_file():
-        message = f"shown snapshot not found: {shown_snapshot}"
-        if require:
-            return None, message
-        warnings.append(f"{message} — unresolved_local disabled, severity-gate only")
-        return None, None
-    try:
-        snapshot = parse_shown_snapshot(path)
-    except (ShownSnapshotError, OSError) as exc:
-        message = f"invalid shown snapshot {shown_snapshot}: {exc}"
-        if require:
-            return None, message
-        warnings.append(f"{message} — unresolved_local disabled, severity-gate only")
-        return None, None
-    if snapshot.expired_count:
-        warnings.append(f"ignored {snapshot.expired_count} expired shown record(s) (retention)")
-    return SnapshotShownSource(snapshot), None
-
-
 async def run_ci(
     *,
     project_path: str,
     base_ref: str | None = None,
-    shown_snapshot: str | None = None,
-    require_shown_snapshot: bool | None = None,
+    master_url: str | None = None,
+    master_api_key: str = "",
+    project_id: str | None = None,
+    master_timeout: float = 30,
     registry: ScannerRegistry | None = None,
 ) -> CiResult:
     """Оценивает diff проекта против ``base_ref`` по CI-правилам.
 
     ``registry`` — инъекция для тестов; по умолчанию собирается из конфига.
-    Ничего не пишет: ``persist=False``, snapshot только читается (:ro).
+    Ничего не пишет: ``persist=False``, master только читается.
+    CI fail-closed: без master (или при его ошибке) — exit 2 (ADR-0004 §6).
     """
     project = Path(project_path).resolve()
     if not project.is_dir():
@@ -97,13 +67,6 @@ async def run_ci(
         config = ConfigLoader().load(project)
     except Exception as exc:  # noqa: BLE001 — битый конфиг = «CI сломан», exit 2
         return CiResult(exit_code=EXIT_INFRA, error=f"invalid config: {exc}")
-
-    # ADR-0006 §1.7: require_shown_snapshot из конфига, если флаг CLI не задан.
-    require_snapshot = (
-        bool(config.gates.ci.require_shown_snapshot)
-        if require_shown_snapshot is None
-        else require_shown_snapshot
-    )
 
     reg = registry or ScannerRegistry.from_config(config, project_path=str(project))
     if not reg.all():
@@ -132,15 +95,29 @@ async def run_ci(
     except GitError:
         branch = None
 
-    warnings: list[str] = []
-    shown_source, fail = _load_shown_source(
-        shown_snapshot,
-        require=require_snapshot,
-        warnings=warnings,
-    )
-    if fail:
-        return CiResult(exit_code=EXIT_INFRA, error=fail)
+    # MS-6: «показанное» — всегда master, без него CI не запускается.
+    if not master_url:
+        return CiResult(
+            exit_code=EXIT_INFRA,
+            error="ci requires master (--master-url / APPSECGATE_MASTER_URL)",
+        )
+    if not project_id:
+        return CiResult(
+            exit_code=EXIT_INFRA,
+            error="ci requires project id (--project-id / APPSECGATE_PROJECT_ID)",
+        )
+    try:
+        records = fetch_findings(
+            master_url,
+            project_id,
+            master_api_key,
+            timeout=master_timeout,
+        )
+    except MasterFindingsError as exc:
+        return CiResult(exit_code=EXIT_INFRA, error=str(exc))
+    shown_source = MasterShownSource(records)
 
+    warnings: list[str] = []
     coordinator = ScanCoordinator(config, reg, project_root=str(project))
     result = await coordinator.scan(files, mode="diff", persist=False)
 

@@ -1,36 +1,39 @@
-"""Источники «показанного» для CI-режима (ADR-0003).
+"""Источник «показанного» для CI-режима (ADR-0004 §6, MS-6).
 
-Локально показанные находки живут в `shown_findings.db` на машине
-разработчика; у CI к ним доступа нет. Доставка — опциональный snapshot
-`.appsecgate-mcp/shown.ndjson` (пишет агент, инвариант №1 — сервер не
-пишет файлы проекта). Этот модуль парсит snapshot и предоставляет
-GateEngine источник с интерфейсом `record(fp) -> ShownRecord | None`
-(ADR-0003 §5.3).
+CI не имеет доступа к локальному `shown_findings.db` машины разработчика.
+Единственный канал показанного в CI — центральный master: `appsecgate ci`
+тянет состояния находок проекта с `GET /v1/findings` и поставляет их
+GateEngine через интерфейс `record(fp) -> ShownRecord | None` (ADR-0003 §5.3).
+
+Snapshot-канал (ADR-0003) удалён решением владельца (2026-10-31): в CI всегда
+master, недоступность/нарушение контракта — падение (exit 2), не warning.
+Сеть — только у edge/CI-процесса на хосте (инвариант №2 не затрагивается).
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from typing import Any
 
-# Retention показанного совпадает с shown_findings (arch §4.7).
-RETENTION_DAYS = 30
 
-
-class ShownSnapshotError(ValueError):
-    """Snapshot существует, но не является корректным shown.ndjson."""
+class MasterFindingsError(ValueError):
+    """Master недоступен или ответ нарушает контракт `GET /v1/findings`."""
 
 
 @dataclass
 class ShownRecord:
-    """Запись показанной находки (snapshot ADR-0003 §6.1 / локальный store).
+    """Запись показанной находки (состояние агрегата master, ADR-0006 §1.3).
 
     ``verified_status``: null | fixed | not_fixed | wont_fix.
     ``suppression_scope``: null | local | ci | global.
     ``status``: статус жизненного цикла (ADR-0006 §1.3); при отсутствии
     выводится через ``gate_status`` из ``verified_status``/``suppression_scope``.
+    ``shown_at`` не заполняется: master уже свёрнут в актуальные состояния,
+    retention показанного для CI не нужен.
     """
 
     fingerprint: str
@@ -55,74 +58,66 @@ class ShownRecord:
         return "SHOWN"
 
 
-@dataclass
-class ShownSnapshot:
-    """Разобранный snapshot + служебные счётчики для warning."""
-
-    records: list[ShownRecord] = field(default_factory=list)
-    expired_count: int = 0
-
-    def to_index(self) -> dict[str, ShownRecord]:
-        return {record.fingerprint: record for record in self.records}
-
-
-def _retention_cutoff(days: int, *, now: datetime | None = None) -> str:
-    base = now or datetime.now(UTC)
-    return (base - timedelta(days=days)).isoformat()
-
-
-def parse_shown_snapshot(
-    path: str | Path,
+def fetch_findings(
+    master_url: str,
+    project_id: str,
+    api_key: str,
     *,
-    max_age_days: int = RETENTION_DAYS,
-) -> ShownSnapshot:
-    """Парсит shown.ndjson в ShownSnapshot.
+    timeout: float = 30,
+) -> list[ShownRecord]:
+    """Тянет состояния находок проекта с master (`GET /v1/findings`, MS-6).
 
-    Пустые строки пропускаются; некорректный JSON или запись без ``fp`` →
-    ``ShownSnapshotError`` (жёсткая ошибка, а не молчаливый пропуск — иначе
-    ленивый/битый snapshot тихо спрятал бы находки от CI). Просроченные по
-    retention записи отбрасываются и считаются в ``expired_count``.
+    Контракт: JSON-объект ``{"project": <id>, "findings": [...]}``; каждая
+    запись — объект с непустым ``fp`` и опциональными ``status``/
+    ``verified_status``/``suppression_scope``/``last_seen_branch``/
+    ``suppression_expires_at``. Любое отклонение (сеть, HTTP, схема) —
+    ``MasterFindingsError``: CI-режим fail-closed (master обязателен).
     """
-    file_path = Path(path)
-    cutoff = _retention_cutoff(max_age_days)
-    records: list[ShownRecord] = []
-    expired = 0
-    for lineno, raw in enumerate(file_path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ShownSnapshotError(f"line {lineno}: invalid JSON: {exc}") from exc
-        if not isinstance(obj, dict) or not obj.get("fp"):
-            raise ShownSnapshotError(f"line {lineno}: record must be an object with 'fp'")
-        record = ShownRecord(
-            fingerprint=str(obj["fp"]),
-            shown_at=obj.get("shown_at"),
-            verified_status=obj.get("verified_status"),
-            suppression_scope=obj.get("suppression_scope"),
-            status=obj.get("status"),
-            last_seen_branch=obj.get("last_seen_branch"),
-            suppression_expires_at=obj.get("suppression_expires_at"),
-        )
-        if record.shown_at and record.shown_at < cutoff:
-            expired += 1
-            continue
-        records.append(record)
-    return ShownSnapshot(records=records, expired_count=expired)
+    query = urllib.parse.urlencode({"project": project_id})
+    request = urllib.request.Request(
+        f"{master_url.rstrip('/')}/v1/findings?{query}",
+        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.load(response)
+    except urllib.error.HTTPError as exc:
+        raise MasterFindingsError(f"GET /v1/findings: HTTP {exc.code}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise MasterFindingsError(f"GET /v1/findings: {exc}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise MasterFindingsError("GET /v1/findings: invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise MasterFindingsError("GET /v1/findings: response must be a JSON object")
+    if payload.get("project") != project_id:
+        raise MasterFindingsError("GET /v1/findings: project mismatch")
+    findings = payload.get("findings")
+    if not isinstance(findings, list):
+        raise MasterFindingsError("GET /v1/findings: findings must be a list")
+    return [_record_from_finding(item) for item in findings]
 
 
-class SnapshotShownSource:
-    """Показанный-источник поверх snapshot (CI; интерфейс ``record``).
+def _record_from_finding(item: Any) -> ShownRecord:
+    if not isinstance(item, dict):
+        raise MasterFindingsError("GET /v1/findings: finding must be an object")
+    fp = item.get("fp")
+    if not isinstance(fp, str) or not fp:
+        raise MasterFindingsError("GET /v1/findings: finding must have non-empty 'fp'")
+    return ShownRecord(
+        fingerprint=fp,
+        verified_status=item.get("verified_status"),
+        suppression_scope=item.get("suppression_scope"),
+        status=item.get("status"),
+        last_seen_branch=item.get("last_seen_branch"),
+        suppression_expires_at=item.get("suppression_expires_at"),
+    )
 
-    В отличие от локального ``ShownFindingsStore.was_shown``, возвращает
-    детали (``verified_status``/``suppression_scope``), по которым GateEngine
-    решает по таблице ADR-0003 §5.2 (fixed / ci / global снимают блок).
-    """
 
-    def __init__(self, snapshot: ShownSnapshot) -> None:
-        self._index = snapshot.to_index()
+class MasterShownSource:
+    """Показанный-источник поверх состояний master (интерфейс ``record``)."""
+
+    def __init__(self, records: list[ShownRecord]) -> None:
+        self._index = {record.fingerprint: record for record in records}
 
     async def record(self, fingerprint: str) -> ShownRecord | None:
         return self._index.get(fingerprint)

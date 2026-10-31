@@ -285,44 +285,42 @@ Agent recommendation: in summary responses, refer to the issue as
 | `meta.errors` is non-empty | Scanner binary unavailable (semgrep/gitleaks/trivy) | Check the image: `docker run --rm moondoom/appsecgate-mcp semgrep --version` |
 | `project_id mismatch` error | `project_path` changed within the same session | New project = new session (invariant #6) |
 
-## 8. CI gate (Phase 2, ADR-0003)
+## 8. CI gate (Phase 2, ADR-0004 MS-6)
 
 The same image runs as a CI gate. It scans the PR diff against the base branch
 and fails the build on blockable findings (severity or "shown locally and not
-fixed"). Exit codes: `0` pass, `1` blocked, `2` infrastructure error.
+fixed"). "Shown" always comes from the master server (`GET /v1/findings`):
+no master / wrong key → exit 2 (fail-closed; the snapshot channel was removed
+by owner decision on 2026-10-31). Exit codes: `0` pass, `1` blocked,
+`2` infrastructure error.
 
 ```bash
-docker run --rm --network=none --read-only \
+docker run --rm --read-only \
   --tmpfs=/tmp:size=100M,mode=1777 \
   --cap-drop=ALL --security-opt=no-new-privileges:true \
+  -e APPSECGATE_MASTER_URL="$APPSECGATE_MASTER_URL" \
+  -e APPSECGATE_MASTER_API_KEY="$APPSECGATE_MASTER_API_KEY" \
+  -e APPSECGATE_PROJECT_ID="$APPSECGATE_PROJECT_ID" \
   -v "$PWD":/workspace:ro \
   moondoom/appsecgate-mcp:0.1.0 \
   ci --project /workspace --base-ref "origin/main" --format text
 ```
 
-Options: `--base-ref` (default: `gates.ci.diff_base_ref`, i.e. `origin/main`),
-`--shown-snapshot PATH` (default `<project>/.appsecgate-mcp/shown.ndjson`),
-`--require-shown-snapshot` (fail-closed when the snapshot is missing),
+Network is allowed for this CI step only (invariant #2 applies to the MCP
+server, `network_mode: none`; CI is a separate host process). Options:
+`--base-ref` (default: `gates.ci.diff_base_ref`, i.e. `origin/main`),
+`--master-url`/`APPSECGATE_MASTER_URL`, `--api-key`/`APPSECGATE_MASTER_API_KEY`,
+`--project-id`/`APPSECGATE_PROJECT_ID`, `--master-timeout` (default 30),
 `--format text|ndjson`. Ready-to-use workflow:
 `.github/workflows/appsecgate-ci.yml`.
 
-### Shown snapshot (written by the agent, not the server)
+### "Shown" state (from master, not from project files)
 
-For the `unresolved_local` gate the agent maintains
-`.appsecgate-mcp/shown.ndjson` in the project (invariant #1: the server never
-writes project files). One redacted record per shown finding:
-
-```json
-{"fp":"0691d13f93462eba","rule_id":"gitleaks.github-pat","file":"src/main.py",
- "line":42,"severity":"high","shown_at":"2026-10-30T12:00:00Z",
- "verified_status":null,"suppression_scope":null}
-```
-
-- Collect data via `query_findings_db` (SELECT `v_findings`) + `get_scan_history`
-  (verification attempts, suppressions); `verified_status` ∈ `fixed`/`not_fixed`/
-  `wont_fix`, `suppression_scope` ∈ `local`/`ci`/`global`.
-- Append-only: never remove previously shown fingerprints; commit the file so
-  CI can read it. Missing snapshot degrades to severity-gate with a warning.
+CI no longer reads project files (invariant #1: the server never writes them;
+the `.appsecgate-mcp/shown.ndjson` snapshot channel was removed). The gate
+looks up each diff finding in the master-provided index: fingerprints with
+`verified_status: fixed`/`wont_fix` or `suppression_scope: ci`/`global` skip
+the `unresolved_local` block; everything else shown and not fixed blocks.
 
 
 ## 9. Sync to master (Phase 2, MS-3–MS-5)

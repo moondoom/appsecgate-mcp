@@ -23,10 +23,10 @@
     машинами и сканами (ADR-0001);
   - `verify_fix` пишет `fix_attempts` → `verified_status: fixed|not_fixed|wont_fix`;
   - suppression `scope: local|ci|global` (сейчас `local` фильтрует только локально);
-  - CI-этап (ADR-0003): `appsecgate ci` читает «показанное» из опционального
-    snapshot `.appsecgate-mcp/shown.ndjson` (пишет агент) — **промежуточный
-    мостик** до master: с появлением master-сервера CI сможет тянуть
-    показанное с сервера, snapshot остаётся офлайн-fallback.
+  - CI-этап (ADR-0003): `appsecgate ci` читал «показанное» из опционального
+    snapshot `.appsecgate-mcp/shown.ndjson`. **Snapshot-канал удалён решением
+    владельца (2026-10-31):** с MS-6 CI всегда тянет показанное с master
+    (`GET /v1/findings`), офлайн-fallback-режимов нет (см. §6).
 - Открытый вопрос `docs/architecture.md` §9.5: «Синхронизация shown_findings
   с master: как разрешать конфликты, если один и тот же fingerprint показан
   на разных машинах?» — решается в §5.3.
@@ -38,7 +38,8 @@
   - **№5** `query_findings_db` — только SELECT по публичным views;
   - новые production-зависимости запрещены **без явного указания** (нужно
     зафиксировать в этом ADR);
-  - `appsecgate-mcp ci` в CI-контейнере тоже запускается `:ro` + `network none`.
+  - `appsecgate-mcp ci` в CI-контейнере запускается `:ro`; сеть разрешена
+    только CI-шагу workflow (инвариант №2 относится к MCP-серверу, см. §6).
 
 ## 2. Цели и не-цели
 
@@ -47,7 +48,7 @@
 | # | Цель | Метрика |
 |---|------|---------|
 | G1 | Единый источник правды: находки + показанное + verified + suppressions со всех машин и CI | мастер хранит события из всех источников, дедуп по fingerprint |
-| G2 | CI может получать «показанное» с master (замена snapshot как основного канала) | `appsecgate ci --shown-source master` |
+| G2 | CI получает «показанное» с master (snapshot удалён) | `appsecgate ci` всегда тянет `GET /v1/findings` (MS-6) |
 | G3 | Suppression CI/global синхронизируются **вниз** на машины разработчиков (§4.6) | edge применяет pull-политики |
 | G4 | Конфликт §9.5 разрешён детерминированно | таблица приоритетов §5.3 |
 | G5 | Инвариант №2 не нарушен: MCP-сервер остаётся без сети | network none в docker-compose; сеть только у edge-процесса на хосте |
@@ -58,7 +59,7 @@
 
 - Web UI, WebSocket real-time, SLA-таймеры/автоэскалация — отдельные этапы.
 - RBAC/роли (Фаза 3), ГОСТ-модуль — вне этого этапа.
-- Интеграция с ASOC/DefectDojo — отдельный этап MS-8.
+- Интеграция с ASOC/DefectDojo — этап MS-8, отложен (вне плана, вернуть при актуализации vision).
 - Master **не сканирует** код — только хранит/агрегирует/отдаёт события.
 - Не менять сигнатуры существующих MCP-тулов.
 
@@ -203,13 +204,22 @@ Append-only таблица `audit_log` (все события + ключ/про�
 
 ## 6. CI-интеграция
 
-`appsecgate ci` получает `--shown-source master|snapshot|local`:
+`appsecgate ci` в CI-режиме **всегда** тянет «показанное» с master:
+`GET /v1/findings` (query `project` + Bearer-ключ). Snapshot-канал удалён
+полностью (решение владельца 2026-10-31): флаги `--shown-snapshot` /
+`--require-shown-snapshot`, конфиг-ключ `require_shown_snapshot`, парсер
+`shown.ndjson` и `SnapshotShownSource` больше не существуют.
 
-- `master` (по умолчанию при наличии master): CI тянет «показанное» с
-  `GET /v1/findings` (флаги shown/verified/suppressed) — snapshot не нужен;
-- `snapshot`: текущее поведение ADR-0003 (офлайн/без master);
-- отсутствие master и snapshot → warning + severity-gate (fail-open, как
-  сейчас). `--require-shown-source` ужесточает.
+- **Fail-closed**: `--master-url`/`APPSECGATE_MASTER_URL` или
+  `--project-id`/`APPSECGATE_PROJECT_ID` не заданы, master недоступен или
+  контракт нарушен → exit 2, PR блокируется. Severity-only fallback-режимов
+  нет: CI без master — сломанная инфраструктура.
+- Параметры: `--master-url` (или `APPSECGATE_MASTER_URL`), `--api-key` (или
+  `APPSECGATE_MASTER_API_KEY`), `--project-id` (или `APPSECGATE_PROJECT_ID`),
+  `--master-timeout` (default 30с).
+- Сеть: CI-шаг workflow запускает контейнер **без** `--network=none`.
+  Инвариант №2 относится к MCP-серверу (`network_mode: none`) и edge на
+  хосте; CI — отдельный процесс, и ему сеть к master необходима.
 
 ## 7. Принятые решения (Q1–Q7)
 
@@ -220,7 +230,7 @@ Append-only таблица `audit_log` (все события + ключ/про�
 | Q3 | HTTP-клиент edge | stdlib `urllib` на первый этап (ноль новых зависимостей); httpx — только отдельным ресёрчем |
 | Q4 | Конфликт §9.5 | Event sourcing: immutable события + агрегат; приоритеты: suppression(ci/global) > verified(fixed>wont_fix>not_fixed) > shown; LWW по UTC-таймстампу + детерминированный tie-break по `client_event_id` |
 | Q5 | Pull политик вниз | Входит: edge периодически тянет `GET /v1/suppressions` + `GET /v1/config` (§4.6, G3) |
-| Q6 | CI-источник показанного | `--shown-source master\|snapshot\|local`; master — основной канал при его наличии, snapshot — fallback (ADR-0003 сохраняется) |
+| Q6 | CI-источник показанного | CI всегда `master` (ADR-0004 §6): `GET /v1/findings`, fail-closed exit 2; snapshot-канал удалён решением владельца 2026-10-31 |
 | Q7 | Безопасность | Bearer API-ключ на проект, TLS на reverse-proxy, redaction при приёме, аудит append-only; лог без промптов и сырых секретов |
 
 
@@ -236,7 +246,7 @@ Append-only таблица `audit_log` (все события + ключ/про�
 | **MS-5** | Pull вниз: edge применяет CI/global suppressions и политики локально (скрытие в IDE, без записи в `:ro`-проект) | mcp-server / appsecgate-master |
 | **MS-6** | CI-источник: `--shown-source master` в `appsecgate ci`; контрактные тесты; `make check` зелёный | mcp-server / appsecgate-master |
 | **MS-7** | Docker Compose: master + edge, документация развёртывания, пример для команды | docs / docker |
-| **MS-8** | DefectDojo/ASOC экспорт (vision §5.2.4) — отдельный этап после MS-7 | appsecgate-master |
+| **MS-8** | DefectDojo/ASOC экспорт (vision §5.2.4) — отдельный этап после MS-7 | ⏸ отложено (вне плана, 2026-10-31) |
 
 ## 9. Тестирование
 
@@ -252,6 +262,7 @@ Append-only таблица `audit_log` (все события + ключ/про�
 
 - `docs/product-vision.md` §4.2–4.7, §5.2 (master, двойной контур, suppression)
 - `docs/architecture.md` §8 (границы фаз), §9.5 (конфликт синхронизации)
-- `docs/adr/ADR-0003-ci-unresolved-local-delivery.md` — snapshot как
-  промежуточный канал; `docs/adr/ADR-0001-fingerprint-and-semantic-dedup.md` — fingerprint
+- `docs/adr/ADR-0003-ci-unresolved-local-delivery.md` — исторический
+  snapshot-канал (удалён решением владельца 2026-10-31);
+  `docs/adr/ADR-0001-fingerprint-and-semantic-dedup.md` — fingerprint
 - `orchestration/gate.py`, `storage/stores/*`, `server/ci.py`, `git.py`

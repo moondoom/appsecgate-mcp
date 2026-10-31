@@ -1,10 +1,15 @@
-# Пример CI-gate для потребительского проекта (Фаза 2, ADR-0003).
+# Пример CI-gate для потребительского проекта (Фаза 2, ADR-0004 MS-6).
 # Использовать этот файл в проверяемом проекте, не в этом репозитории:
 #   curl -O https://raw.githubusercontent.com/moondoom/appsecgate-mcp/main/.github/workflows/appsecgate-ci.yml
 #
 # Контракт: `appsecgate-mcp ci` возвращает
 #   0 = pass, 1 = blocked (находки), 2 = ошибка инфраструктуры.
 # Любой ненулевой код GitHub считает провалом шага — PR блокируется.
+#
+# «Показанное» CI всегда тянет с master (GET /v1/findings): master недоступен
+# или ключ неверный → exit 2, PR блокируется (fail-closed, решение владельца
+# 2026-10-31). Сеть разрешена ТОЛЬКО этому CI-шагу: инвариант №2 относится
+# к MCP-серверу (network_mode: none), CI — отдельный процесс на хосте.
 name: AppSecGate CI gate
 
 on:
@@ -23,8 +28,12 @@ jobs:
           fetch-depth: 0
 
       - name: Run AppSecGate CI gate
+        env:
+          APPSECGATE_MASTER_URL: ${{ vars.APPSECGATE_MASTER_URL }}
+          APPSECGATE_MASTER_API_KEY: ${{ secrets.APPSECGATE_MASTER_API_KEY }}
+          APPSECGATE_PROJECT_ID: ${{ github.repository }}
         run: |
-          docker run --rm --network=none --read-only \
+          docker run --rm --read-only \
             --tmpfs=/tmp:size=100M,mode=1777 \
             --cap-drop=ALL --security-opt=no-new-privileges:true \
             -v "$PWD":/workspace:ro \

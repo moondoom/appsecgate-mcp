@@ -251,12 +251,15 @@ gates:
     diff_base_ref: origin/main        # база для `appsecgate ci`
 ```
 
-**CI gate (Фаза 2, ADR-0003).** `appsecgate-mcp ci` сканирует diff против
-`gates.ci.diff_base_ref` (или `--base-ref`), блокирует по `gates.ci.block_on`
-и по показанным-локально находкам из `.appsecgate-mcp/shown.ndjson`
-(snapshot пишет агент; без него — только severity-gate с warning).
-Exit codes: `0` pass, `1` blocked, `2` инфраструктурная ошибка. Формат вывода:
-`text` или `ndjson`. Пример workflow: `.github/workflows/appsecgate-ci.yml`.
+**CI gate (Фаза 2, ADR-0004 MS-6).** `appsecgate-mcp ci` сканирует diff
+против `gates.ci.diff_base_ref` (или `--base-ref`) и блокирует по
+`gates.ci.block_on`. «Показанное» CI **всегда** тянет с master
+(`GET /v1/findings`): master недоступен или ключ неверный → exit 2
+(fail-closed; snapshot-канал удалён решением владельца 2026-10-31).
+Параметры: `--master-url` (или `APPSECGATE_MASTER_URL`), `--api-key`
+(`APPSECGATE_MASTER_API_KEY`), `--project-id` (`APPSECGATE_PROJECT_ID`).
+Exit codes: `0` pass, `1` blocked, `2` инфраструктурная ошибка. Формат
+вывода: `text` или `ndjson`. Пример workflow: `.github/workflows/appsecgate-ci.yml`.
 
 **Sync to master (Фаза 2, MS-3–MS-5, ADR-0004).** `appsecgate-mcp sync`
 запускается на хосте (MCP-сервер остаётся без сети): идемпотентно пушит события

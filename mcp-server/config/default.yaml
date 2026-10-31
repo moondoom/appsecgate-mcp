@@ -61,7 +61,6 @@ gates:
     potentially_fixed_on_block_severity: block
     new_finding_action: warn
     local_suppression_hides: false
-    require_shown_snapshot: false
 
 # Пример подавления (в проекте переопределяется при необходимости):
 # suppress:

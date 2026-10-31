@@ -63,7 +63,7 @@
 | Источник | Содержимое | Режим |
 |---|---|---|
 | Local SQLite | materialized state + `fix_attempts` | dev workstation |
-| Snapshot `.appsecgate-mcp/shown.ndjson` | **event-log**, `schema_version=1` | repo, offline |
+| ~~Snapshot `.appsecgate-mcp/shown.ndjson`~~ | **event-log** (канал удалён решением владельца 2026-10-31, MS-6) | — |
 | Master | event-log aggregate per `(project, fp)` | online, канон |
 
 **Retention:** `SHOWN` / `POTENTIALLY_FIXED` / `REOPENED` **не истекают**; истекают только `FIXED` / `SUPPRESSED` / `WONT_FIX` по `status_updated_at + 30d`. Иначе `unresolved_local` тихо снимается — противоречие с killer-фичей.
@@ -77,7 +77,7 @@
 | `gates.ci.potentially_fixed_on_block_severity` | `block` \| `warn` | **`block`** |
 | `gates.ci.new_finding_action` | `warn` \| `block` \| `info` | `warn` |
 | `gates.ci.local_suppression_hides` | bool | `false` (двойной контур) |
-| `gates.ci.require_shown_snapshot` | bool | `false` |
+| ~~`gates.ci.require_shown_snapshot`~~ | ~~bool~~ | ~~`false`~~ — **удалён** (MS-6, 2026-10-31): CI всегда master, fail-closed |
 
 ---
 
@@ -174,9 +174,13 @@ match (reported, actual):
 
 **Явно:** «перескан нашёл» = `actual=True` (находка всё ещё есть). Это устраняет инверсию из ADR-0005 §2.9.
 
-### 3.3. Snapshot merge (offline CI, event-log)
+### 3.3. Snapshot merge (offline CI, event-log) — ~~актуален~~ **УДАЛЁН**
 
-**Источники:** `.appsecgate-mcp/shown.ndjson` из `merge-base(base-ref, HEAD)` и из `HEAD`.
+> Раздел исторический: snapshot-канал удалён решением владельца 2026-10-31
+> (ADR-0004 MS-6). CI всегда тянет «показанное» с master (`GET /v1/findings`,
+> §3.4), офлайн-снапшотов нет.
+
+**Источники (было):** `.appsecgate-mcp/shown.ndjson` из `merge-base(base-ref, HEAD)` и из `HEAD`.
 
 ```
 1. events_base = load(snapshot @ merge-base)
@@ -255,7 +259,7 @@ match (reported, actual):
 ### 4.1. Влияние на ADR-0003
 
 - **§5.2** — заменена §2.3 этого ADR.
-- **§5.1** — расширяется: `--shown-source {snapshot,master}`, `--require-shown-snapshot` (exit 2 при отсутствии), `--base-ref` через merge-base, warn не влияет на exit code.
+- **§5.1** — заменена ADR-0004 §6 (MS-6, решение владельца 2026-10-31): CI всегда тянет «показанное» с master (`GET /v1/findings`, fail-closed exit 2); snapshot-канал удалён; `--base-ref` через merge-base, warn не влияет на exit code.
 - **§5.3** — `record` → `lookup(fp) -> SnapshotEntry | None`.
 - **§6.1** — snapshot = event-log (§3.3), поля `schema_version`, `event_id`, `event`, `branch`, `commit`, `severity`, `suppression_scope`, `suppression_expires_at`, `missed_scan_count`.
 - **§6.3** — монотонность enforced через append-only check (§3.3).
@@ -266,7 +270,7 @@ match (reported, actual):
 
 - **§5.1** — события расширяются: `not_found_in_scope`, `suppressed`, `suppression_expired`, `verify_wont_fix`, `reopened`; во все `finding_*` — `first_seen_branch/commit`, `last_seen_branch/commit`, `missed_scan_count`.
 - **§5.3** — заменена §3.4 этого ADR.
-- **§6** — `--shown-source {snapshot,master}` (без `local` в CI).
+- **§6** — CI всегда `master` (ADR-0004 §6, решение владельца 2026-10-31): `GET /v1/findings`, fail-closed; snapshot-канал удалён.
 - **Статус:** `Paused (superseded in parts by ADR-0006)`.
 
 ### 4.3. Влияние на ADR-0005
@@ -282,7 +286,7 @@ match (reported, actual):
 - `server/tools/verify_fix.py` — §3.2.
 - `server/tools/suppress.py` — `action: suppress|unsuppress`, emit(`unsuppressed`); `suppression_expired` при чтении.
 - `storage/stores/shown.py` — `suppression_expired`, `WONT_FIX` no-op.
-- `server/ci.py` — snapshot event-log parser (§3.3), `--require-shown-snapshot` → exit 2.
+- `server/ci.py` — CLI `ci`: master-параметры (`--master-url`/`--api-key`/`--project-id`), fail-closed exit 2 (ADR-0004 MS-6).
 - `git.py` — `merge-base`, branch/commit.
 - `config/models.py` — новые ключи §1.7.
 - `docs/adr/README.md` — статусы ADR-0003/0004/0006.

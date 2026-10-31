@@ -90,7 +90,6 @@ class CiGateConfig(GateRuleConfig):
     potentially_fixed_on_block_severity: str = "block"  # block | warn
     new_finding_action: str = "warn"  # warn | block | info
     local_suppression_hides: bool = False
-    require_shown_snapshot: bool = False
 
 
 class GatesConfig(_StrictModel):

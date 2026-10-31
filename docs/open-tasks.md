@@ -342,9 +342,9 @@ edge-процесса на хосте, MCP-сервер остаётся `networ
 | MS-3 | Edge `appsecgate-mcp sync`: экспорт локальных БД → события, outbox, idempotent push (urllib) | ✅ решено |
 | MS-4 | Master REST API (FastAPI): `/v1/events|findings|suppressions|config|audit`, `/healthz` | ✅ решено |
 | MS-5 | Pull вниз: CI/global suppressions + политики применяются локально (§4.6) | ✅ решено |
-| MS-6 | CI-источник: `--shown-source master` в `appsecgate ci`; контрактные тесты | ⬜ не начато |
+| MS-6 | CI-источник: `appsecgate ci` всегда тянет показанное с master (snapshot удалён); контрактные тесты | 🚧 в работе (2026-10-31) |
 | MS-7 | Docker Compose (master + edge), документация развёртывания | ⬜ не начато |
-| MS-8 | DefectDojo/ASOC экспорт (vision §5.2.4) — после MS-7 | ⬜ не начато |
+| MS-8 | DefectDojo/ASOC экспорт (vision §5.2.4) — после MS-7 | ⏸ отложено — вне плана, вернуть при актуализации vision |
 
 **MS-2 (2026-10-31):** создан пакет `appsecgate-master/` (Python ≥ 3.12,
 зависимость — только pydantic; FastAPI — MS-4). Реализовано по ADR-0006

@@ -1,19 +1,22 @@
-"""Тесты CI-режима (ADR-0003): exit 0/1/2, snapshot, ndjson, git diff vs base.
+"""Тесты CI-режима (ADR-0004 MS-6): exit 0/1/2, master-источник, ndjson, git diff.
 
 Сканеры — фейковые (без бинарников), git — реальный временный репозиторий.
+Запросы к master мокаются на уровне `fetch_findings` (контракт самого
+`fetch_findings` проверяется в test_shown_source.py end-to-end).
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
-from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from appsecgate_mcp.models.finding import Category
 from appsecgate_mcp.normalization.fingerprint import FingerprintGenerator
+from appsecgate_mcp.orchestration import ci as ci_module
 from appsecgate_mcp.orchestration.ci import run_ci
+from appsecgate_mcp.orchestration.shown_source import MasterFindingsError, ShownRecord
 from appsecgate_mcp.scanners.base import BaseScanner, RawFinding
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.server.ci import ci_main
@@ -88,30 +91,35 @@ def _commit_file(root, name: str, content: str) -> None:
     _git(root, "commit", "-m", f"add {name}")
 
 
-def _write_snapshot(tmp_path, fp: str, **extra) -> str:
-    path = tmp_path / "shown.ndjson"
-    record = {
-        "fp": fp,
-        "rule_id": "r",
-        "file": "b.py",
-        "line": 1,
-        "severity": "low",
-        # Свежая дата: статичная дата против RETENTION_DAYS=30 — «бомба времени».
-        "shown_at": (datetime.now(UTC) - timedelta(days=1)).isoformat(),
-        "verified_status": None,
-        "suppression_scope": None,
-        **extra,
-    }
-    path.write_text(json.dumps(record) + "\n", encoding="utf-8")
-    return str(path)
+@pytest.fixture()
+def master(monkeypatch):
+    """Мокает `fetch_findings` в CI-модуле: возвращает записи или кидает ошибку."""
+
+    def _install(records: list[ShownRecord] | None = None, error: str | None = None):
+        if error:
+
+            def _fetch(*args, **kwargs):
+                raise MasterFindingsError(error)
+
+        else:
+
+            def _fetch(*args, **kwargs):
+                return records or []
+
+        monkeypatch.setattr(ci_module, "fetch_findings", _fetch)
+
+    return _install
 
 
 @pytest.mark.asyncio
-async def test_ci_pass_medium_finding(repo):
+async def test_ci_pass_medium_finding(repo, master):
     _commit_file(repo, "b.py", "b = 1\n")
+    master()
     result = await run_ci(
         project_path=str(repo),
         base_ref="base",
+        master_url="http://master.test",
+        project_id="p1",
         registry=_fake_registry([_rf(raw_severity="medium")]),
     )
     assert result.exit_code == 0
@@ -120,11 +128,14 @@ async def test_ci_pass_medium_finding(repo):
 
 
 @pytest.mark.asyncio
-async def test_ci_blocks_high_finding(repo):
+async def test_ci_blocks_high_finding(repo, master):
     _commit_file(repo, "b.py", "b = 1\n")
+    master()
     result = await run_ci(
         project_path=str(repo),
         base_ref="base",
+        master_url="http://master.test",
+        project_id="p1",
         registry=_fake_registry([_rf(raw_severity="high")]),
     )
     assert result.exit_code == 1
@@ -132,14 +143,15 @@ async def test_ci_blocks_high_finding(repo):
 
 
 @pytest.mark.asyncio
-async def test_ci_blocks_unresolved_local_from_snapshot(repo, tmp_path):
+async def test_ci_blocks_unresolved_local_from_master(repo, master):
     _commit_file(repo, "b.py", "b = 1\n")
     fp = FingerprintGenerator().generate_for("r", "b.py", "x = 1")
-    snapshot = _write_snapshot(tmp_path, fp)
+    master(records=[ShownRecord(fingerprint=fp, status="SHOWN")])
     result = await run_ci(
         project_path=str(repo),
         base_ref="base",
-        shown_snapshot=snapshot,
+        master_url="http://master.test",
+        project_id="p1",
         registry=_fake_registry([_rf(raw_severity="medium")]),
     )
     assert result.exit_code == 1
@@ -147,14 +159,15 @@ async def test_ci_blocks_unresolved_local_from_snapshot(repo, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_ci_fixed_snapshot_clears_block(repo, tmp_path):
+async def test_ci_fixed_master_clears_block(repo, master):
     _commit_file(repo, "b.py", "b = 1\n")
     fp = FingerprintGenerator().generate_for("r", "b.py", "x = 1")
-    snapshot = _write_snapshot(tmp_path, fp, verified_status="fixed")
+    master(records=[ShownRecord(fingerprint=fp, verified_status="fixed")])
     result = await run_ci(
         project_path=str(repo),
         base_ref="base",
-        shown_snapshot=snapshot,
+        master_url="http://master.test",
+        project_id="p1",
         registry=_fake_registry([_rf(raw_severity="medium")]),
     )
     assert result.exit_code == 0
@@ -162,30 +175,43 @@ async def test_ci_fixed_snapshot_clears_block(repo, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_ci_missing_snapshot_is_warning_only(repo, tmp_path):
+async def test_ci_without_master_exit_2(repo):
     _commit_file(repo, "b.py", "b = 1\n")
     result = await run_ci(
         project_path=str(repo),
         base_ref="base",
-        shown_snapshot=str(tmp_path / "nope.ndjson"),
-        registry=_fake_registry([_rf(raw_severity="medium")]),
-    )
-    assert result.exit_code == 0
-    assert any("shown snapshot not found" in w for w in result.warnings)
-
-
-@pytest.mark.asyncio
-async def test_ci_missing_snapshot_fails_closed_when_required(repo, tmp_path):
-    _commit_file(repo, "b.py", "b = 1\n")
-    result = await run_ci(
-        project_path=str(repo),
-        base_ref="base",
-        shown_snapshot=str(tmp_path / "nope.ndjson"),
-        require_shown_snapshot=True,
         registry=_fake_registry([_rf(raw_severity="medium")]),
     )
     assert result.exit_code == 2
-    assert "shown snapshot not found" in result.error
+    assert "ci requires master" in result.error
+
+
+@pytest.mark.asyncio
+async def test_ci_without_project_id_exit_2(repo):
+    _commit_file(repo, "b.py", "b = 1\n")
+    result = await run_ci(
+        project_path=str(repo),
+        base_ref="base",
+        master_url="http://master.test",
+        registry=_fake_registry([_rf(raw_severity="medium")]),
+    )
+    assert result.exit_code == 2
+    assert "project id" in result.error
+
+
+@pytest.mark.asyncio
+async def test_ci_master_unavailable_exit_2(repo, master):
+    _commit_file(repo, "b.py", "b = 1\n")
+    master(error="GET /v1/findings: HTTP 500")
+    result = await run_ci(
+        project_path=str(repo),
+        base_ref="base",
+        master_url="http://master.test",
+        project_id="p1",
+        registry=_fake_registry([_rf(raw_severity="medium")]),
+    )
+    assert result.exit_code == 2
+    assert "HTTP 500" in result.error
 
 
 @pytest.mark.asyncio
@@ -194,6 +220,8 @@ async def test_ci_unknown_base_ref_exit_2(repo):
     result = await run_ci(
         project_path=str(repo),
         base_ref="no-such-ref",
+        master_url="http://master.test",
+        project_id="p1",
         registry=_fake_registry([_rf()]),
     )
     assert result.exit_code == 2
@@ -206,6 +234,8 @@ async def test_ci_no_available_scanners_exit_2(repo):
     result = await run_ci(
         project_path=str(repo),
         base_ref="base",
+        master_url="http://master.test",
+        project_id="p1",
         registry=_fake_registry([_rf()], available=False),
     )
     assert result.exit_code == 2
@@ -213,20 +243,35 @@ async def test_ci_no_available_scanners_exit_2(repo):
 
 
 @pytest.mark.asyncio
-async def test_ci_empty_diff_passes(repo):
+async def test_ci_empty_diff_passes(repo, master):
+    master()
     result = await run_ci(
         project_path=str(repo),
         base_ref="base",
+        master_url="http://master.test",
+        project_id="p1",
         registry=_fake_registry([_rf()]),
     )
     assert result.exit_code == 0
     assert result.summary.total == 0
 
 
-def test_ci_main_ndjson_blocked(repo, capsys):
+def test_ci_main_ndjson_blocked(repo, capsys, master):
     _commit_file(repo, "b.py", "b = 1\n")
+    master()
     code = ci_main(
-        ["--project", str(repo), "--base-ref", "base", "--format", "ndjson"],
+        [
+            "--project",
+            str(repo),
+            "--base-ref",
+            "base",
+            "--master-url",
+            "http://master.test",
+            "--project-id",
+            "p1",
+            "--format",
+            "ndjson",
+        ],
         registry=_fake_registry([_rf(raw_severity="high")]),
     )
     assert code == 1
@@ -238,13 +283,35 @@ def test_ci_main_ndjson_blocked(repo, capsys):
     assert finding["reason"] == "ci_severity"
 
 
-def test_ci_main_text_pass(repo, capsys):
+def test_ci_main_text_pass(repo, capsys, master):
     _commit_file(repo, "b.py", "b = 1\n")
+    master()
     code = ci_main(
-        ["--project", str(repo), "--base-ref", "base"],
+        [
+            "--project",
+            str(repo),
+            "--base-ref",
+            "base",
+            "--master-url",
+            "http://master.test",
+            "--project-id",
+            "p1",
+        ],
         registry=_fake_registry([_rf(raw_severity="medium")]),
     )
     out = capsys.readouterr().out
     assert code == 0
     assert "result: pass" in out
     assert "BLOCK" not in out
+
+
+def test_ci_main_without_master_fails_closed(repo, capsys, master):
+    _commit_file(repo, "b.py", "b = 1\n")
+    master()
+    code = ci_main(
+        ["--project", str(repo), "--base-ref", "base"],
+        registry=_fake_registry([_rf(raw_severity="medium")]),
+    )
+    out = capsys.readouterr().out
+    assert code == 2
+    assert "ci requires master" in out

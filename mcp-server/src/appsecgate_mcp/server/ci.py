@@ -1,7 +1,9 @@
-"""CLI-подкоманда `appsecgate-mcp ci` (Фаза 2, ADR-0003).
+"""CLI-подкоманда `appsecgate-mcp ci` (Фаза 2, ADR-0004 MS-6).
 
 Запускает CI-оценку diff проекта против base-ветки и печатает результат:
 text — человекочитаемая сводка, ndjson — построчный JSON для пайплайнов.
+«Показанное» CI всегда тянет с master (`GET /v1/findings`); без master
+(или при его недоступности) — exit 2 (fail-closed).
 Exit code: 0 = pass, 1 = blocked, 2 = инфраструктурная ошибка.
 """
 
@@ -13,7 +15,6 @@ import json
 import logging
 import os
 import sys
-from pathlib import Path
 
 from appsecgate_mcp.logging_setup import configure_logging
 from appsecgate_mcp.models.finding import Finding, ScanResult
@@ -22,14 +23,11 @@ from appsecgate_mcp.orchestration.gate import GateDecision, GateSummary
 
 logger = logging.getLogger(__name__)
 
-# Стандартное место snapshot (ADR-0003 §6.1); можно перекрыть --shown-snapshot.
-_SNAPSHOT_FILE = ".appsecgate-mcp/shown.ndjson"
-
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="appsecgate-mcp ci",
-        description="CI-оценка diff по gates (Фаза 2, ADR-0003)",
+        description="CI-оценка diff по gates (Фаза 2, ADR-0004 MS-6)",
     )
     parser.add_argument(
         "--project",
@@ -47,14 +45,25 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--shown-snapshot",
-        default=None,
-        help=f"Путь к snapshot показанного. По умолчанию <project>/{_SNAPSHOT_FILE}.",
+        "--master-url",
+        default=os.environ.get("APPSECGATE_MASTER_URL"),
+        help="Базовый URL master; обязателен (или APPSECGATE_MASTER_URL)",
     )
     parser.add_argument(
-        "--require-shown-snapshot",
-        action="store_true",
-        help="Без валидного snapshot — exit 2 (fail-closed, вариант А ADR-0003)",
+        "--api-key",
+        default=os.environ.get("APPSECGATE_MASTER_API_KEY"),
+        help="API-ключ проекта (Authorization: Bearer; APPSECGATE_MASTER_API_KEY)",
+    )
+    parser.add_argument(
+        "--project-id",
+        default=os.environ.get("APPSECGATE_PROJECT_ID"),
+        help="ID проекта на master; обязателен (или APPSECGATE_PROJECT_ID)",
+    )
+    parser.add_argument(
+        "--master-timeout",
+        type=float,
+        default=30,
+        help="Таймаут запроса к master, секунд",
     )
     parser.add_argument(
         "--format",
@@ -173,15 +182,14 @@ def ci_main(argv: list[str], *, registry=None) -> int:
     configure_logging(args.log_level, args.log_file)
     logger.info("ci start project=%s", args.project)
 
-    snapshot = args.shown_snapshot or str(Path(args.project).resolve() / _SNAPSHOT_FILE)
-    # Флаг CLI перекрывает конфиг; без флага решает gates.ci.require_shown_snapshot.
-    require_snapshot = args.require_shown_snapshot or None
     result = asyncio.run(
         run_ci(
             project_path=args.project,
             base_ref=args.base_ref,
-            shown_snapshot=snapshot,
-            require_shown_snapshot=require_snapshot,
+            master_url=args.master_url,
+            master_api_key=args.api_key or "",
+            project_id=args.project_id,
+            master_timeout=args.master_timeout,
             registry=registry,
         )
     )

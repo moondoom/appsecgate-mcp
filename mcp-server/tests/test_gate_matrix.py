@@ -11,11 +11,7 @@ from datetime import UTC, datetime, timedelta
 from appsecgate_mcp.config.models import CiGateConfig, Config
 from appsecgate_mcp.models.finding import Category, Finding, Severity
 from appsecgate_mcp.orchestration.gate import GateEngine, decide
-from appsecgate_mcp.orchestration.shown_source import (
-    ShownRecord,
-    ShownSnapshot,
-    SnapshotShownSource,
-)
+from appsecgate_mcp.orchestration.shown_source import MasterShownSource, ShownRecord
 
 UNKNOWN = "<unknown>"
 
@@ -225,13 +221,11 @@ def test_row_no_record_infos_when_configured():
 
 # GateSummary: skip_count + by_reason по всем контурам.
 async def test_gate_summary_by_reason_and_skip():
-    source = SnapshotShownSource(
-        ShownSnapshot(
-            records=[
-                ShownRecord(fingerprint="b", status="FIXED"),
-                ShownRecord(fingerprint="c", status="WONT_FIX", last_seen_branch="feature/x"),
-            ]
-        )
+    source = MasterShownSource(
+        [
+            ShownRecord(fingerprint="b", status="FIXED"),
+            ShownRecord(fingerprint="c", status="WONT_FIX", last_seen_branch="feature/x"),
+        ]
     )
     engine = GateEngine(Config(), shown_store=source, branch="feature/x")
     findings = [
@@ -250,4 +244,3 @@ async def test_gate_summary_by_reason_and_skip():
         "wont_fix": 1,
         "ci_new": 1,
     }
-
