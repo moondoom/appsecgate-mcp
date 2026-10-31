@@ -355,6 +355,16 @@ CREATE INDEX idx_shown_status ON shown_findings(status);
 
 **Зачем нужна**: без неё невозможен `block_on_unresolved_local` в CI. Это данные, которые переживают сессию и синхронизируются с master-сервером в Фазе 2.
 
+В MS-5 добавлена отдельная таблица `remote_suppressions`
+(`project_id`, `fingerprint`, `scope`, `expires_at`): edge-запись заменяет её
+атомарно после pull, а скан применяет local + remote фильтры. Она не смешивается
+с пользовательской `suppressions` и не экспортируется обратно на master.
+
+Центральная policy хранится вне проекта в
+`~/.appsecgate-mcp/master-policies/<project_id>.json`. Приоритет конфигурации:
+`default < project < master < env`. MCP только читает этот файл при старте
+сессии; HTTP выполняет исключительно edge-процесс на хосте.
+
 #### `feedback.db`
 
 Обратная связь от разработчика. Нужна для офлайн-режима.
@@ -592,7 +602,9 @@ services:
   локальных БД в события, outbox `~/.appsecgate/sync/outbox.ndjson`,
   идемпотентный push (urllib); MCP-сервер сети не получает (инвариант №2).
   **MS-4 выполнен** (2026-10-31): FastAPI master API — идемпотентный приём,
-  проектная Bearer-аутентификация, findings/suppressions/config/audit и healthz
+  проектная Bearer-аутентификация, findings/suppressions/config/audit и healthz.
+  **MS-5 выполнен** (2026-10-31): sync также скачивает CI/global suppressions
+  и master policy в data-dir; MCP применяет их локально без сети
 - ⏳ CI-контур и двойные gates — **этап 1 Фазы 2**, реализуется по
   [ADR-0003](adr/ADR-0003-ci-unresolved-local-delivery.md)
 - ❌ Сканирование образов

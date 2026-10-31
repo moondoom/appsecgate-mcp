@@ -1,13 +1,12 @@
-"""CLI-подкоманда `appsecgate-mcp sync` (MS-3, ADR-0004 §4.2).
+"""CLI-подкоманда `appsecgate-mcp sync` (MS-3/MS-5, ADR-0004 §4.2).
 
 Запускается НА ХОСТЕ, вне read-only/no-network контейнера MCP-сервера
-(инвариант №2 не затрагивается). Читает локальную `shown_findings.db`,
-реконструирует события жизненного цикла (ADR-0006), дописывает их в durable
-outbox и пушит на master идемпотентно (urllib).
+(инвариант №2 не затрагивается). Пушит локальные события через durable outbox,
+затем скачивает CI/global suppressions и центральную policy в локальный data-dir.
 
-Exit code: 0 = ok (все события доставлены или `--dry-run`),
-1 = push частично не удался (события остались в outbox для retry),
-2 = инфраструктурная ошибка (нет БД, нет --master-url, битая схема).
+Exit code: 0 = ok (push/pull завершены или `--dry-run`),
+1 = push или pull частично не удался (retry следующим запуском),
+2 = инфраструктурная ошибка (нет БД, project-id, --master-url, битая схема).
 """
 
 from __future__ import annotations
@@ -22,6 +21,7 @@ from pathlib import Path
 from appsecgate_mcp.logging_setup import configure_logging
 from appsecgate_mcp.sync.export import ExportError, ExportResult, export_events
 from appsecgate_mcp.sync.outbox import Outbox
+from appsecgate_mcp.sync.pull import PullError, pull_master
 from appsecgate_mcp.sync.push import push_outbox
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--project-id",
         default=None,
-        help="Экспортировать только один project_id (по умолчанию — все проекты БД)",
+        help="Проект для push/pull; обязателен при нескольких проектах в БД",
     )
     parser.add_argument(
         "--outbox",
@@ -64,7 +64,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--batch-size", type=int, default=200, help="Событий в одном HTTP-батче")
     parser.add_argument("--timeout", type=float, default=30, help="Таймаут HTTP-запроса, секунд")
-    parser.add_argument("--dry-run", action="store_true", help="Только экспорт, без outbox/push")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Только экспорт, без outbox/HTTP/pull"
+    )
     parser.add_argument(
         "--format",
         choices=["text", "ndjson"],
@@ -119,6 +121,17 @@ def sync_main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return _print_export(exported, args.format)
 
+    project_id = args.project_id or None
+    project_ids = {event["project_key"] for event in exported.events if event.get("project_key")}
+    if project_id is None and len(project_ids) == 1:
+        project_id = next(iter(project_ids))
+    if project_id is None and len(project_ids) > 1:
+        print(
+            "appsecgate sync: error: --project-id required for a multi-project database",
+            file=sys.stderr,
+        )
+        return 2
+
     if not args.master_url:
         print(
             "appsecgate sync: error: --master-url required (или APPSECGATE_MASTER_URL)",
@@ -134,15 +147,38 @@ def sync_main(argv: list[str] | None = None) -> int:
         args.api_key or "",
         batch_size=args.batch_size,
         timeout=args.timeout,
+        project_id=project_id,
     )
+
+    pull_error: PullError | None = None
+    pull_summary = "pull=skipped"
+    if project_id is not None:
+        try:
+            pulled = pull_master(
+                args.master_url,
+                project_id,
+                args.api_key or "",
+                args.data_dir,
+                timeout=args.timeout,
+            )
+        except PullError as exc:
+            pull_error = exc
+            pull_summary = "pull_failed=1"
+        else:
+            policy = "applied" if pulled.policy_present else "absent"
+            pull_summary = (
+                f"pulled_suppressions={pulled.suppression_count} policy={policy} pull_failed=0"
+            )
 
     lines = [
         "appsecgate sync: "
         f"exported={len(exported.events)} appended={appended} "
         f"sent={len(result.sent)} rejected={len(result.rejected)} "
-        f"failed={len(result.failed)}"
+        f"failed={len(result.failed)} {pull_summary}"
     ]
     for error in result.errors:
         lines.append(f"warning: {error}")
+    if pull_error is not None:
+        lines.append(f"warning: pull: {pull_error}")
     print("\n".join(lines))
-    return 1 if result.failed else 0
+    return 1 if result.failed or pull_error is not None else 0

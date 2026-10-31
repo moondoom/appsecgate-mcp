@@ -43,6 +43,22 @@ def _start_server(collector: _Collector) -> HTTPServer:
             self.end_headers()
             self.wfile.write(payload)
 
+        def do_GET(self):
+            from urllib.parse import parse_qs, urlparse
+
+            status = collector.respond(self.path, {})
+            project = parse_qs(urlparse(self.path).query).get("project", [""])[0]
+            if self.path.startswith("/v1/suppressions"):
+                body = {"project": project, "suppressions": []}
+            else:
+                body = {"project": project, "policy": None, "at": None}
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
         def log_message(self, *args):  # заглушка: не шуметь в тестах
             pass
 

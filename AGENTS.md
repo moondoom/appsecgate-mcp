@@ -14,10 +14,10 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `appsecgate-master/src/` — центральный (master) сервер, Фаза 2 этап 2
   (ADR-0004/ADR-0006): события/агрегат/аудит и REST API (`api/`); пакет
   `appsecgate-master/`, зависимости — pydantic, FastAPI, uvicorn. MS-4 выполнен.
-- `mcp-server/src/appsecgate_mcp/sync/` — edge-синхронизация (MS-3, ADR-0004
-  §4.2): подкоманда `appsecgate-mcp sync` на хосте — экспорт shown_findings.db
-  в события, outbox `~/.appsecgate/sync/outbox.ndjson`, idempotent push
-  (stdlib urllib). Инвариант №2 не затрагивается: сервер sync не вызывает.
+- `mcp-server/src/appsecgate_mcp/sync/` — edge-синхронизация (MS-3/MS-5,
+  ADR-0004 §4.2): `appsecgate-mcp sync` на хосте — экспорт shown_findings.db,
+  project-scoped outbox/push и pull CI/global suppressions + master policy в
+  data-dir (stdlib urllib). MCP-сервер сеть не вызывает (инвариант №2).
 - `mcp-server/src/appsecgate_mcp/server/` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
   `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`,
   `query_findings_db`, `export_snapshot`, `get_config`, `update_config`,
@@ -28,7 +28,7 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `mcp-server/src/appsecgate_mcp/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
 - `mcp-server/src/appsecgate_mcp/storage/` — SQLite-схема, views; store-классы в
   подмодулях `storage/stores/` (по классу на модуль)
-- `mcp-server/tests/` — 413 тестов, все должны быть зелёными
+- `mcp-server/tests/` — 476 тестов, все должны быть зелёными
 - `config/default.yaml` — дефолтная конфигурация
 - `docs/` — архитектура, ADR, открытые задачи, отчёты
 
@@ -97,7 +97,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
-450 тестов mcp-server + 140 тестов appsecgate-master должны оставаться зелёными.
+476 тестов mcp-server + 140 тестов appsecgate-master должны оставаться зелёными.
 Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
 ## File Size Limits

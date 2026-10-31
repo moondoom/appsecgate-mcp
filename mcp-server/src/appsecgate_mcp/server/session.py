@@ -38,6 +38,7 @@ from appsecgate_mcp.storage.stores import (
     FindingIdentityStore,
     FixAttemptsStore,
     ProjectsStore,
+    RemoteSuppressionStore,
     ScanCacheStore,
     ShownFindingsStore,
     SqlAuditLogStore,
@@ -137,6 +138,7 @@ class SessionState:
         self.shown_store: ShownFindingsStore | None = None
         self.feedback_store: FeedbackStore | None = None
         self.suppression_store: SuppressionStore | None = None
+        self.remote_suppression_store: RemoteSuppressionStore | None = None
         self.scan_cache_store: ScanCacheStore | None = None
         self.projects_store: ProjectsStore | None = None
         self.finding_identity_store: FindingIdentityStore | None = None
@@ -185,7 +187,7 @@ class SessionState:
         self.project_alias = project_alias
         self.project_path = project
 
-        config = self.config_loader.load(project)
+        config = self.config_loader.load(project, project_id=project_id)
         self.config = config
 
         await self._sync_trivy_db(config)
@@ -203,6 +205,7 @@ class SessionState:
             config,
             self.registry,
             suppression_store=self.suppression_store,
+            remote_suppression_store=self.remote_suppression_store,
             shown_store=self.shown_store,
             identity_store=self.finding_identity_store,
             context_store=self.finding_context_store,
@@ -237,6 +240,8 @@ class SessionState:
         self.feedback_store.init_schema()
         self.suppression_store = SuppressionStore(self.databases["shown"], project_id)
         self.suppression_store.init_schema()
+        self.remote_suppression_store = RemoteSuppressionStore(self.databases["shown"], project_id)
+        self.remote_suppression_store.init_schema()
         self.scan_cache_store = ScanCacheStore(self.databases["scan_cache"])
         self.scan_cache_store.init_schema()
 

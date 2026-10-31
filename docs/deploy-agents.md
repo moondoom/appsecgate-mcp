@@ -325,15 +325,16 @@ writes project files). One redacted record per shown finding:
   CI can read it. Missing snapshot degrades to severity-gate with a warning.
 
 
-## 9. Sync to master (Phase 2, MS-3)
+## 9. Sync to master (Phase 2, MS-3–MS-5)
 
 The master server keeps a single source of truth for findings across machines
 and CI (ADR-0004). The MCP server itself stays offline (invariant #2:
-`network_mode: none`) — the **edge** process pushes local state from the host:
+`network_mode: none`) — the **edge** process synchronizes local state from the host:
 
 ```bash
 appsecgate-mcp sync \
   --data-dir "$HOME/.appsecgate-mcp" \
+  --project-id "your-project-id" \
   --master-url https://appsecgate.example.com \
   --api-key "$APPSECGATE_MASTER_API_KEY"
 ```
@@ -345,18 +346,30 @@ What happens:
    `suppressed`, …) per the ADR-0006 matrix. `client_event_id` is a
    deterministic UUID, so re-running produces the same events → idempotent.
 2. **Outbox** — events are appended to `~/.appsecgate/sync/outbox.ndjson`
-   (durable NDJSON queue, dedup by `client_event_id`).
+   (durable NDJSON queue, dedup by `client_event_id`). Push is filtered by
+   project, so another project's events remain queued for their own API key.
 3. **Push** — the queue is POSTed to `{master}/v1/events` (stdlib `urllib`,
    `Authorization: Bearer`). 2xx → removed from the queue; 4xx → quarantined
    to `outbox.ndjson.rejected`; 5xx/network → kept for the next run.
+4. **Pull** — CI/global suppressions and the central policy are downloaded to
+   the same data-dir. Remote suppressions live separately in
+   `remote_suppressions` and apply on the next scan without overwriting local
+   suppressions. Policy is stored in `master-policies/<project_id>.json` and
+   applies to a new/restarted MCP session with precedence
+   `default < project < master < env`.
 
-Options: `--project-id` (single project), `--batch-size`, `--timeout`,
-`--dry-run` (print events without writing the outbox; `--format ndjson` for
-machine output). Exit codes: `0` ok, `1` push partially failed (retry next
-run), `2` infrastructure error (missing DB / missing `--master-url`).
+`--project-id` may be omitted when the database contains exactly one project;
+it is required for a multi-project database. For Docker, `--data-dir` must
+point to the host location of the same data volume read by the MCP container.
+Pull failure keeps the last downloaded state for offline use.
+
+Options: `--batch-size`, `--timeout`, `--dry-run` (local export only: no HTTP,
+outbox or pulled-file writes; `--format ndjson` for machine output). Exit codes:
+`0` ok, `1` push or pull partially failed (retry next run), `2`
+infrastructure/configuration error.
 
 Env overrides: `APPSECGATE_MASTER_URL`, `APPSECGATE_MASTER_API_KEY`,
-`APPSECGATE_SYNC_OUTBOX`, `APPSECGATE_DATA_DIR`. The REST endpoint is
-implemented in MS-4 (FastAPI); the edge contract is fixed by ADR-0004 §5.2.
+`APPSECGATE_SYNC_OUTBOX`, `APPSECGATE_DATA_DIR`. REST API is implemented in
+MS-4; push/pull edge contract follows ADR-0004 §5.2.
 
 | `update_config` returns `status: readonly` | Project is mounted `:ro` (canonical Docker) — not an error | The change is not applied. Ask the user to edit `.appsecgate-mcp/config.yaml` on the host, mount the project `rw` for local dev, or set `APPSECGATE_*` env vars |

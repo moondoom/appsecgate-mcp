@@ -95,15 +95,20 @@ def push_outbox(
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
     timeout: float = DEFAULT_TIMEOUT,
+    project_id: str | None = None,
 ) -> PushResult:
     """Пушит очередь на master и чистит её по результату.
 
-    Очередь модифицируется только по итогам ответов: отправленные удаляются,
-    отвергнутые (4xx) карантинятся, остальные остаются для retry.
+    Если задан ``project_id``, обрабатываются только его события: общий outbox
+    безопасно используется разными проектами с разными API-ключами (MS-5).
     """
     endpoint = f"{master_url.rstrip('/')}/v1/events"
     result = PushResult()
-    events = outbox.read()
+    events = [
+        event
+        for event in outbox.read()
+        if project_id is None or event.get("project_key") == project_id
+    ]
     for start in range(0, len(events), batch_size):
         batch = events[start : start + batch_size]
         try:

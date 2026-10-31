@@ -129,6 +129,24 @@ class Database:
     async def execute_many(self, sql: str, params_list: Sequence[Sequence[Any]]) -> None:
         await asyncio.to_thread(self._write_many, sql, params_list)
 
+    async def execute_transaction(self, operations: Sequence[tuple[str, Sequence[Any]]]) -> None:
+        """Выполнить связанные записи атомарно, с rollback при любой ошибке."""
+
+        def _run() -> None:
+            with self._lock:
+                if self._conn is None:
+                    raise RuntimeError("Database is not connected")
+                try:
+                    self._conn.execute("BEGIN")
+                    for sql, params in operations:
+                        self._execute_locked(sql, params)
+                    self._conn.commit()
+                except BaseException:
+                    self._conn.rollback()
+                    raise
+
+        await asyncio.to_thread(_run)
+
     async def fetchone(self, sql: str, params: Sequence[Any] = ()) -> sqlite3.Row | None:
         return await asyncio.to_thread(self._fetchone, sql, params)
 

@@ -30,6 +30,7 @@ from appsecgate_mcp.normalization.normalizer import Normalizer
 from appsecgate_mcp.normalization.redactor import Redactor
 from appsecgate_mcp.normalization.suppress_filter import ConfigSuppressFilter
 from appsecgate_mcp.orchestration.reconcile import git_context, negative_merge
+from appsecgate_mcp.orchestration.suppression import apply_suppression_filters
 from appsecgate_mcp.scanners.base import RawFinding
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.storage.logical_id import compute_logical_id
@@ -46,6 +47,7 @@ class ScanCoordinator:
         registry: ScannerRegistry,
         *,
         suppression_store=None,
+        remote_suppression_store=None,
         shown_store=None,
         identity_store=None,
         context_store=None,
@@ -67,6 +69,7 @@ class ScanCoordinator:
         self.dedup = Deduplicator()
         self.suppress_filter = ConfigSuppressFilter(config)
         self.suppression_store = suppression_store
+        self.remote_suppression_store = remote_suppression_store
         self.shown_store = shown_store
         self.identity_store = identity_store
         self.context_store = context_store
@@ -136,7 +139,11 @@ class ScanCoordinator:
         findings = self.suppress_filter.apply(findings)
         suppressed_in_scan += _before - len(findings)
         _before = len(findings)
-        findings = await self._apply_suppression(findings)
+        findings = await apply_suppression_filters(
+            findings,
+            local_store=self.suppression_store,
+            remote_store=self.remote_suppression_store,
+        )
         suppressed_in_scan += _before - len(findings)
         findings = self.normalizer.process(findings)
 
@@ -147,9 +154,7 @@ class ScanCoordinator:
             if mode == "project":
                 # Классификация new/reaffirmed/reopened (§2.5 counts, без confirmed_fixed).
                 try:
-                    prev = await self.shown_store.get_statuses(
-                        [f.fingerprint for f in findings]
-                    )
+                    prev = await self.shown_store.get_statuses([f.fingerprint for f in findings])
                 except Exception as exc:
                     meta.warnings.append(f"reconcile status lookup failed: {exc}")
                     prev = {}
@@ -175,8 +180,8 @@ class ScanCoordinator:
             )
             if mode == "project":
                 try:
-                    pf_ids, pf_total, pf_truncated = (
-                        await self.shown_store.list_potentially_fixed(branch, limit=25)
+                    pf_ids, pf_total, pf_truncated = await self.shown_store.list_potentially_fixed(
+                        branch, limit=25
                     )
                     counts: dict[str, int] = {
                         "new": 0,
@@ -298,14 +303,6 @@ class ScanCoordinator:
         fp = self.fingerprint.generate_for(raw.rule_id, raw.file_path, raw.snippet)
         return raw.to_finding(fingerprint=fp)
 
-    async def _apply_suppression(self, findings: list[Finding]) -> list[Finding]:
-        if self.suppression_store is None:
-            return findings
-        try:
-            return await self.suppression_store.filter_active(findings)
-        except Exception:
-            return findings
-
     async def _record_shown(
         self,
         findings: list[Finding],
@@ -395,5 +392,3 @@ class ScanCoordinator:
                 raise RuntimeError("context_store set without project_id")
             for finding, logical_id in context_rows:
                 await context_store.upsert(self.project_id, logical_id, finding)
-
-

@@ -1,4 +1,4 @@
-"""Загрузка конфигурации с приоритетом: env > project config > default."""
+"""Загрузка конфигурации: env > master policy > project config > default."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from appsecgate_mcp.config.master_policy import load_master_policy
 from appsecgate_mcp.config.models import Config
 from appsecgate_mcp.rules import (
     DistributionMode,
@@ -88,20 +89,22 @@ class ConfigLoader:
 
     def __init__(self, default_config_path: Path | None = None) -> None:
         self.default_config_path = default_config_path or DEFAULT_CONFIG_PATH
-        self._cache: dict[str, Config] = {}
+        self._cache: dict[tuple[str, str], Config] = {}
 
-    def load(self, project_path: str | Path | None = None) -> Config:
-        """Загружает конфигурацию для проекта (с кешем по пути)."""
+    def load(
+        self, project_path: str | Path | None = None, *, project_id: str | None = None
+    ) -> Config:
+        """Загружает конфигурацию для проекта (с кешем по пути и project_id)."""
         project = Path(project_path) if project_path else Path.cwd()
-        cache_key = str(project.resolve())
+        cache_key = (str(project.resolve()), project_id or "")
         if cache_key in self._cache:
             return self._cache[cache_key]
 
+        base_dir, cache_dir = resolve_dirs()
         project_data = self._load_project_dict(project)
-        merged = self.merged_layers(project_data)
+        merged = self.merged_layers(project_data, data_dir=base_dir, project_id=project_id)
         merged = _apply_env_overrides(merged)
 
-        base_dir, cache_dir = resolve_dirs()
         merged.setdefault("project_path", str(project.resolve()))
         merged.setdefault("cache_dir", str(cache_dir))
 
@@ -145,13 +148,29 @@ class ConfigLoader:
         warnings.extend(LicenseGuard.check(manifest, mode))
         return warnings
 
-    def merged_layers(self, project_data: dict[str, Any]) -> dict[str, Any]:
-        """Собирает default + project-слой тем же порядком, что и load()."""
-        return deep_merge(self._load_default_dict(), project_data)
+    def merged_layers(
+        self,
+        project_data: dict[str, Any],
+        *,
+        data_dir: str | Path | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Собирает default + project + master в порядке возрастания приоритета."""
+        merged = deep_merge(self._load_default_dict(), project_data)
+        if data_dir is not None and project_id is not None:
+            merged = deep_merge(merged, load_master_policy(data_dir, project_id))
+        return merged
 
-    def validation_layers(self, project_data: dict[str, Any]) -> dict[str, Any]:
-        """Слои для проверки схемы: default + project + env, как в load()."""
-        return _apply_env_overrides(self.merged_layers(project_data))
+    def validation_layers(
+        self,
+        project_data: dict[str, Any],
+        *,
+        data_dir: str | Path | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Слои для проверки схемы: default + project + master + env."""
+        merged = self.merged_layers(project_data, data_dir=data_dir, project_id=project_id)
+        return _apply_env_overrides(merged)
 
     def _load_default_dict(self) -> dict[str, Any]:
         if self.default_config_path.exists():

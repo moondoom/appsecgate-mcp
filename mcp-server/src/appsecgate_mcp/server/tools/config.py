@@ -125,7 +125,13 @@ async def update_config(updates: dict[str, Any]) -> dict[str, Any]:
     merged = deep_merge(existing, updates)
 
     try:
-        Config.model_validate(state.config_loader.validation_layers(merged))
+        Config.model_validate(
+            state.config_loader.validation_layers(
+                merged,
+                data_dir=state.config.data_dir,
+                project_id=state.project_id,
+            )
+        )
     except ValidationError as exc:
         return {"status": "invalid", "errors": _format_validation_errors(exc)}
 

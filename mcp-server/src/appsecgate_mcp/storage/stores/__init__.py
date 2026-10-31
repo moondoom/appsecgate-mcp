@@ -18,6 +18,7 @@ from appsecgate_mcp.storage.stores.finding_context import FindingContextStore
 from appsecgate_mcp.storage.stores.finding_identity import FindingIdentityStore
 from appsecgate_mcp.storage.stores.fix_attempts import FixAttemptsStore
 from appsecgate_mcp.storage.stores.projects import ProjectsStore
+from appsecgate_mcp.storage.stores.remote_suppression import RemoteSuppressionStore
 from appsecgate_mcp.storage.stores.scan_cache import ScanCacheStore
 from appsecgate_mcp.storage.stores.shown_findings import ShownFindingsStore
 from appsecgate_mcp.storage.stores.sql_audit_log import SqlAuditLogStore
@@ -29,6 +30,7 @@ __all__ = [
     "FindingIdentityStore",
     "FixAttemptsStore",
     "ProjectsStore",
+    "RemoteSuppressionStore",
     "ScanCacheStore",
     "ShownFindingsStore",
     "SqlAuditLogStore",

@@ -341,7 +341,7 @@ edge-процесса на хосте, MCP-сервер остаётся `networ
 | MS-2 | Схема master-БД + события/агрегаты/аудит; unit-тесты агрегата (§5.3) | ✅ решено |
 | MS-3 | Edge `appsecgate-mcp sync`: экспорт локальных БД → события, outbox, idempotent push (urllib) | ✅ решено |
 | MS-4 | Master REST API (FastAPI): `/v1/events|findings|suppressions|config|audit`, `/healthz` | ✅ решено |
-| MS-5 | Pull вниз: CI/global suppressions + политики применяются локально (§4.6) | ⬜ не начато |
+| MS-5 | Pull вниз: CI/global suppressions + политики применяются локально (§4.6) | ✅ решено |
 | MS-6 | CI-источник: `--shown-source master` в `appsecgate ci`; контрактные тесты | ⬜ не начато |
 | MS-7 | Docker Compose (master + edge), документация развёртывания | ⬜ не начато |
 | MS-8 | DefectDojo/ASOC экспорт (vision §5.2.4) — после MS-7 | ⬜ не начато |
@@ -389,4 +389,20 @@ edge-процесса на хосте, MCP-сервер остаётся `networ
   --api-key --batch-size --dry-run --format]`; exit 0/1/2 (как `ci`);
 - тесты: 37 новых (маппинг каждого статуса, стабильность id, контракт полей,
   outbox roundtrip/карантин, push на реальном loopback-стабе, CLI e2e).
+
+**MS-5 (2026-10-31):** обычный `appsecgate-mcp sync` после push скачивает
+CI/global suppressions и центральную policy для одного проекта:
+
+- `pull.py` — stdlib urllib GET `/v1/suppressions` + `/v1/config`; оба ответа
+  валидируются до записи, при ошибке сохраняется последняя скачанная копия;
+- `remote_suppressions` — отдельная таблица в `shown_findings.db`; атомарная
+  замена только текущего проекта, local-записи и export MS-3 не затрагиваются;
+  скан применяет local + remote фильтры уже на следующем запуске;
+- `master-policies/<project_id>.json` в data-dir; разрешены только `gates` и
+  `rules`, приоритет `default < project < master < env`; применение — в новой
+  MCP-сессии, без записи в `:ro`-проект и без HTTP на MCP-сервере;
+- общий outbox фильтруется по `project_id`; multi-project БД требует явный
+  `--project-id`; pull-ошибка → exit 1, dry-run остаётся локальным;
+- 26 новых тестов: store/rollback, policy precedence, pull HTTP/CLI и
+  project-scoped outbox на реальном loopback urllib.
 
