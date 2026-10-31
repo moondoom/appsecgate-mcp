@@ -8,6 +8,11 @@
 решены (см. статусы под задачами); T8 отложена — нужно больше контекста
 для решения (announce-семантика scan_project зафиксирована как есть).
 
+**Обновление 2026-10-31 (PR-E):** T8 закрыта — announce-семантика
+`scan_project` заменена отчётом ADR-0005 §2.5 (PR-C: no-args, counts +
+TOP-10 + `requires_confirmation`, `mark_shown`); reconcile-сценарии
+добавлены в E2E-харнесс (итерация 3, `docs/e2e-test-plan.md` §13).
+
 **Обновление 2026-10-13:** T1, T2, T3 решены (см. статус под каждой
 задачей). T4 снята по решению владельца — новых правил не добавляем,
 фактический охват приведён к срезу бандла (c, csharp, go, javascript,
@@ -120,12 +125,13 @@ filter_active` фильтруют по проекту. Старая схема �
 Файлы: `storage/stores/suppression.py`, `server/session.py`; тесты
 `tests/test_suppressions.py`.
 
-## T8. `scan_project`: announce-only, но persist пишет в shown_findings (отложена)
+## T8. `scan_project`: announce-only, но persist пишет в shown_findings (закрыта ✅)
 
-**Статус:** отложена (2026-10-30, решение владельца). Нужно больше контекста
-для принятия решения. Текущая семантика зафиксирована как есть:
-`scan_project` отвечает announce-форматом и пишет находки в `shown_findings`
-(статус SHOWN) — так работает сейчас; вопрос переносится за рамки Фазы 1.
+**Статус:** закрыта (2026-10-31). ADR-0005 (PR-A…PR-C) заменил
+announce-семантику полной сверкой: `scan_project()` без аргументов возвращает
+отчёт §2.5 (counts + TOP-10 + `requires_confirmation`) и помечает TOP-10
+`SHOWN` (`mark_shown`, К3). E2E-покрытие — итерация 3
+(`scripts/e2e_measure/scenarios/reconcile.py`, `docs/e2e-test-plan.md` §13).
 
 ## T9. `project_id` в Docker не зависит от проекта (решена ✅, P0)
 

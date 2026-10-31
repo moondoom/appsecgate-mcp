@@ -40,7 +40,7 @@ AI-агенты пишут код быстрее, чем security успевае
 |------------|------------|
 | scan_file | Сканирует один файл. |
 | scan_diff | Сканирует staged + unstaged + untracked изменения в git. |
-| scan_project | Сканирует проект или директорию. |
+| scan_project | Сканирует весь проект (без аргументов) — отчёт сверки: counts + requires_confirmation. |
 | get_fix_context | Контекстный пакет для фикса (находка + код + правило). |
 | get_fix_context_batch | Пакеты для нескольких находок (до 20). |
 | verify_fix | Проверяет фикс: пересканирует файл, сравнивает fingerprint. |

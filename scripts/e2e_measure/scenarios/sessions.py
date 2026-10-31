@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import Any
 
-from e2e_measure.client import McpClient, _parse_result
+from e2e_measure.client import McpClient, _counts_total, _parse_result
 from e2e_measure.report import E2eReport, E2eResult
 from e2e_measure.scenarios.funnel import (
     export_snapshot_check,
@@ -85,14 +85,20 @@ async def run_parallel_sessions(
 
     async def _scan(ppath: str, label: str, mount_path: str) -> dict[str, Any]:
         async with McpClient(ppath, mount_path=mount_path, data_volume=data_volume) as client:
-            r = await client.call_tool("scan_project", {"path": "."})
-            p = _parse_result(r)
-            proj = p.get("project", {})
+            p = _parse_result(await client.call_tool("scan_project", {}))
+            # Отчёт §2.5 не несёт project_id (ADR-0005) — берём из v_projects
+            # сессии (запись создаётся при initialize, session.py).
+            q = _parse_result(
+                await client.call_tool(
+                    "query_findings_db", {"sql": "SELECT project_id FROM v_projects"}
+                )
+            )
+            rows = q.get("rows", [])
+            project_id = rows[0]["project_id"] if rows else "unknown"
             return {
                 "label": label,
-                "project_id": proj.get("project_id", "unknown"),
-                "project_alias": proj.get("project_alias", "unknown"),
-                "total": p.get("summary", {}).get("total", 0),
+                "project_id": project_id,
+                "total": _counts_total(p),
             }
 
     test = E2eResult(test_name="parallel sessions: two projects")

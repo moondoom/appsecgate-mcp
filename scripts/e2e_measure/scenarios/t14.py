@@ -12,7 +12,7 @@ from pathlib import Path
 from subprocess import run as subprocess_run
 from typing import Any
 
-from e2e_measure.client import McpClient, _find_first_finding_id, _parse_result
+from e2e_measure.client import McpClient, _counts_total, _find_first_finding_id, _parse_result
 from e2e_measure.report import E2eReport, E2eResult
 from e2e_measure.scenarios.funnel import measure_scan_file
 
@@ -285,7 +285,7 @@ async def run_memory_scenario(resolved: str, data_volume: str, report: E2eReport
             ) as client:
                 sampler = asyncio.create_task(_sample_mem_usage(name, samples))
                 try:
-                    r = await client.call_tool("scan_project", {"path": "."})
+                    r = await client.call_tool("scan_project", {})
                 finally:
                     sampler.cancel()
                     try:
@@ -295,7 +295,7 @@ async def run_memory_scenario(resolved: str, data_volume: str, report: E2eReport
             test.duration_ms = (time.perf_counter() - t0) * 1000
             p = _parse_result(r)
             errs = p.get("meta", {}).get("errors", [])
-            total = p.get("summary", {}).get("total", 0)
+            total = _counts_total(p)
             peak = max(samples, default=0.0)
             test.details = {
                 "total_findings": total,

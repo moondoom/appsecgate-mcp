@@ -41,6 +41,11 @@ def _find_first_finding_id(results: list[dict[str, Any] | None]) -> str | None:
     return None
 
 
+def _counts_total(payload: dict[str, Any]) -> int:
+    """Итог отчёта scan_project (ADR-0005 §2.5) — сумма по категориям ``counts``."""
+    return sum(int(v) for v in payload.get("counts", {}).values())
+
+
 def _docker_args(
     project_path: str,
     image: str = "moondoom/appsecgate-mcp:0.1.0",

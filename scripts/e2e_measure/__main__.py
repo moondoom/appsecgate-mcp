@@ -14,6 +14,7 @@ from subprocess import run as subprocess_run
 from typing import Any
 
 from e2e_measure.report import E2eReport
+from e2e_measure.scenarios.reconcile import run_reconcile_scenarios
 from e2e_measure.scenarios.sessions import run_e2e_session, run_parallel_sessions
 from e2e_measure.scenarios.t14 import run_fix_verify_scenarios, run_git_diff_scenarios, run_memory_scenario
 
@@ -87,6 +88,8 @@ def main() -> None:
                 await run_fix_verify_scenarios(resolved, t14_volume, report)
                 await run_git_diff_scenarios(resolved, t14_volume, report)
                 await run_memory_scenario(resolved, t14_volume, report)
+                # T14 итерация 3 (PR-E): reconciliation scan_project (ADR-0005 §3.4).
+                await run_reconcile_scenarios(resolved, t14_volume, report)
             finally:
                 subprocess_run(["docker", "volume", "rm", "-f", t14_volume], capture_output=True)
         finally:

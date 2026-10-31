@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from e2e_measure.client import McpClient, _parse_result
+from e2e_measure.client import McpClient, _counts_total, _parse_result
 from e2e_measure.report import E2eReport, E2eResult
 
 
@@ -13,21 +13,22 @@ async def measure_scan_project(client: McpClient, report: E2eReport) -> None:
     test = E2eResult(test_name="NF: scan_project duration")
     t0 = time.perf_counter()
     try:
-        result = await client.call_tool("scan_project", {"path": "."})
+        # scan_project() без аргументов (ADR-0005 §2.5, breaking change): отчёт counts.
+        result = await client.call_tool("scan_project", {})
         dt = (time.perf_counter() - t0) * 1000
         test.duration_ms = dt
         payload = _parse_result(result)
-        s = payload.get("summary", {})
+        s = payload.get("counts", {})
         m = payload.get("meta", {})
         errs = m.get("errors", [])
         test.details = {
-            "total_findings": s.get("total", -1),
+            "total_findings": _counts_total(payload),
+            "counts": s,
             "meta_errors": errs,
             "meta_warnings": m.get("warnings", []),
             "duration_ms_raw": dt,
             "scan_mode": m.get("mode", "unknown"),
-            "by_severity": s.get("by_severity", {}),
-            "by_category": s.get("by_category", {}),
+            "branch": m.get("branch"),
         }
         test.status = "FAIL" if errs else ("FAIL" if dt > 30000 else "PASS")
         if errs:

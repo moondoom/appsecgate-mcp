@@ -220,12 +220,12 @@ CREATE INDEX idx_shown_last_seen      ON shown_findings(last_seen_at);
 
 | `verify_fix` вызов | `verified_status` в ответе | Переход в `shown_findings` |
 |---|---|---|
-| `reported_status=fixed` + перескан нашёл | `fixed` | `→ FIXED`, `fixed_at=now()`, `fixed_confirmed_by='verify_fix'` |
-| `reported_status=fixed` + перескан не нашёл | `not_fixed` | `→ REOPENED` |
+| `reported_status=fixed` + перескан чист (не нашёл) | `fixed` | `→ FIXED`, `fixed_at=now()`, `fixed_confirmed_by='verify_fix'` |
+| `reported_status=fixed` + перескан нашёл (регрессия) | `not_fixed` | `→ REOPENED` |
 | `reported_status=not_fixed` | `not_fixed` | остаётся как было (`SHOWN` / `POTENTIALLY_FIXED` / `REOPENED`) |
 | `reported_status=wont_fix` (без перескана) | `wont_fix` | `→ WONT_FIX`, `wont_fix_at=now()`, `wont_fix_reason=...` |
 
-Матчинг находки внутри `verify_fix` — **по fingerprint**; при «прыжке» fingerprint — через `finding_identity` по `logical_id` (К1). `verify_fix_batch` принимает `finding_ids` (fingerprint'ы из `requires_confirmation`).
+Маппинг согласован с ADR-0006 §3.2: `verify_fixed` (перескан чист) → `FIXED`, `verify_not_fixed` (перескан нашёл) → `REOPENED`, `verify_wont_fix` → `WONT_FIX`. Матчинг находки внутри `verify_fix` — **по fingerprint**; при «прыжке» fingerprint — через `finding_identity` по `logical_id` (К1). `verify_fix_batch` принимает `finding_ids` (fingerprint'ы из `requires_confirmation`).
 
 ### 2.10. Views и query (К20, К22)
 

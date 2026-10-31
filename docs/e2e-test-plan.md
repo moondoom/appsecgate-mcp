@@ -71,7 +71,9 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
 
 - `scan_file` на каждый из 5 файлов по отдельности (включая `main.tf` — D4).
 - `scan_diff` на `secrets.py` + `xss.py` (псевдодифф: список файлов).
-- `scan_project` на весь полигон — announce-ответ (§4.3), без пометки SHOWN.
+- `scan_project()` на весь полигон — отчёт §2.5 (counts + TOP-10 +
+  `requires_confirmation`, ADR-0005); TOP-10 помечается SHOWN
+  (`mark_shown`, К3).
 
 ### 4.2 Запросы
 
@@ -237,6 +239,22 @@ PROJECT_PATH=mcp-server/tests/fixtures/vuln-project \
    `--memory=512m`, семплинг `docker stats` по именованному контейнеру.
 5. **B2 — дедуп** (`dedup_stability_recheck`): два скана `secrets.py` →
    идентичный набор fingerprint (регресс T10).
+
+## 13. Итерация 3 (T14, PR-E, 2026-10-31): сценарии reconciliation
+
+Новый модуль `scripts/e2e_measure/scenarios/reconcile.py` (temp-копия полигона,
+свежий data volume; сценарии ADR-0005 §3.4):
+
+1. **T14-7 — `scan_project()` дважды без изменений** (`run_reconcile_repeat`):
+   первый скан → `counts.new > 0`; второй → `counts.new == 0`, всё
+   `reaffirmed`; `v_findings` — только `SHOWN`. Инкремент `scan_count`
+   и `missed_scan_count` покрыты юнит-тестами (`test_shown_state_machine.py`) —
+   `v_findings` эти поля не экспонирует.
+2. **T14-8 — правка файла → `POTENTIALLY_FIXED`** (`run_reconcile_edit`):
+   на rw-копии правим `sql_injection.py` (параметризованный запрос) →
+   повторный `scan_project()` → `counts.potentially_fixed >= 1`,
+   `requires_confirmation.finding_ids` непуст, `suggested_action` =
+   `run verify_fix_batch ...` (ADR-0005 §2.5, §3.4).
 
 Проверочный итог: сканеры, которые реально грузятся в контейнере
 (gitleaks/trivy/semgrep), должны давать находки по всем фикстурам; при падении

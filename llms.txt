@@ -11,7 +11,7 @@
 
 - [scan_file](README.md#mcp-tools-14) -- scan a single file
 - [scan_diff](README.md#mcp-tools-14) -- scan staged + unstaged + untracked git changes
-- [scan_project](README.md#mcp-tools-14) -- scan the entire project or a directory
+- [scan_project](README.md#mcp-tools-14) -- reconciliation scan of the whole project (counts + requires_confirmation)
 - [get_fix_context](README.md#mcp-tools-14) -- finding + code window + rule doc for the agent
 - [get_fix_context_batch](README.md#mcp-tools-14) -- context packages for up to 20 findings
 - [verify_fix](README.md#mcp-tools-14) -- rescan the file and verify a fix
