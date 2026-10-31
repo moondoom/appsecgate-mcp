@@ -338,11 +338,29 @@ edge-процесса на хосте, MCP-сервер остаётся `networ
 | # | Содержание | Статус |
 |---|---|---|
 | MS-1 | Принятие ADR-0004 + обновление `docs/adr/README.md`, `docs/architecture.md` §8/§9.5 | ✅ решено |
-| MS-2 | Схема master-БД + события/агрегаты/аудит; unit-тесты агрегата (§5.3) | ⬜ не начато |
+| MS-2 | Схема master-БД + события/агрегаты/аудит; unit-тесты агрегата (§5.3) | ✅ решено |
 | MS-3 | Edge `appsecgate-mcp sync`: экспорт локальных БД → события, outbox, idempotent push (urllib) | ⬜ не начато |
 | MS-4 | Master REST API (FastAPI): `/v1/events|findings|suppressions|config|audit`, `/healthz` | ⬜ не начато |
 | MS-5 | Pull вниз: CI/global suppressions + политики применяются локально (§4.6) | ⬜ не начато |
 | MS-6 | CI-источник: `--shown-source master` в `appsecgate ci`; контрактные тесты | ⬜ не начато |
 | MS-7 | Docker Compose (master + edge), документация развёртывания | ⬜ не начато |
 | MS-8 | DefectDojo/ASOC экспорт (vision §5.2.4) — после MS-7 | ⬜ не начато |
+
+**MS-2 (2026-10-31):** создан пакет `appsecgate-master/` (Python ≥ 3.12,
+зависимость — только pydantic; FastAPI — MS-4). Реализовано по ADR-0006
+(заменяет ADR-0004 §5.3):
+
+- `contracts/events.py` — `MasterEvent` (10 событий §1.4 + `config_policy`),
+  алиасы полей snapshot-формата §3.3 (`event`/`project_id`), валидация UTC;
+- `aggregate/` — `matrix.py` (таблица §2.1 + правила 2/3 §3.4), `fold.py`
+  (LWW `(at, event_id|client_event_id)` + правила 1–6), `state.py`;
+- `storage/` — SQLite WAL: `events` (append-only, дедуп по `client_event_id`),
+  `audit_log` (append-only, триггеры против UPDATE/DELETE),
+  `aggregates` (материализованный кэш, `rebuild()` из events);
+  schema_version v1, drop-on-mismatch (ADR-0005 §2.7);
+- `security/redact.py` — redaction на приёме (§5.4): секрет в `note`/`reason`
+  → `rejected:redaction`, в БД не попадает;
+- тесты: 114 (матрица, правила 1–6, ingest/дедуп/redaction, аудит, паритет
+  snapshot-replay §3.3 ↔ master-агрегат);
+- `make check` теперь валидирует оба пакета (mcp-server + appsecgate-master).
 

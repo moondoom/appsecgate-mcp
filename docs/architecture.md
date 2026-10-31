@@ -584,7 +584,10 @@ services:
 ### Не входит (Фаза 2+)
 
 - ⏳ Master-сервер и синхронизация — **этап 2 Фазы 2**, проектируется по
-  [ADR-0004](adr/ADR-0004-master-server-sync.md)
+  [ADR-0004](adr/ADR-0004-master-server-sync.md),
+  модель жизненного цикла — [ADR-0006](adr/ADR-0006-unified-finding-lifecycle-model.md);
+  **MS-2 выполнен** (2026-10-31): пакет `appsecgate-master/` — события,
+  агрегат, аудит, unit-тесты (см. `docs/open-tasks.md`); HTTP-API — MS-4
 - ⏳ CI-контур и двойные gates — **этап 1 Фазы 2**, реализуется по
   [ADR-0003](adr/ADR-0003-ci-unresolved-local-delivery.md)
 - ❌ Сканирование образов
@@ -634,9 +637,10 @@ Trivy DB не входит в git-репозиторий. Она скачива�
 2. **TruffleHog vs Gitleaks**: запускать оба или каскадом? Оба — медленнее, но полнее. Каскад (TruffleHog только если Gitleaks не нашёл) — быстрее, но может пропустить. ~~Решение: оба, но TruffleHog только на diff, не на весь проект.~~ **Факт (Фаза 1):** по умолчанию для secrets включён только gitleaks (`config/default.yaml`, `scanners.secrets.tool`), TruffleHog — доступный, но не включённый в реестр по умолчанию адаптер; выбор инструмента задаётся конфигом, а не каскадом.
 3. **Semgrep baseline**: использовать `--baseline` или собственную фильтрацию? ~~Baseline проще, но требует доступ к git history. Собственная фильтрация — универсальнее.~~ **Решение (Фаза 1):** собственная фильтрация через fingerprint ([ADR-0001](adr/ADR-0001-fingerprint-and-semantic-dedup.md)) — `scan_diff` передаёт сканерам только изменённые файлы, сопоставление между сканами идёт по `logical_id`, baseline не используется.
 5. ~~**Синхронизация `shown_findings.db` с master**: как разрешать конфликты,
-   если один и тот же fingerprint показан на разных машинах?~~ Проектируется в
-   [ADR-0004](adr/ADR-0004-master-server-sync.md) §5.3 (event sourcing +
-   детерминированные приоритеты: suppression > verified > shown).
+   если один и тот же fingerprint показан на разных машинах?~~ Решено
+   в [ADR-0006](adr/ADR-0006-unified-finding-lifecycle-model.md) §3.4
+   (единый fold: матрица §2.1 + правила 1–6), реализовано в пакете
+   `appsecgate-master/` (этап MS-2, `docs/open-tasks.md`).
 
 ---
 
