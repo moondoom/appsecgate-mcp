@@ -56,6 +56,12 @@ gates:
     info_on: [low, info]
     block_on_unresolved_local: true
     diff_base_ref: origin/main
+    # Гейт-политики ADR-0006 §1.7 (PR-D): безопасные дефолты
+    wont_fix_action: skip-if-same-branch
+    potentially_fixed_on_block_severity: block
+    new_finding_action: warn
+    local_suppression_hides: false
+    require_shown_snapshot: false
 
 # Пример подавления (в проекте переопределяется при необходимости):
 # suppress:

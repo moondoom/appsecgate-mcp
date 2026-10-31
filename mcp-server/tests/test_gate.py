@@ -121,12 +121,13 @@ async def test_ci_local_scope_does_not_clear_unresolved_local():
 
 
 @pytest.mark.asyncio
-async def test_ci_wont_fix_blocks_with_wont_fix_reason():
+async def test_ci_wont_fix_other_branch_blocks():
+    """§2.3: WONT_FIX без ветки (<unknown>) → block wont_fix_other_branch."""
     source = make_snapshot_source(ShownRecord(fingerprint="fp-seen", verified_status="wont_fix"))
     engine = GateEngine(Config(), shown_store=source)
     d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
     assert d.action == "block"
-    assert d.reason == "wont_fix"
+    assert d.reason == "wont_fix_other_branch"
 
 
 @pytest.mark.asyncio
@@ -140,7 +141,9 @@ async def test_ci_not_fixed_blocks_unresolved_local():
 
 @pytest.mark.asyncio
 async def test_ci_not_shown_is_not_blocked():
+    """§2.3, ряд 14: нет записи → new_finding_action (default warn, reason ci_new)."""
     source = make_snapshot_source(ShownRecord(fingerprint="other"))
     engine = GateEngine(Config(), shown_store=source)
     d = await engine.evaluate(make_finding(Severity.LOW, "fp-seen"), mode="ci")
-    assert d.action == "info"
+    assert d.action != "block"
+    assert d.reason == "ci_new"

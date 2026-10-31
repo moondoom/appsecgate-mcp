@@ -76,7 +76,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _decisions_index(summary: GateSummary) -> dict[str, GateDecision]:
-    return {d.fingerprint: d for d in (*summary.blocked, *summary.warned, *summary.informed)}
+    return {
+        d.fingerprint: d
+        for d in (*summary.blocked, *summary.warned, *summary.informed, *summary.skipped)
+    }
 
 
 def _findings_index(result: ScanResult) -> dict[str, Finding]:
@@ -97,7 +100,8 @@ def _format_text(result: CiResult) -> str:
         lines.append(f"warning: {warning}")
     lines.append(
         f"total={summary.total} blocked={summary.block_count} "
-        f"warned={len(summary.warned)} info={len(summary.informed)}"
+        f"warned={len(summary.warned)} info={len(summary.informed)} "
+        f"skipped={summary.skip_count}"
     )
     by_fp = _findings_index(result.result)
     for decision in summary.blocked:
@@ -142,6 +146,8 @@ def _format_ndjson(result: CiResult) -> str:
         "blocked": summary.block_count,
         "warned": len(summary.warned),
         "info": len(summary.informed),
+        "skipped": summary.skip_count,
+        "by_reason": summary.by_reason,
         "should_fail": summary.should_fail,
         "scanned_files": meta.scanned_files,
         "scanners_ran": meta.scanners_ran,
@@ -168,12 +174,14 @@ def ci_main(argv: list[str], *, registry=None) -> int:
     logger.info("ci start project=%s", args.project)
 
     snapshot = args.shown_snapshot or str(Path(args.project).resolve() / _SNAPSHOT_FILE)
+    # Флаг CLI перекрывает конфиг; без флага решает gates.ci.require_shown_snapshot.
+    require_snapshot = args.require_shown_snapshot or None
     result = asyncio.run(
         run_ci(
             project_path=args.project,
             base_ref=args.base_ref,
             shown_snapshot=snapshot,
-            require_shown_snapshot=args.require_shown_snapshot,
+            require_shown_snapshot=require_snapshot,
             registry=registry,
         )
     )

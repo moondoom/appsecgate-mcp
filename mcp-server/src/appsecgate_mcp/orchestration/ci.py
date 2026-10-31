@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from appsecgate_mcp.config.loader import ConfigLoader
-from appsecgate_mcp.git import GitError, git_changed_files_vs_base
+from appsecgate_mcp.git import GitError, git_changed_files_vs_base, git_current_branch
 from appsecgate_mcp.models.finding import ScanResult
 from appsecgate_mcp.orchestration.coordinator import ScanCoordinator
 from appsecgate_mcp.orchestration.gate import GateEngine, GateSummary
@@ -81,7 +81,7 @@ async def run_ci(
     project_path: str,
     base_ref: str | None = None,
     shown_snapshot: str | None = None,
-    require_shown_snapshot: bool = False,
+    require_shown_snapshot: bool | None = None,
     registry: ScannerRegistry | None = None,
 ) -> CiResult:
     """Оценивает diff проекта против ``base_ref`` по CI-правилам.
@@ -97,6 +97,13 @@ async def run_ci(
         config = ConfigLoader().load(project)
     except Exception as exc:  # noqa: BLE001 — битый конфиг = «CI сломан», exit 2
         return CiResult(exit_code=EXIT_INFRA, error=f"invalid config: {exc}")
+
+    # ADR-0006 §1.7: require_shown_snapshot из конфига, если флаг CLI не задан.
+    require_snapshot = (
+        bool(config.gates.ci.require_shown_snapshot)
+        if require_shown_snapshot is None
+        else require_shown_snapshot
+    )
 
     reg = registry or ScannerRegistry.from_config(config, project_path=str(project))
     if not reg.all():
@@ -117,10 +124,18 @@ async def run_ci(
             error=f"git error (base-ref {base!r}): {exc}",
         )
 
+    # Текущая ветка CI для skip-if-same-branch (ADR-0006 §2.3). Не
+    # определяется → None → WONT_FIX на «своей» ветке не распознаётся и
+    # консервативно блокирует (правило `<unknown>`).
+    try:
+        branch = await git_current_branch(project)
+    except GitError:
+        branch = None
+
     warnings: list[str] = []
     shown_source, fail = _load_shown_source(
         shown_snapshot,
-        require=require_shown_snapshot,
+        require=require_snapshot,
         warnings=warnings,
     )
     if fail:
@@ -129,7 +144,7 @@ async def run_ci(
     coordinator = ScanCoordinator(config, reg, project_root=str(project))
     result = await coordinator.scan(files, mode="diff", persist=False)
 
-    gate = GateEngine(config, shown_store=shown_source)
+    gate = GateEngine(config, shown_store=shown_source, branch=branch)
     summary = await gate.evaluate_all(result.findings, mode="ci")
 
     warnings.extend(result.meta.warnings)

@@ -25,16 +25,34 @@ class ShownSnapshotError(ValueError):
 
 @dataclass
 class ShownRecord:
-    """Запись показанной находки из snapshot (ADR-0003 §6.1).
+    """Запись показанной находки (snapshot ADR-0003 §6.1 / локальный store).
 
     ``verified_status``: null | fixed | not_fixed | wont_fix.
     ``suppression_scope``: null | local | ci | global.
+    ``status``: статус жизненного цикла (ADR-0006 §1.3); при отсутствии
+    выводится через ``gate_status`` из ``verified_status``/``suppression_scope``.
     """
 
     fingerprint: str
     shown_at: str | None = None
     verified_status: str | None = None
     suppression_scope: str | None = None
+    status: str | None = None
+    last_seen_branch: str | None = None
+    suppression_expires_at: str | None = None
+
+    @property
+    def gate_status(self) -> str:
+        """Статус для гейт-матрицы ADR-0006 §2.3 (fallback для старых записей)."""
+        if self.status:
+            return self.status
+        if self.verified_status == "fixed":
+            return "FIXED"
+        if self.verified_status == "wont_fix":
+            return "WONT_FIX"
+        if self.suppression_scope:
+            return "SUPPRESSED"
+        return "SHOWN"
 
 
 @dataclass
@@ -84,6 +102,9 @@ def parse_shown_snapshot(
             shown_at=obj.get("shown_at"),
             verified_status=obj.get("verified_status"),
             suppression_scope=obj.get("suppression_scope"),
+            status=obj.get("status"),
+            last_seen_branch=obj.get("last_seen_branch"),
+            suppression_expires_at=obj.get("suppression_expires_at"),
         )
         if record.shown_at and record.shown_at < cutoff:
             expired += 1

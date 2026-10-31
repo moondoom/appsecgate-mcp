@@ -83,6 +83,15 @@ class CiGateConfig(GateRuleConfig):
     # аргументом CLI `--base-ref` и env `APPSECGATE_GATES_CI_DIFF_BASE_REF`.
     diff_base_ref: str = "origin/main"
 
+    # Гейт-политики ADR-0006 §1.7 (PR-D). Безопасные дефолты: severity-гейт
+    # не ослабляем (Q2), WONT_FIX скипается только на своей ветке (Q1),
+    # local-подавление не скрывает (Q3).
+    wont_fix_action: str = "skip-if-same-branch"  # skip | block | skip-if-same-branch
+    potentially_fixed_on_block_severity: str = "block"  # block | warn
+    new_finding_action: str = "warn"  # warn | block | info
+    local_suppression_hides: bool = False
+    require_shown_snapshot: bool = False
+
 
 class GatesConfig(_StrictModel):
     """Двойной контур gates."""
