@@ -21,7 +21,7 @@
 | OR-5 | Документация двух режимов оркестрации | выполнена | — | ADR-0008 §9 |
 | OR-6 | Примеры classic PR/release/cron | выполнены | — | ADR-0008 §9 |
 | AG-3 | Шаблон AppSecGate policy для AGENTS.md | выполнен | — | ADR-0009 §4 |
-| OR-7/AG-4 | Пример CI-agent | не начат | OR-1 | ADR-0008 §9, ADR-0009 §13 |
+| OR-7/AG-4 | Пример CI-agent | выполнен | — | ADR-0008 §9, ADR-0009 §13 |
 | AG-5/AG-8 | Server-agent MVP: report + workflow | не начат | OR-1, OR-2 | ADR-0009 §13 |
 | AG-6/AG-9 | Triage, action log и audit push | после MVP | AG-5 | ADR-0009 §13 |
 | — | E2E CI-полигон (фиктивный PR) | не начат | нет | ADR-0003 §9 |

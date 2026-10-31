@@ -308,6 +308,9 @@ Recommended agent sequence:
 
 Copy `mcp-server/examples/AGENTS.md` into a consumer project to provide these
 rules to the agent. Never suppress findings without an explicit user request.
+For a headless PR report, copy `.github/workflows/appsecgate-agent.yml`; it
+runs Claude Code with only `scan_diff` and `check_gate` allowed. This job is
+advisory and does not provide a trustworthy LLM-derived exit code.
 
 ### Classic hard-gate (Phase 2, ADR-0004 MS-6)
 

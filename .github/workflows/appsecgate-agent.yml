@@ -1,0 +1,55 @@
+# Пример advisory CI-agent (OR-7/AG-4), а не enforced hard-gate.
+# Скопировать в проверяемый проект. Нужен secret ANTHROPIC_API_KEY.
+name: AppSecGate agent report
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  appsecgate-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AppSecGate MCP
+        run: |
+          cat > .mcp.json <<'JSON'
+          {
+            "mcpServers": {
+              "appsecgate": {
+                "command": "docker",
+                "args": [
+                  "run", "--rm", "-i", "--network=none", "--read-only",
+                  "--tmpfs=/tmp:size=100M,mode=1777", "--cap-drop=ALL",
+                  "--security-opt=no-new-privileges:true",
+                  "-v", ".:/workspace:ro",
+                  "-v", "appsecgate-cache:/home/appsecgate/.cache",
+                  "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
+                  "moondoom/appsecgate-mcp:0.1.0",
+                  "--transport", "stdio", "--project", "/workspace"
+                ]
+              }
+            }
+          }
+          JSON
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code
+
+      - name: Run AppSecGate agent report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude --print \
+            --allowedTools "mcp__appsecgate__scan_diff,mcp__appsecgate__check_gate" \
+            "Call mcp__appsecgate__scan_diff, then call \
+            mcp__appsecgate__check_gate with scope=diff and policy=block. \
+            Report should_fail, recommended_action, blocked_fps and by_reason. \
+            Do not edit files and do not suppress findings."
+
+# Этот job создаёт advisory-отчёт и не превращает текст LLM в надёжный exit-код.
+# Для protected merge/release используйте appsecgate-ci.yml (classic hard-gate).
