@@ -1,6 +1,6 @@
 # ADR-0006: Unified finding lifecycle model
 
-**Статус:** Proposed (→ Accepted после мержа PR-E)
+**Статус:** Accepted (PR-E, 2026-10-31)
 **Дата:** 2026-10-31
 **Файл:** `docs/adr/ADR-0006-unified-finding-lifecycle-model.md`
 **Контекст:** Фаза 1 завершена (ADR-0005), Фаза 2 приостановлена (ADR-0003/ADR-0004); требуется единая модель жизненного цикла находки, не зависящая от контура (local / snapshot / master)
