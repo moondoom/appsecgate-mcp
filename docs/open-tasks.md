@@ -339,7 +339,7 @@ edge-процесса на хосте, MCP-сервер остаётся `networ
 |---|---|---|
 | MS-1 | Принятие ADR-0004 + обновление `docs/adr/README.md`, `docs/architecture.md` §8/§9.5 | ✅ решено |
 | MS-2 | Схема master-БД + события/агрегаты/аудит; unit-тесты агрегата (§5.3) | ✅ решено |
-| MS-3 | Edge `appsecgate-mcp sync`: экспорт локальных БД → события, outbox, idempotent push (urllib) | ⬜ не начато |
+| MS-3 | Edge `appsecgate-mcp sync`: экспорт локальных БД → события, outbox, idempotent push (urllib) | ✅ решено |
 | MS-4 | Master REST API (FastAPI): `/v1/events|findings|suppressions|config|audit`, `/healthz` | ⬜ не начато |
 | MS-5 | Pull вниз: CI/global suppressions + политики применяются локально (§4.6) | ⬜ не начато |
 | MS-6 | CI-источник: `--shown-source master` в `appsecgate ci`; контрактные тесты | ⬜ не начато |
@@ -363,4 +363,30 @@ edge-процесса на хосте, MCP-сервер остаётся `networ
 - тесты: 114 (матрица, правила 1–6, ingest/дедуп/redaction, аудит, паритет
   snapshot-replay §3.3 ↔ master-агрегат);
 - `make check` теперь валидирует оба пакета (mcp-server + appsecgate-master).
+
+**MS-3 (2026-10-31):** edge-подкоманда `appsecgate-mcp sync` (ADR-0004 §4.2,
+запускается НА ХОСТЕ вне контейнера — инвариант №2 не затрагивается).
+Реализовано в `mcp-server/src/appsecgate_mcp/sync/` (только stdlib, G7):
+
+- `export.py` — читает локальную `shown_findings.db` (только SELECT) и
+  **реконструирует** события из materialized state (ADR-0006 §1.6: event-log
+  локально не ведётся). Критерий: fold на master (§3.4) сворачивается в тот же
+  статус. `client_event_id = uuid5(project, fp, event_type, at)` — стабилен
+  между запусками и машинами → идемпотентный приём (дедуп §5.1);
+- маппинг статус → события: SHOWN→discovered(+reaffirmed),
+  POTENTIALLY_FIXED→+not_found_in_scope, FIXED→+not_found_in_scope
+  (fixed_at−1µs, чтобы сложиться раньше verify) + verify_fixed,
+  REOPENED→(fixed_at есть) +verify_fixed+reopened / (нет) +verify_not_fixed
+  (аппроксимация — пути SHOWN→REOPENED в матрице §2.1 нет; оба статуса
+  блокируют CI), SUPPRESSED→+suppressed (scope/expires из suppressions),
+  WONT_FIX→+verify_wont_fix (note обязателен);
+- `outbox.py` — durable NDJSON-очередь `~/.appsecgate/sync/outbox.ndjson`
+  (§4.2): атомарные записи, дедуп по `client_event_id`, карантин битых
+  (`*.corrupt`) и отвергнутых (`*.rejected`) строк;
+- `push.py` — stdlib urllib, POST `{master}/v1/events` батчами + fallback
+  по одному при 4xx; 2xx→удаление из очереди, 4xx→карантин, 5xx/сеть→retry;
+- CLI: `appsecgate-mcp sync [--data-dir --project-id --outbox --master-url
+  --api-key --batch-size --dry-run --format]`; exit 0/1/2 (как `ci`);
+- тесты: 37 новых (маппинг каждого статуса, стабильность id, контракт полей,
+  outbox roundtrip/карантин, push на реальном loopback-стабе, CLI e2e).
 

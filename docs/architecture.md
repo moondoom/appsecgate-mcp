@@ -587,7 +587,10 @@ services:
   [ADR-0004](adr/ADR-0004-master-server-sync.md),
   модель жизненного цикла — [ADR-0006](adr/ADR-0006-unified-finding-lifecycle-model.md);
   **MS-2 выполнен** (2026-10-31): пакет `appsecgate-master/` — события,
-  агрегат, аудит, unit-тесты (см. `docs/open-tasks.md`); HTTP-API — MS-4
+  агрегат, аудит, unit-тесты (см. `docs/open-tasks.md`); HTTP-API — MS-4.
+  **MS-3 выполнен** (2026-10-31): edge `appsecgate-mcp sync` — экспорт
+  локальных БД в события, outbox `~/.appsecgate/sync/outbox.ndjson`,
+  идемпотентный push (urllib); MCP-сервер сети не получает (инвариант №2)
 - ⏳ CI-контур и двойные gates — **этап 1 Фазы 2**, реализуется по
   [ADR-0003](adr/ADR-0003-ci-unresolved-local-delivery.md)
 - ❌ Сканирование образов

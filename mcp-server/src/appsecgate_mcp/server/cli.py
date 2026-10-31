@@ -87,6 +87,12 @@ def main() -> None:
         from appsecgate_mcp.server.ci import ci_main  # ленивый импорт: CI — отдельный процесс
 
         raise SystemExit(ci_main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "sync":
+        # Edge-синхронизация с master (MS-3, ADR-0004 §4.2): запускается НА
+        # ХОСТЕ вне контейнера MCP-сервера (инвариант №2 не затрагивается).
+        from appsecgate_mcp.sync.cli import sync_main  # ленивый импорт: нет цикла
+
+        raise SystemExit(sync_main(sys.argv[2:]))
     args = _build_parser().parse_args()
     configure_logging(args.log_level, args.log_file)
     logger.info("start appsecgate-mcp transport=%s", getattr(args, "transport", "stdio"))

@@ -258,6 +258,13 @@ gates:
 Exit codes: `0` pass, `1` blocked, `2` инфраструктурная ошибка. Формат вывода:
 `text` или `ndjson`. Пример workflow: `.github/workflows/appsecgate-ci.yml`.
 
+**Sync to master (Фаза 2, MS-3, ADR-0004).** `appsecgate-mcp sync` запускается
+на хосте (вне контейнера — сервер остаётся без сети): экспортирует
+`shown_findings.db` в события жизненного цикла, пишет их в durable outbox
+`~/.appsecgate/sync/outbox.ndjson` и идемпотентно пушит на master
+(`POST {master}/v1/events`, stdlib urllib, `client_event_id` = дедуп).
+Exit codes: `0` ok, `1` push частично не удался, `2` инфраструктурная ошибка.
+
 ## Build from source
 
 ```bash

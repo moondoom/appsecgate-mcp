@@ -324,4 +324,39 @@ writes project files). One redacted record per shown finding:
 - Append-only: never remove previously shown fingerprints; commit the file so
   CI can read it. Missing snapshot degrades to severity-gate with a warning.
 
+
+## 9. Sync to master (Phase 2, MS-3)
+
+The master server keeps a single source of truth for findings across machines
+and CI (ADR-0004). The MCP server itself stays offline (invariant #2:
+`network_mode: none`) — the **edge** process pushes local state from the host:
+
+```bash
+appsecgate-mcp sync \
+  --data-dir "$HOME/.appsecgate-mcp" \
+  --master-url https://appsecgate.example.com \
+  --api-key "$APPSECGATE_MASTER_API_KEY"
+```
+
+What happens:
+
+1. **Export** — reads `shown_findings.db` (local materialized state) and
+   reconstructs lifecycle events (`discovered`, `reaffirmed`, `verify_fixed`,
+   `suppressed`, …) per the ADR-0006 matrix. `client_event_id` is a
+   deterministic UUID, so re-running produces the same events → idempotent.
+2. **Outbox** — events are appended to `~/.appsecgate/sync/outbox.ndjson`
+   (durable NDJSON queue, dedup by `client_event_id`).
+3. **Push** — the queue is POSTed to `{master}/v1/events` (stdlib `urllib`,
+   `Authorization: Bearer`). 2xx → removed from the queue; 4xx → quarantined
+   to `outbox.ndjson.rejected`; 5xx/network → kept for the next run.
+
+Options: `--project-id` (single project), `--batch-size`, `--timeout`,
+`--dry-run` (print events without writing the outbox; `--format ndjson` for
+machine output). Exit codes: `0` ok, `1` push partially failed (retry next
+run), `2` infrastructure error (missing DB / missing `--master-url`).
+
+Env overrides: `APPSECGATE_MASTER_URL`, `APPSECGATE_MASTER_API_KEY`,
+`APPSECGATE_SYNC_OUTBOX`, `APPSECGATE_DATA_DIR`. The REST endpoint is
+implemented in MS-4 (FastAPI); the edge contract is fixed by ADR-0004 §5.2.
+
 | `update_config` returns `status: readonly` | Project is mounted `:ro` (canonical Docker) — not an error | The change is not applied. Ask the user to edit `.appsecgate-mcp/config.yaml` on the host, mount the project `rw` for local dev, or set `APPSECGATE_*` env vars |
