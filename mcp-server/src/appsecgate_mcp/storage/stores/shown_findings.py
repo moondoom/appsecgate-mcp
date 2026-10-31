@@ -6,7 +6,7 @@ from typing import Any
 
 from appsecgate_mcp.models.finding import Finding
 from appsecgate_mcp.storage.db import Database
-from appsecgate_mcp.storage.stores import shown_report
+from appsecgate_mcp.storage.stores import shown_reconcile, shown_report
 from appsecgate_mcp.storage.stores._time import _now
 
 
@@ -245,6 +245,23 @@ class ShownFindingsStore:
             (now, reason, now, fingerprint),
         )
 
+    async def unsuppress(self, fingerprint: str) -> None:
+        """Снимает SUPPRESSED/WONT_FIX → SHOWN (ADR-0006 §2.1, событие ``unsuppressed``).
+
+        Эмитент — ``suppress_finding(action="unsuppress")``; маркеры
+        suppression/WONT_FIX очищаются. Для остальных статусов — no-op.
+        """
+        now = _now()
+        await self.db.execute(
+            """
+            UPDATE shown_findings
+            SET status = 'SHOWN', suppressed_at = NULL, suppress_reason = NULL,
+                wont_fix_at = NULL, wont_fix_reason = NULL, status_updated_at = ?
+            WHERE fingerprint = ? AND status IN ('SUPPRESSED', 'WONT_FIX')
+            """,
+            (now, fingerprint),
+        )
+
     async def was_shown(self, fingerprint: str) -> bool:
         row = await self.db.fetchone(
             "SELECT fingerprint FROM shown_findings WHERE fingerprint = ?", (fingerprint,)
@@ -349,35 +366,14 @@ class ShownFindingsStore:
         file_paths: list[str] | None = None,
         branch: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Кандидаты на negative-merge в охвате тула (branch-фильтр §2.4, К10).
-
-        ``file_paths=None`` — глобальный охват (scan_project, §2.1): все находки
-        проекта/ветки, файловый фильтр не применяется.
-        """
-        sql = (
-            "SELECT fingerprint, status, missed_scan_count, file_path "
-            "FROM shown_findings WHERE project_id = ?"
+        """Кандидаты на negative-merge в охвате тула (branch-фильтр §2.4, К10)."""
+        return await shown_reconcile.get_negative_candidates(
+            self.db, project_id, file_paths, branch
         )
-        params: list[Any] = [project_id]
-        if file_paths:
-            placeholders = ",".join("?" * len(file_paths))
-            sql += f" AND file_path IN ({placeholders})"
-            params.extend(file_paths)
-        if branch and branch != "<unknown>":
-            sql += " AND last_seen_branch = ?"
-            params.append(branch)
-        sql += " ORDER BY fingerprint"
-        rows = await self.db.fetchall(sql, params)
-        return [dict(r) for r in rows]
 
     async def mark_missing(self, updates: list[tuple[str, str, int]]) -> None:
         """Применяет negative-merge переходы; не трогает терминальные статусы (К7)."""
-        now = _now()
-        await self.db.execute_many(
-            "UPDATE shown_findings SET status = ?, missed_scan_count = ?, status_updated_at = ? "
-            "WHERE fingerprint = ? AND status IN ('SHOWN', 'POTENTIALLY_FIXED', 'REOPENED')",
-            [(status, missed, now, fp) for fp, status, missed in updates],
-        )
+        await shown_reconcile.mark_missing(self.db, updates)
 
     async def get_statuses(self, fingerprints: list[str]) -> dict[str, str]:
         """Пред-скан статусы находок (классификация new/reaffirmed/reopened, PR-C)."""

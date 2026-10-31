@@ -28,10 +28,31 @@ async def submit_feedback(finding_id: str, type: str, reason: str = "") -> dict[
 @mcp.tool()
 @_log_tool
 async def suppress_finding(
-    finding_id: str, reason: str, expires_at: str | None = None
+    finding_id: str,
+    reason: str,
+    expires_at: str | None = None,
+    action: str = "suppress",
 ) -> dict[str, Any]:
-    """Create a local suppression (does not affect CI gate in Phase 1)."""
+    """Create or remove a local suppression (does not affect CI gate in Phase 1).
+
+    ``action``: ``suppress`` (default) | ``unsuppress``. ``unsuppress`` снимает
+    suppression/WONT_FIX (ADR-0006 §1.4, эмитент ``unsuppressed``): находка
+    возвращается в ``SHOWN``, suppression-запись удаляется.
+    """
     state = await ensure_session()
+    normalized = action.strip().lower()
+    if normalized not in ("suppress", "unsuppress"):
+        return {
+            "status": "error",
+            "reason": f"invalid action '{action}': expected suppress|unsuppress",
+        }
+    if normalized == "unsuppress":
+        await state.suppression_store.delete(finding_id)
+        try:
+            await state.shown_store.unsuppress(finding_id)
+        except Exception:
+            pass
+        return {"status": "unsuppressed", "finding_id": finding_id}
     suppression = Suppression(
         fingerprint=finding_id,
         reason=reason,

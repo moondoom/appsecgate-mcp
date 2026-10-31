@@ -21,7 +21,7 @@
 - [get_config](README.md#mcp-tools-14) / [update_config](README.md#mcp-tools-14) -- read and update session config
 - [submit_feedback](README.md#mcp-tools-14) -- mark finding as FALSE_POSITIVE / CONFIRMED / WONT_FIX
 - [get_scan_history](README.md#mcp-tools-14) -- shown-findings journal with fix attempts
-- [suppress_finding](README.md#mcp-tools-14) -- create a local suppression
+- [suppress_finding](README.md#mcp-tools-14) -- create/remove a local suppression (action: suppress|unsuppress)
 
 ## Scanners
 

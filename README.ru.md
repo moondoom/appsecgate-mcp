@@ -50,7 +50,7 @@ AI-агенты пишут код быстрее, чем security успевае
 | get_config / update_config | Чтение и обновление конфигурации сессии. |
 | submit_feedback | Обратная связь: FALSE_POSITIVE / CONFIRMED / WONT_FIX. |
 | get_scan_history | Журнал показанных находок с попытками верификации. |
-| suppress_finding | Локальное подавление находки. |
+| suppress_finding | Локальное подавление находки (`action: suppress\|unsuppress`). |
 
 ## Сканеры (Фаза 1)
 

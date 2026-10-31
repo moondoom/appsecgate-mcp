@@ -194,7 +194,7 @@ diagnostics: [docs/deploy-agents.md](docs/deploy-agents.md).
 | `update_config` | Deep-merge updates into .appsecgate-mcp/config.yaml and reload the session. |
 | `submit_feedback` | Submit feedback on a finding (FALSE_POSITIVE / CONFIRMED / WONT_FIX). |
 | `get_scan_history` | Return the shown findings log (shown_findings.db) with verification attempts. |
-| `suppress_finding` | Create a local suppression (does not affect CI gate in Phase 1). |
+| `suppress_finding` | Create or remove a local suppression (`action: suppress\|unsuppress`; does not affect CI gate in Phase 1). |
 
 ## Scanners (Phase 1)
 
