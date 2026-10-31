@@ -109,8 +109,17 @@ class FixAttemptsStore:
             (project_id,),
         )
         attempts = int(row["n"]) if row and row["n"] is not None else 0
+        # logical_id не хранится в shown_findings (ADR-0005 §2.8, К1):
+        # уникальные находки считаем через finding_identity по fingerprint,
+        # как в view v_verification_coverage (arch §4.7).
         total_row = await self.db.fetchone(
-            "SELECT COUNT(DISTINCT logical_id) AS n FROM shown_findings WHERE project_id=?",
+            """
+            SELECT COUNT(DISTINCT i.logical_id) AS n
+            FROM shown_findings s
+            LEFT JOIN finding_identity i
+                ON i.project_id = s.project_id AND i.last_fingerprint = s.fingerprint
+            WHERE s.project_id = ?
+            """,
             (project_id,),
         )
         total = int(total_row["n"]) if total_row and total_row["n"] is not None else 0
