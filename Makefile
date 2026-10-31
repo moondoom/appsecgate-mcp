@@ -3,6 +3,9 @@ MASTER_DIR     := appsecgate-master
 IMAGE          ?= moondoom/appsecgate-mcp
 VERSION        ?= 0.1.0
 TAG            ?= $(IMAGE):$(VERSION)
+MASTER_IMAGE   ?= moondoom/appsecgate-master
+MASTER_VERSION ?= 0.1.0
+MASTER_TAG     ?= $(MASTER_IMAGE):$(MASTER_VERSION)
 PROJECT_PATH   ?= $(CURDIR)
 WITH_JAVA_DB   ?= false
 
@@ -19,7 +22,8 @@ endif
 
 .PHONY: help setup test test-file lint format check \
         master-setup master-lint master-test master-check master-format \
-        docker-build docker-run docker-down docker-push \
+        docker-build docker-run docker-down docker-push docker-master-build \
+        compose-up compose-down compose-edge-sync \
         clean
 
 help: ## Показать список основных команд
@@ -35,6 +39,10 @@ help: ## Показать список основных команд
 	@echo "  master-format  Отформатировать appsecgate-master ruff'ом"
 	@echo "  check          Полная проверка обоих пакетов (lint + test)"
 	@echo "  docker-build   Собрать Docker-образ mcp-server"
+	@echo "  docker-master-build  Собрать Docker-образ master"
+	@echo "  compose-up     Поднять master-сервер (корневой compose)"
+	@echo "  compose-edge-sync  Запустить edge-синхронизацию"
+	@echo "  compose-down   Остановить контейнеры корневого compose"
 	@echo "  docker-run     Запустить MCP-сервер в Docker"
 	@echo "  docker-down    Остановить контейнеры"
 	@echo "  docker-push    Залогиниться и запушить образ"
@@ -80,6 +88,22 @@ docker-build: ## Собрать Docker-образ (context = mcp-server)
 	  -f $(SERVER_DIR)/Dockerfile \
 	  --load \
 	  $(SERVER_DIR)
+
+docker-master-build: ## Собрать Docker-образ master (context = appsecgate-master)
+	docker buildx build $(BUILDX_CACHE_ARGS) \
+	  -t $(MASTER_TAG) \
+	  -f $(MASTER_DIR)/Dockerfile \
+	  --load \
+	  $(MASTER_DIR)
+
+compose-up: ## Поднять master-сервер (корневой compose, master + edge)
+	docker compose up -d master
+
+compose-edge-sync: ## Запустить edge-синхронизацию (корневой compose)
+	docker compose run --rm edge
+
+compose-down: ## Остановить контейнеры корневого compose
+	docker compose down
 
 docker-run: ## Запустить MCP-сервер в Docker (PROJECT_PATH по умолчанию — текущий каталог)
 	PROJECT_PATH=$(PROJECT_PATH) docker compose -f $(SERVER_DIR)/docker-compose.yml run --rm appsecgate-mcp

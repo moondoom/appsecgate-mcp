@@ -269,6 +269,13 @@ suppressions + центральную policy в локальный data-dir. Rem
 `default < project < master < env`. Exit codes: `0` ok, `1` push/pull частично
 не удался, `2` инфраструктурная ошибка.
 
+**Master + edge (Фаза 2, MS-7, ADR-0004).** Корневой `docker-compose.yml`
+поднимает master (`moondoom/appsecgate-master:0.1.0`, REST :8000) и edge
+(контейнер MCP-образа с командой `sync`) на общей bridge-сети; `network_mode:
+none` остаётся только у STDIO MCP-сервера. Быстрый старт:
+`cp .env.example .env`, `make docker-master-build`, `make compose-up`,
+`make compose-edge-sync`. Подробно: [docs/deploy-master.md](docs/deploy-master.md).
+
 ## Build from source
 
 ```bash
@@ -280,6 +287,7 @@ make docker-build   # build moondoom/appsecgate-mcp:0.1.0
 ## Documentation
 
 - [Agent deployment guide](docs/deploy-agents.md) — all four clients, verification steps, troubleshooting
+- [Master + edge deployment](docs/deploy-master.md) — master server, sync, CI gate
 - [Architecture](docs/architecture.md)
 - [E2E test plan](docs/e2e-test-plan.md)
 - [E2E report](docs/reports/e2e-report-2026-10-30.md)

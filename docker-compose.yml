@@ -1,0 +1,91 @@
+# AppSecGate — docker-compose master + edge (Фаза 2, MS-7, ADR-0004).
+#
+# Модель сети (решение владельца 2026-10-31): в compose сеть всегда
+# включена (bridge). `network_mode: none` относится только к STDIO
+# MCP-серверу (mcp-server/docker-compose.yml), который обслуживает
+# вайб-кодеров локально без сети.
+#
+# Сервисы:
+#   master — центральный сервер (appsecgate-master), REST API на :8000;
+#   edge   — синхронизация локальных БД с master (`appsecgate-mcp sync`,
+#            тот же контейнер, что и MCP-сервер, но с командой sync).
+#
+# Запуск:
+#   cp .env.example .env   # задать APPSECGATE_MASTER_API_KEYS / _API_KEY / _PROJECT_ID
+#   docker compose up -d master
+#   docker compose run --rm edge      # синхронизация по требованию
+#   docker compose run --rm edge sync --dry-run   # просмотр событий без push
+
+services:
+  master:
+    build:
+      context: ./appsecgate-master
+      dockerfile: Dockerfile
+    image: moondoom/appsecgate-master:0.1.0
+    container_name: appsecgate-master
+
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+
+    environment:
+      # JSON {"project-id": "key"} — обязателен (MasterSettings.from_env).
+      APPSECGATE_MASTER_API_KEYS: ${APPSECGATE_MASTER_API_KEYS:?задайте в .env JSON {"project":"key"}}
+      APPSECGATE_MASTER_DB: /home/appsecgate/.appsecgate/master/master.db
+
+    volumes:
+      # Единственное место записи master: SQLite + WAL.
+      - master-data:/home/appsecgate/.appsecgate
+
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    networks:
+      - appsecgate
+
+    healthcheck:
+      # urllib из stdlib: curl в образ не ставили (минимальный runtime).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  edge:
+    # Тот же образ MCP-сервера, но с командой `sync` (MS-3/MS-5).
+    image: moondoom/appsecgate-mcp:0.1.0
+    depends_on:
+      master:
+        condition: service_healthy
+
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+
+    environment:
+      APPSECGATE_MASTER_URL: http://master:8000
+      APPSECGATE_MASTER_API_KEY: ${APPSECGATE_MASTER_API_KEY:?задайте в .env ключ проекта из APPSECGATE_MASTER_API_KEYS}
+      APPSECGATE_PROJECT_ID: ${APPSECGATE_PROJECT_ID:?задайте в .env}
+      # Outbox — в смонтированный data-dir (rootfs read_only, писать больше некуда).
+      APPSECGATE_SYNC_OUTBOX: /home/appsecgate/.appsecgate-mcp/sync/outbox.ndjson
+      # sync-режиму Trivy DB не нужна; несуществующий seed отключает
+      # seed-on-first-run в entrypoint (иначе он не влезет в read_only rootfs).
+      APPSECGATE_TRIVY_DB_SEED: /nonexistent-trivy-seed
+
+    volumes:
+      # Локальные БД машины разработчика (shown_findings.db) — на хосте.
+      - ${APPSECGATE_DATA_DIR:-~/.appsecgate-mcp}:/home/appsecgate/.appsecgate-mcp
+
+    networks:
+      - appsecgate
+
+    command: ["sync"]
+
+networks:
+  appsecgate:
+    driver: bridge
+
+volumes:
+  master-data:
