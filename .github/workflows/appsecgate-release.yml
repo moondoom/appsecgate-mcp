@@ -1,0 +1,31 @@
+# Пример classic hard-gate для релиза. Скопировать в проверяемый проект.
+# Текущий CLI проверяет diff; HEAD~1 ограничивает проверку последним коммитом.
+name: AppSecGate release gate
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  appsecgate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Run AppSecGate release gate
+        env:
+          APPSECGATE_MASTER_URL: ${{ vars.APPSECGATE_MASTER_URL }}
+          APPSECGATE_MASTER_API_KEY: ${{ secrets.APPSECGATE_MASTER_API_KEY }}
+          APPSECGATE_PROJECT_ID: ${{ github.repository }}
+        run: |
+          docker run --rm --read-only \
+            --tmpfs=/tmp:size=100M,mode=1777 \
+            --cap-drop=ALL --security-opt=no-new-privileges:true \
+            -v "$PWD":/workspace:ro \
+            moondoom/appsecgate-mcp:0.1.0 \
+            ci --project /workspace --base-ref HEAD~1 --format ndjson

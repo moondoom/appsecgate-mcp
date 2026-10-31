@@ -285,9 +285,33 @@ Agent recommendation: in summary responses, refer to the issue as
 | `meta.errors` is non-empty | Scanner binary unavailable (semgrep/gitleaks/trivy) | Check the image: `docker run --rm moondoom/appsecgate-mcp semgrep --version` |
 | `project_id mismatch` error | `project_path` changed within the same session | New project = new session (invariant #6) |
 
-## 8. CI gate (Phase 2, ADR-0004 MS-6)
+## 8. Orchestration modes
 
-The same image runs as a CI gate. It scans the PR diff against the base branch
+AppSecGate supports two modes over the same scanners, state machine and gate
+matrix (ADR-0008):
+
+| Mode | Decision | Best for | Guarantees |
+|---|---|---|---|
+| **Agent mode** | The AI agent calls MCP tools and follows `recommended_action` | Local triage, fixes, advisory reports | Adaptive, but LLM-dependent |
+| **Classic hard-gate** | `appsecgate-mcp ci` returns an exit code | Protected merge and release | Deterministic and reproducible |
+
+Agent policy is **advisory**: `should_fail` reports the matrix result, while
+`policy` selects the recommended next action. It does not enforce a process
+exit. For an enforced release or protected-merge decision, use classic mode.
+
+Recommended agent sequence:
+
+1. `scan_diff` or `scan_project`.
+2. Get fix context, edit code when permitted, and run `verify_fix_batch`.
+3. Call `check_gate(scope="diff", policy="block")` before reporting done.
+4. Follow `recommended_action` and report blocked fingerprints with reasons.
+
+Copy `mcp-server/examples/AGENTS.md` into a consumer project to provide these
+rules to the agent. Never suppress findings without an explicit user request.
+
+### Classic hard-gate (Phase 2, ADR-0004 MS-6)
+
+The same image runs as a deterministic CI gate. It scans the diff against the base branch
 and fails the build on blockable findings (severity or "shown locally and not
 fixed"). "Shown" always comes from the master server (`GET /v1/findings`):
 no master / wrong key → exit 2 (fail-closed; the snapshot channel was removed
@@ -311,8 +335,12 @@ server, `network_mode: none`; CI is a separate host process). Options:
 `--base-ref` (default: `gates.ci.diff_base_ref`, i.e. `origin/main`),
 `--master-url`/`APPSECGATE_MASTER_URL`, `--api-key`/`APPSECGATE_MASTER_API_KEY`,
 `--project-id`/`APPSECGATE_PROJECT_ID`, `--master-timeout` (default 30),
-`--format text|ndjson`. Ready-to-use workflow:
-`.github/workflows/appsecgate-ci.yml`.
+`--format text|ndjson`. Ready-to-use workflows:
+`.github/workflows/appsecgate-ci.yml` (PR),
+`.github/workflows/appsecgate-release.yml` (release),
+`.github/workflows/appsecgate-cron.yml` (scheduled report). The current CLI
+scans a diff, so release/cron examples use `HEAD~1`; full-project classic mode
+is not implemented yet.
 
 ### "Shown" state (from master, not from project files)
 

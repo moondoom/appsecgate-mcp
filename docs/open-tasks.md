@@ -18,9 +18,9 @@
 |---|---|---|---|---|
 | OR-1 | MCP-тул `check_gate` | выполнен | — | ADR-0008 §4, ADR-0009 §3 |
 | OR-2 | `GET /v1/findings?branch=&commit=` | выполнен | — | ADR-0008 §5 |
-| OR-5 | Документация двух режимов оркестрации | не начата | нет | ADR-0008 §9 |
-| OR-6 | Примеры classic PR/release/cron | частично: есть PR | нет | ADR-0008 §9 |
-| AG-3 | Шаблон AppSecGate policy для AGENTS.md | не начат | нет | ADR-0009 §4 |
+| OR-5 | Документация двух режимов оркестрации | выполнена | — | ADR-0008 §9 |
+| OR-6 | Примеры classic PR/release/cron | выполнены | — | ADR-0008 §9 |
+| AG-3 | Шаблон AppSecGate policy для AGENTS.md | выполнен | — | ADR-0009 §4 |
 | OR-7/AG-4 | Пример CI-agent | не начат | OR-1 | ADR-0008 §9, ADR-0009 §13 |
 | AG-5/AG-8 | Server-agent MVP: report + workflow | не начат | OR-1, OR-2 | ADR-0009 §13 |
 | AG-6/AG-9 | Triage, action log и audit push | после MVP | AG-5 | ADR-0009 §13 |
@@ -44,8 +44,9 @@ ADR-0003 переведён в classic hard-gate; snapshot-разделы пом
 ADR-0006 разделяет advisory agent mode и enforced classic gate.
 
 ### OR-5 / OR-6 — документация и примеры
-Описать в deployment-документах выбор agent mode vs classic hard-gate. Существующий
-`.github/workflows/appsecgate-ci.yml` покрывает PR; нужны release/cron-примеры.
+Выполнено: `docs/deploy-agents.md` описывает выбор agent mode vs classic
+hard-gate; PR/release/cron покрыты отдельными workflow. Шаблон AG-3 находится
+в `mcp-server/examples/AGENTS.md`.
 
 ### ADR-0007 — Per-branch state
 Proposed, Фаза 3. Модель `(project, branch, fingerprint)` описана; реализация
