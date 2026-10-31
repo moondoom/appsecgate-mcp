@@ -10,6 +10,7 @@ from appsecgate_mcp.server.tools import (  # noqa: F401
     config,
     context,
     feedback,
+    gate,
     history,
     query,
     scan,

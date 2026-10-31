@@ -125,3 +125,66 @@ def test_audit_rejects_non_utc_since_and_invalid_limit(master_client: TestClient
     )
     assert non_utc.status_code == 422
     assert invalid_limit.status_code == 422
+
+
+def test_findings_filter_by_branch_commit_and_state(master_client: TestClient):
+    events = [
+        make_event(
+            "discovered",
+            fp="target",
+            branch="feature/x",
+            commit="abc123",
+        ),
+        make_event(
+            "discovered",
+            fp="other-branch",
+            branch="main",
+            commit="abc123",
+        ),
+        make_event(
+            "discovered",
+            fp="other-commit",
+            branch="feature/x",
+            commit="def456",
+        ),
+        make_event("discovered", fp="fixed", branch="feature/x", commit="abc123"),
+        make_event(
+            "not_found_in_scope",
+            fp="fixed",
+            branch="feature/x",
+            commit="abc123",
+            at=shift_at(BASE_AT, 1),
+        ),
+        make_event(
+            "verify_fixed",
+            fp="fixed",
+            branch="feature/x",
+            commit="abc123",
+            at=shift_at(BASE_AT, 2),
+        ),
+    ]
+    assert push(master_client, events).status_code == 200
+
+    response = master_client.get(
+        "/v1/findings",
+        params={
+            "project": "proj",
+            "branch": "feature/x",
+            "commit": "abc123",
+            "state": "SHOWN",
+        },
+        headers=PROJ_HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert [row["fp"] for row in response.json()["findings"]] == ["target"]
+
+
+def test_findings_reject_empty_branch_and_commit(master_client: TestClient):
+    for param in ("branch", "commit"):
+        response = master_client.get(
+            "/v1/findings",
+            params={"project": "proj", param: ""},
+            headers=PROJ_HEADERS,
+        )
+        assert response.status_code == 422

@@ -97,7 +97,7 @@
 | Компонент | Ответственность |
 |-----------|-----------------|
 
-| **Tool Router** | Регистрирует MCP-инструменты (`scan_file`, `scan_diff`, `scan_project`, `get_config`, `submit_feedback`, `suppress_finding`, `get_scan_history`). Валидирует входные параметры через Pydantic. |
+| **Tool Router** | Регистрирует MCP-инструменты (`scan_file`, `scan_diff`, `scan_project`, `check_gate`, `get_config`, `submit_feedback`, `suppress_finding`, `get_scan_history`). Валидирует входные параметры через Pydantic. |
 | **Hook Handler** | Принимает события от AI-агента (`SessionStart`, `PreToolUse`, `PostToolUse`). Триггерит оркестрацию. |
 | **Session Manager** | Хранит состояние сессии: активный проект, стек, конфигурацию, флаги (например, «идёт сканирование»). Живёт в памяти процесса. |
 

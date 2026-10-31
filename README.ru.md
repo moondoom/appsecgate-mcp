@@ -34,13 +34,14 @@ AI-агенты пишут код быстрее, чем security успевае
 - **Жизненный цикл находки:** detected shown suppressed/false_positive
   accepted/fixed verified/resurrected/blamed.
 
-## MCP-тулы (14)
+## MCP-тулы (15)
 
 | Инструмент | Что делает |
 |------------|------------|
 | scan_file | Сканирует один файл. |
 | scan_diff | Сканирует staged + unstaged + untracked изменения в git. |
 | scan_project | Сканирует весь проект (без аргументов) — отчёт сверки: counts + requires_confirmation. |
+| check_gate | Оценивает последний скан по advisory policy и возвращает GateSummary с рекомендуемым действием. |
 | get_fix_context | Контекстный пакет для фикса (находка + код + правило). |
 | get_fix_context_batch | Пакеты для нескольких находок (до 20). |
 | verify_fix | Проверяет фикс: пересканирует файл, сравнивает fingerprint. |
@@ -114,7 +115,7 @@ appsecgate-mcp/
   mcp-server/                # Код сервера
     src/appsecgate_mcp/      # MCP-тулы, сканеры, storage
     config/default.yaml      # Конфигурация по умолчанию
-    tests/                   # 482 теста
+    tests/                   # 496 тестов
   Makefile
   docker-compose.yml
 ```

@@ -177,13 +177,14 @@ mcpServers:
 appear with the `mcp__appsecgate__` prefix. Full instructions, edge cases, and
 diagnostics: [docs/deploy-agents.md](docs/deploy-agents.md).
 
-## MCP tools (14)
+## MCP tools (15)
 
 | Tool | What it does |
 |------|--------------|
 | `scan_file` | Scan a single file and return normalized findings. |
 | `scan_diff` | Scan staged + unstaged + untracked changes in the current git repository. |
 | `scan_project` | Scan the entire project (no arguments) — reconciliation report: counts + TOP-10 + requires_confirmation. |
+| `check_gate` | Evaluate the latest scan under an advisory policy and return a GateSummary with a recommended action. |
 | `get_fix_context` | Return the ContextPack for a finding (finding + code window + rule doc). |
 | `get_fix_context_batch` | Return ContextPacks for multiple findings (limit 20). |
 | `verify_fix` | Verify a single finding: rescan the file and match by (logical_id). |

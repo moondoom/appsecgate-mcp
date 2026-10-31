@@ -90,3 +90,31 @@ async def test_list_states_ordered_by_fp(
     await aggregates_store.rebuild()
     states = await aggregates_store.list_states("p1")
     assert [s.fp for s in states] == ["a", "b"]
+
+
+async def test_list_states_filters_by_last_seen_branch_and_commit(
+    events_store: MasterEventStore, aggregates_store: AggregateStore
+):
+    await events_store.ingest(
+        [
+            make_event("discovered", fp="a", branch="feature/x", commit="old"),
+            make_event("discovered", fp="b", branch="main", commit="abc"),
+        ]
+    )
+    await aggregates_store.rebuild()
+    await events_store.ingest(
+        [
+            make_event(
+                "reopened",
+                fp="a",
+                branch="feature/x",
+                commit="abc",
+                at=shift_at(BASE_AT, 1),
+            )
+        ]
+    )
+    await aggregates_store.rebuild()
+
+    states = await aggregates_store.list_states("proj", branch="feature/x", commit="abc")
+
+    assert [state.fp for state in states] == ["a"]

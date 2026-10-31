@@ -48,7 +48,11 @@ make compose-up            # docker compose up -d master
 ```bash
 curl http://127.0.0.1:8000/healthz
 curl -H "Authorization: Bearer $KEY" "http://127.0.0.1:8000/v1/findings?project=my-project"
+curl -H "Authorization: Bearer $KEY" "http://127.0.0.1:8000/v1/findings?project=my-project&branch=main&commit=abc123"
 ```
+
+`branch` и `commit` необязательны и фильтруют актуальный агрегат по
+`last_seen_branch` / `last_seen_commit`; их можно сочетать с `state`.
 
 ## 4. Edge-синхронизация
 

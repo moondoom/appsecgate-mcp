@@ -18,7 +18,7 @@ README = Path(__file__).resolve().parents[2] / "README.md"
 def _readme_tool_names() -> set[str]:
     text = README.read_text(encoding="utf-8")
     header_match = re.search(r"## MCP tools \((\d+)\)", text)
-    assert header_match, "в README нет заголовка «## MCP tools (14)»"
+    assert header_match, "в README нет заголовка «## MCP tools (15)»"
     section_start = header_match.end()
     next_header = re.search(r"\n## ", text[section_start:])
     section_text = (
@@ -38,8 +38,8 @@ def test_readme_tools_match_list_tools() -> None:
     assert _readme_tool_names() == _registered_tool_names()
 
 
-def test_exactly_fourteen_tools() -> None:
-    assert len(_registered_tool_names()) == 14
+def test_exactly_fifteen_tools() -> None:
+    assert len(_registered_tool_names()) == 15
 
 
 def test_hooks_are_not_mcp_tools() -> None:

@@ -157,7 +157,7 @@ master только там, где он нужен (у команды, а не �
 | Метод | Путь | Кто | Назначение |
 |---|---|---|---|
 | `POST` | `/v1/events` | edge | push одного/батча событий; идемпотентность по `client_event_id` |
-| `GET` | `/v1/findings?project=&state=` | CI/edge | агрегат находок проекта (текущее состояние по событиям) |
+| `GET` | `/v1/findings?project=&state=&branch=&commit=` | CI/edge | агрегат находок проекта; опциональные branch/commit фильтруют last_seen_* |
 | `GET` | `/v1/suppressions?project=` | edge | pull CI/global suppressions **вниз** (G3) |
 | `GET` | `/v1/config?project=` | edge | центральные политики (gates, thresholds) |
 | `GET` | `/v1/audit?project=&since=` | AppSec/отчёты | аудит-лог (кто/когда/что) |

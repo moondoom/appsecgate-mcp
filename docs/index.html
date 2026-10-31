@@ -85,11 +85,12 @@
   </section>
 
   <section>
-    <h2>14 MCP tools</h2>
+    <h2>15 MCP tools</h2>
     <div class="tw"><table class="tt"><thead><tr><th>Tool</th><th>What it does</th></tr></thead><tbody>
       <tr><td><code>scan_file</code></td><td>Scan a single file and return normalized findings.</td></tr>
       <tr><td><code>scan_diff</code></td><td>Scan staged + unstaged + untracked changes in the current git repository.</td></tr>
       <tr><td><code>scan_project</code></td><td>Scan the entire project or a specific directory inside it.</td></tr>
+      <tr><td><code>check_gate</code></td><td>Evaluate the latest scan under an advisory policy and recommend the next action.</td></tr>
       <tr><td><code>get_fix_context</code></td><td>Return the ContextPack for a finding (finding + code window + rule doc).</td></tr>
       <tr><td><code>get_fix_context_batch</code></td><td>Return ContextPacks for multiple findings (limit 20).</td></tr>
       <tr><td><code>verify_fix</code></td><td>Verify a single finding: rescan the file and match by logical ID.</td></tr>

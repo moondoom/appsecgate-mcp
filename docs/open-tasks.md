@@ -7,18 +7,17 @@
 ## Фактическое состояние
 
 - Фаза 1 и технические этапы CI-1…CI-7, MS-1…MS-7 завершены.
-- В MCP зарегистрировано 14 тулов; `check_gate` пока не реализован.
-- `GET /v1/findings` поддерживает фильтр `state`, но ещё не поддерживает
-  `branch` и `commit`.
-- `make check`: 482 теста mcp-server + 140 тестов appsecgate-master — зелёные.
+- В MCP зарегистрировано 15 тулов; `check_gate` реализован (OR-1).
+- `GET /v1/findings` поддерживает фильтры `state`, `branch` и `commit` (OR-2).
+- `make check`: 496 тестов mcp-server + 143 теста appsecgate-master — зелёные.
 - ADR-0007…ADR-0009 содержат проектные решения, но не означают реализацию.
 
 ## Сводка
 
 | # | Пункт | Статус | Блокер | Где детали |
 |---|---|---|---|---|
-| OR-1 | MCP-тул `check_gate` | не начат | agent mode | ADR-0008 §4, ADR-0009 §3 |
-| OR-2 | `GET /v1/findings?branch=&commit=` | не начат | agent mode | ADR-0008 §5 |
+| OR-1 | MCP-тул `check_gate` | выполнен | — | ADR-0008 §4, ADR-0009 §3 |
+| OR-2 | `GET /v1/findings?branch=&commit=` | выполнен | — | ADR-0008 §5 |
 | OR-5 | Документация двух режимов оркестрации | не начата | нет | ADR-0008 §9 |
 | OR-6 | Примеры classic PR/release/cron | частично: есть PR | нет | ADR-0008 §9 |
 | AG-3 | Шаблон AppSecGate policy для AGENTS.md | не начат | нет | ADR-0009 §4 |
@@ -35,9 +34,10 @@
 ## Детали
 
 ### OR-1 / OR-2 — блокеры agent mode
-Реализовать контракт `GateSummary` и `recommended_action`, затем добавить
-опциональные `branch`/`commit` в master API без изменения поведения запросов
-без этих параметров. AG-1/AG-2 из ADR-0009 — те же задачи, отдельно не ведутся.
+Оба выполнены: `check_gate` возвращает `GateSummary` и `recommended_action`
+по последнему скану выбранного scope; master API принимает опциональные
+`branch`/`commit` без изменения поведения запросов без этих параметров.
+AG-1/AG-2 из ADR-0009 — те же задачи, отдельно не ведутся.
 
 ### OR-3 / OR-4 — закрыты документацией
 ADR-0003 переведён в classic hard-gate; snapshot-разделы помечены историческими.

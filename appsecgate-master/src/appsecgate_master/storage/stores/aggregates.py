@@ -116,12 +116,19 @@ class AggregateStore:
         return _row_to_state(row) if row is not None else None
 
     async def list_states(
-        self, project_key: str, *, status: str | None = None
+        self,
+        project_key: str,
+        *,
+        status: str | None = None,
+        branch: str | None = None,
+        commit: str | None = None,
     ) -> list[FindingState]:
         rows = await self.db.fetchall(
             "SELECT * FROM aggregates WHERE project_key = ?"
-            " AND (? IS NULL OR status = ?) ORDER BY fp",
-            (project_key, status, status),
+            " AND (? IS NULL OR status = ?)"
+            " AND (? IS NULL OR last_seen_branch = ?)"
+            " AND (? IS NULL OR last_seen_commit = ?) ORDER BY fp",
+            (project_key, status, status, branch, branch, commit, commit),
         )
         return [_row_to_state(row) for row in rows]
 

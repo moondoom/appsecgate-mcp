@@ -33,9 +33,10 @@ def test_all_tools_registered():
         "submit_feedback",
         "get_scan_history",
         "suppress_finding",
+        "check_gate",
     }
     assert names == expected
-    assert len(tools) == 14
+    assert len(tools) == 15
 
 
 def test_extract_touched_files(tmp_path):

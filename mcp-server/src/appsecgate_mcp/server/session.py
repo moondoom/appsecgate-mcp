@@ -147,6 +147,7 @@ class SessionState:
         self.sql_audit_store: SqlAuditLogStore | None = None
 
         self.findings: OrderedDict[str, Finding] = OrderedDict()
+        self.last_results: dict[str, ScanResult] = {}
         self.config_loader = ConfigLoader()
         self.trivy_db: TrivyDbStatus | None = None
         self._lock = asyncio.Lock()
@@ -311,6 +312,7 @@ class SessionState:
             except Exception:
                 pass
         self.databases = {}
+        self.last_results = {}
         self.initialized = False
 
     # ------------------------------------------------------------------
@@ -318,6 +320,9 @@ class SessionState:
     # ------------------------------------------------------------------
     def register(self, result: ScanResult) -> None:
         """Регистрирует находки; при переполнении вытесняются самые старые."""
+        scope = "full" if result.meta.mode == "project" else result.meta.mode
+        if scope in ("file", "diff", "full"):
+            self.last_results[scope] = result
         for finding in result.findings:
             self.findings[finding.fingerprint] = finding
             self.findings.move_to_end(finding.fingerprint)

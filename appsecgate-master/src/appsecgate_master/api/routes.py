@@ -86,11 +86,15 @@ async def list_findings(
     authenticated: Authenticated,
     project: Project = ...,
     state: str | None = Query(default=None),
+    branch: str | None = Query(default=None, min_length=1),
+    commit: str | None = Query(default=None, min_length=1),
 ) -> FindingsResponse:
     authorize_project(authenticated, project)
     if state is not None and state not in STATUSES:
         raise HTTPException(status_code=422, detail=f"unknown finding state: {state}")
-    states = await request.app.state.aggregates.list_states(project, status=state)
+    states = await request.app.state.aggregates.list_states(
+        project, status=state, branch=branch, commit=commit
+    )
     return FindingsResponse(
         project=project,
         findings=[FindingResponse.model_validate(item) for item in states],

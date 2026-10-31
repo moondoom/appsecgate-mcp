@@ -21,14 +21,14 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `mcp-server/src/appsecgate_mcp/server/` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
   `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`,
   `query_findings_db`, `export_snapshot`, `get_config`, `update_config`,
-  `submit_feedback`, `get_scan_history`, `suppress_finding`; сессия — `session.py`,
+  `submit_feedback`, `get_scan_history`, `suppress_finding`, `check_gate`; сессия — `session.py`,
   регистрация тулов — `tools/`, точка входа — `cli.py`). Публичный API реэкспортируется
   из `server.py` (модуль-фасад) — импорты вида `from appsecgate_mcp.server import mcp`
   остаются валидными.
 - `mcp-server/src/appsecgate_mcp/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
 - `mcp-server/src/appsecgate_mcp/storage/` — SQLite-схема, views; store-классы в
   подмодулях `storage/stores/` (по классу на модуль)
-- `mcp-server/tests/` — 482 тестов, все должны быть зелёными
+- `mcp-server/tests/` — 496 тестов, все должны быть зелёными
 - `config/default.yaml` — дефолтная конфигурация
 - `docs/` — архитектура, ADR, открытые задачи, отчёты
 
@@ -97,7 +97,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
-482 тестов mcp-server + 140 тестов appsecgate-master должны оставаться зелёными.
+496 тестов mcp-server + 143 теста appsecgate-master должны оставаться зелёными.
 Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
 ## File Size Limits
@@ -152,7 +152,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 
 ## Common tasks
 - **Добавить MCP-тул** → `mcp-server/src/appsecgate_mcp/server/tools/` (`@mcp.tool`),
-  тест, обновление README.md (раздел «MCP tools (14)»).
+  тест, обновление README.md (раздел «MCP tools (15)»).
 - **Добавить сканер** → `mcp-server/src/scanners/`, обёртка, тест с моком.
 - **Пофиксить тест** → сначала понять, ПОЧЕМУ упал. Если код прав —
   тест обновляется. Если тест прав — код фиксится. Не наоборот.

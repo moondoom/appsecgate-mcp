@@ -87,7 +87,11 @@ def decide(
 
     table: list[tuple[bool, str, str]] = [
         # 4. POTENTIALLY_FIXED + block-severity — конфиг (Q2), до severity-гейта.
-        (status == "POTENTIALLY_FIXED" and sev_block, pf_action, GateReason.UNCONFIRMED_FIX_CRITICAL),
+        (
+            status == "POTENTIALLY_FIXED" and sev_block,
+            pf_action,
+            GateReason.UNCONFIRMED_FIX_CRITICAL,
+        ),
         # 5. POTENTIALLY_FIXED + не-block-severity → warn.
         (status == "POTENTIALLY_FIXED", "warn", GateReason.UNCONFIRMED_FIX),
         # 1. severity-гейт независим от статуса (§2.2).
@@ -238,9 +242,7 @@ class GateEngine:
             return None
         return ShownRecord(fingerprint=fingerprint) if shown else None
 
-    async def evaluate_all(
-        self, findings: list[Finding], mode: str = "local"
-    ) -> GateSummary:
+    async def evaluate_all(self, findings: list[Finding], mode: str = "local") -> GateSummary:
         """Оценивает весь набор и агрегирует решения в `GateSummary`."""
 
         summary = GateSummary(mode=mode, total=len(findings))
