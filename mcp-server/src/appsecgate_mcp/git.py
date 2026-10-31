@@ -101,3 +101,19 @@ async def is_git_repo(cwd: str | Path | None = None) -> bool:
     except ScannerExecutionError:
         return False
     return result.returncode == 0
+
+
+async def git_current_branch(cwd: str | Path | None = None) -> str:
+    """Текущая ветка (`git rev-parse --abbrev-ref HEAD`). ADR-0005 §2.4."""
+    result = await run_subprocess(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd)
+    if result.returncode != 0:
+        raise GitError(f"git rev-parse --abbrev-ref HEAD failed: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+async def git_current_commit(cwd: str | Path | None = None) -> str:
+    """Текущий HEAD (`git rev-parse HEAD`). ADR-0005 §2.4."""
+    result = await run_subprocess(["git", "rev-parse", "HEAD"], cwd=cwd)
+    if result.returncode != 0:
+        raise GitError(f"git rev-parse HEAD failed: {result.stderr.strip()}")
+    return result.stdout.strip()

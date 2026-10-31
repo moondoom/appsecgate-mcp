@@ -17,12 +17,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from appsecgate_mcp.config.models import Config
-from appsecgate_mcp.models.finding import Finding, ScanMeta, ScannerError, ScanResult
+from appsecgate_mcp.models.finding import (
+    Finding,
+    ReconcileReport,
+    ScanMeta,
+    ScannerError,
+    ScanResult,
+)
 from appsecgate_mcp.normalization.dedup import Deduplicator
 from appsecgate_mcp.normalization.fingerprint import FingerprintGenerator
 from appsecgate_mcp.normalization.normalizer import Normalizer
 from appsecgate_mcp.normalization.redactor import Redactor
 from appsecgate_mcp.normalization.suppress_filter import ConfigSuppressFilter
+from appsecgate_mcp.orchestration.reconcile import git_context, negative_merge
 from appsecgate_mcp.scanners.base import RawFinding
 from appsecgate_mcp.scanners.registry import ScannerRegistry
 from appsecgate_mcp.storage.logical_id import compute_logical_id
@@ -123,12 +130,75 @@ class ScanCoordinator:
         # с тем же значением или тот же фрагмент кода в том же окне строк
         # показываем разработчику один раз. Схемы БД и тулы не меняются.
         findings = self.dedup.deduplicate_families(findings)
+        # К6: находки, отфильтрованные на этапах suppression в этом скане.
+        suppressed_in_scan = 0
+        _before = len(findings)
         findings = self.suppress_filter.apply(findings)
+        suppressed_in_scan += _before - len(findings)
+        _before = len(findings)
         findings = await self._apply_suppression(findings)
+        suppressed_in_scan += _before - len(findings)
         findings = self.normalizer.process(findings)
 
-        if persist:
-            await self._record_shown(findings, meta)
+        reconcile: ReconcileReport | None = None
+        if persist and self.shown_store is not None:
+            branch, commit, git_ok = await git_context(self.project_root)
+            transitions: dict[str, str] = {}
+            if mode == "project":
+                # Классификация new/reaffirmed/reopened (§2.5 counts, без confirmed_fixed).
+                try:
+                    prev = await self.shown_store.get_statuses(
+                        [f.fingerprint for f in findings]
+                    )
+                except Exception as exc:
+                    meta.warnings.append(f"reconcile status lookup failed: {exc}")
+                    prev = {}
+                for f in findings:
+                    prior = prev.get(f.fingerprint)
+                    if prior is None:
+                        transitions[f.fingerprint] = "new"
+                    elif prior == "FIXED":
+                        transitions[f.fingerprint] = "reopened"
+                    else:
+                        transitions[f.fingerprint] = "reaffirmed"
+            await self._record_shown(findings, meta, branch=branch, commit=commit)
+            await negative_merge(
+                self.shown_store,
+                project_id=self.project_id or "",
+                scope_files=[*scanned, *missing],
+                scanned_set=set(scanned),
+                found_fingerprints={f.fingerprint for f in findings},
+                branch=branch,
+                git_ok=git_ok,
+                meta=meta,
+                global_scope=mode == "project",
+            )
+            if mode == "project":
+                try:
+                    pf_ids, pf_total, pf_truncated = (
+                        await self.shown_store.list_potentially_fixed(branch, limit=25)
+                    )
+                    counts: dict[str, int] = {
+                        "new": 0,
+                        "reaffirmed": 0,
+                        "reopened": 0,
+                        "potentially_fixed": pf_total,
+                        "suppressed": suppressed_in_scan,
+                    }
+                    for kind in transitions.values():
+                        counts[kind] += 1
+                    reconcile = ReconcileReport(
+                        counts=counts,
+                        potentially_fixed_fingerprints=pf_ids,
+                        potentially_fixed_total=pf_total,
+                        requires_confirmation_truncated=pf_truncated,
+                        branch=branch,
+                        commit=commit,
+                    )
+                except Exception as exc:
+                    meta.warnings.append(f"reconcile report failed: {exc}")
+            else:
+                await self._record_shown(findings, meta)
 
         meta.finished_at = datetime.now(UTC).isoformat()
         meta.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -139,7 +209,7 @@ class ScanCoordinator:
             meta.duration_ms,
             [e.model_dump() for e in meta.errors],
         )
-        return ScanResult(findings=findings, meta=meta)
+        return ScanResult(findings=findings, meta=meta, reconcile=reconcile)
 
     async def _select_available(self, meta: ScanMeta) -> list:
         """Оставляет сканеры, чьи бинарники доступны; остальные — в skipped."""
@@ -236,13 +306,20 @@ class ScanCoordinator:
         except Exception:
             return findings
 
-    async def _record_shown(self, findings: list[Finding], meta: ScanMeta) -> None:
+    async def _record_shown(
+        self,
+        findings: list[Finding],
+        meta: ScanMeta,
+        *,
+        branch: str | None = None,
+        commit: str | None = None,
+    ) -> None:
         if not findings:
             return
         if self.shown_store is None and self.context_store is None and self.identity_store is None:
             return
         try:
-            await self._persist_findings(findings)
+            await self._persist_findings(findings, branch=branch, commit=commit)
         except Exception as exc:  # журнал не критичен для выдачи результата
             meta.warnings.append(f"stores write failed: {exc}")
 
@@ -273,19 +350,26 @@ class ScanCoordinator:
         self._source_cache[file_path] = source
         return source
 
-    async def _persist_findings(self, findings: list[Finding]) -> None:
-        """Проставляет ``logical_id`` и пишет в shown/identity/context.
+    async def _persist_findings(
+        self,
+        findings: list[Finding],
+        *,
+        branch: str | None = None,
+        commit: str | None = None,
+    ) -> None:
+        """Проставляет ``logical_id`` и пишет в shown/context.
 
         Redaction выполняется здесь, до любой записи в БД (инвариант №4):
-        в ``shown_findings`` уходит только ``logical_id``, в
-        ``finding_context`` — уже замаскированные snippet/message/metadata.
+        в ``shown_findings`` уходят только обезличенные данные находки (без
+        ``logical_id`` — он живёт в ``finding_identity``, ADR-0005 §2.8, К1),
+        в ``finding_context`` — уже замаскированные snippet/message/metadata.
+        Связку ``logical_id → fingerprint`` и positive-merge (включая
+        branch/commit) выполняет ``record_shown_batch``.
         """
         shown_store = self.shown_store
-        identity_store = self.identity_store
         context_store = self.context_store
 
         logical_ids: dict[str, str] = {}
-        identity_rows: list[tuple[Finding, str]] = []
         context_rows: list[tuple[Finding, str]] = []
 
         for finding in findings:
@@ -295,31 +379,21 @@ class ScanCoordinator:
             )
             logical_ids[finding.fingerprint] = logical_id
 
-            if identity_store is not None:
-                identity_rows.append((finding, logical_id))
-
             if context_store is not None:
                 # Redaction строго до записи в finding_context (инвариант №4).
                 redacted, _ = self.redactor.redact_finding(finding)
                 context_rows.append((redacted, logical_id))
 
         if shown_store is not None:
-            await shown_store.record_shown_batch(findings, logical_ids=logical_ids)
-
-        if identity_store is not None:
-            if self.project_id is None:
-                raise RuntimeError("identity_store set without project_id")
-            for finding, logical_id in identity_rows:
-                await identity_store.upsert(
-                    self.project_id,
-                    logical_id,
-                    finding.rule_id,
-                    finding.file_path,
-                    finding.fingerprint,
-                )
+            # finding_identity пишется внутри record_shown_batch (К1).
+            await shown_store.record_shown_batch(
+                findings, logical_ids=logical_ids, branch=branch, commit=commit
+            )
 
         if context_store is not None:
             if self.project_id is None:
                 raise RuntimeError("context_store set without project_id")
             for finding, logical_id in context_rows:
                 await context_store.upsert(self.project_id, logical_id, finding)
+
+

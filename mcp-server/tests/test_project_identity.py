@@ -275,7 +275,8 @@ async def test_shown_findings_recreates_old_schema(tmp_path):
 
     cols = [r["name"] for r in db._fetchall("PRAGMA table_info(shown_findings)")]
     assert "project_id" in cols
-    assert "logical_id" in cols
+    # logical_id живёт в finding_identity, а не в shown_findings (ADR-0005 §2.8, К1).
+    assert "logical_id" not in cols
     assert "status_updated_at" in cols
 
     db.close()

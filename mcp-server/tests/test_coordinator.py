@@ -212,3 +212,42 @@ async def test_scan_keeps_all_cves_from_single_lockfile(default_config):
     result = await coord.scan(["requirements.txt"], mode="file")
     assert result.total == 19
     assert {f.rule_id for f in result.findings} == {f"CVE-{i}" for i in range(19)}
+
+
+@pytest.mark.asyncio
+async def test_scan_negative_merge_marks_potentially_fixed(default_config, tmp_path):
+    """Находка, не найденная в следующем скане → POTENTIALLY_FIXED (ADR-0005 §2.2).
+
+    Scoped negative-merge по охвату файла; вне git-репозитория — по project_id
+    с предупреждением в meta.warnings (К10).
+    """
+    from appsecgate_mcp.storage.db import Database
+    from appsecgate_mcp.storage.stores import ShownFindingsStore
+
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    db = Database(tmp_path / "shown.db")
+    db.connect()
+    shown = ShownFindingsStore(db, "pid-1")
+    shown.init_schema()
+
+    registry = ScannerRegistry()
+    registry.register(FakeScanner([rf(file_path="a.py", snippet="x = 1")], scanner_name="fake"))
+    coord = ScanCoordinator(
+        default_config, registry, shown_store=shown, project_id="pid-1", project_root=str(tmp_path)
+    )
+    first = await coord.scan(["a.py"], mode="file")
+    assert first.total == 1
+
+    registry2 = ScannerRegistry()
+    registry2.register(FakeScanner([], scanner_name="fake"))
+    coord2 = ScanCoordinator(
+        default_config, registry2, shown_store=shown, project_id="pid-1", project_root=str(tmp_path)
+    )
+    second = await coord2.scan(["a.py"], mode="file")
+    assert second.total == 0
+
+    rows = await shown.get_all(limit=10)
+    assert rows and rows[0]["status"] == "POTENTIALLY_FIXED"
+    assert rows[0]["missed_scan_count"] == 1
+    assert any("negative-merge" in w for w in second.meta.warnings)
+    db.close()

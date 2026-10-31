@@ -6,14 +6,14 @@ from typing import Any
 
 from appsecgate_mcp.models.finding import Finding
 from appsecgate_mcp.storage.db import Database
+from appsecgate_mcp.storage.stores import shown_report
 from appsecgate_mcp.storage.stores._time import _now
 
 
 class ShownFindingsStore:
     """Журнал находок, показанных разработчику (arch §3.5).
 
-    Привязан к одному ``project_id``: каждая запись несёт проектную ось.
-    Схема «воссоздаётся с нуля», если существующая таблица не содержит
+    Привязан к одному ``project_id``; схема пересоздаётся при отсутствии
     ``project_id`` (No-migration, см. AGENTS.md).
     """
 
@@ -33,23 +33,39 @@ class ShownFindingsStore:
         self.db._execute_ddl(
             """
             CREATE TABLE IF NOT EXISTS shown_findings (
-                fingerprint TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                rule_id TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                severity TEXT NOT NULL,
-                scanner TEXT NOT NULL,
-                logical_id TEXT,
-                first_shown_at TIMESTAMP NOT NULL,
-                last_shown_at TIMESTAMP NOT NULL,
-                status_updated_at TIMESTAMP,
-                show_count INTEGER DEFAULT 1,
-                status TEXT NOT NULL,
-                fixed_at TIMESTAMP,
-                suppressed_at TIMESTAMP,
-                suppress_reason TEXT,
-                wont_fix_at TIMESTAMP,
-                wont_fix_reason TEXT
+                fingerprint          TEXT PRIMARY KEY,
+                project_id           TEXT NOT NULL,       -- T7, T9
+                rule_id              TEXT NOT NULL,
+                file_path            TEXT NOT NULL,
+                severity             TEXT NOT NULL,
+                scanner              TEXT NOT NULL,
+                category             TEXT NOT NULL,
+
+                status               TEXT NOT NULL,        -- SHOWN | POTENTIALLY_FIXED | FIXED | REOPENED | SUPPRESSED | WONT_FIX
+                status_updated_at    TIMESTAMP NOT NULL,   -- аудит переходов (ADR-0005 §2.2)
+                missed_scan_count    INTEGER NOT NULL DEFAULT 0,
+
+                first_seen_branch    TEXT,                 -- ADR-0005 §2.4
+                first_seen_commit    TEXT,
+                last_seen_branch     TEXT,
+                last_seen_commit     TEXT,
+
+                first_shown_at       TIMESTAMP,            -- nullable: заполняется mark_shown() (К3)
+                last_shown_at        TIMESTAMP,
+                show_count           INTEGER NOT NULL DEFAULT 0,
+
+                first_seen_at        TIMESTAMP NOT NULL,   -- факт обнаружения (positive-merge)
+                last_seen_at         TIMESTAMP NOT NULL,
+                scan_count           INTEGER NOT NULL DEFAULT 1,
+
+                fixed_at             TIMESTAMP,
+                fixed_confirmed_by   TEXT,                 -- 'verify_fix' | NULL (ADR-0005 §2.9)
+
+                suppressed_at        TIMESTAMP,
+                suppress_reason      TEXT,
+
+                wont_fix_at          TIMESTAMP,
+                wont_fix_reason      TEXT
             );
             """
         )
@@ -63,25 +79,71 @@ class ShownFindingsStore:
             "CREATE INDEX IF NOT EXISTS idx_shown_project ON shown_findings(project_id)"
         )
         self.db._execute_ddl(
-            "CREATE INDEX IF NOT EXISTS idx_shown_logical ON shown_findings(logical_id)"
-        )
-        self.db._execute_ddl(
             "CREATE INDEX IF NOT EXISTS idx_shown_rule_file ON shown_findings(project_id, rule_id, file_path)"
         )
 
-    async def record_shown(self, finding: Finding, logical_id: str | None = None) -> None:
+    async def _upsert_identity(self, finding: Finding, logical_id: str) -> None:
+        """Связка ``logical_id → fingerprint`` в ``finding_identity`` (ADR-0005 §2.8, К1).
+
+        ``first_seen_at`` фиксируется один раз, ``last_fingerprint``/``last_seen_at`` обновляются.
+        """
         now = _now()
         await self.db.execute(
             """
-            INSERT INTO shown_findings (fingerprint, project_id, rule_id, file_path, severity, scanner,
-                                        logical_id,
-                                        first_shown_at, last_shown_at, status_updated_at, show_count, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SHOWN')
+            INSERT INTO finding_identity
+                (logical_id, project_id, rule_id, file_path, first_seen_at, last_fingerprint, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id, logical_id) DO UPDATE SET
+                last_fingerprint = excluded.last_fingerprint,
+                last_seen_at     = excluded.last_seen_at
+            """,
+            (
+                logical_id,
+                self.project_id,
+                finding.rule_id,
+                finding.file_path,
+                now,
+                finding.fingerprint,
+                now,
+            ),
+        )
+
+    async def record_shown(
+        self,
+        finding: Finding,
+        logical_id: str | None = None,
+        *,
+        branch: str | None = None,
+        commit: str | None = None,
+    ) -> None:
+        """Positive-merge (ADR-0005 §2.1–2.2): фиксирует факт обнаружения.
+
+        Пишет ``first/last_seen_*``, ``scan_count++``; ``POTENTIALLY_FIXED → SHOWN``,
+        ``FIXED → REOPENED`` (К4). ``*_shown_*`` — ``mark_shown()`` (К3, PR-C).
+        """
+        now = _now()
+        await self.db.execute(
+            """
+            INSERT INTO shown_findings (fingerprint, project_id, rule_id, file_path, severity, scanner, category,
+                                        status, status_updated_at, missed_scan_count,
+                                        first_seen_branch, first_seen_commit, last_seen_branch, last_seen_commit,
+                                        first_seen_at, last_seen_at, scan_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'SHOWN', ?, 0, ?, ?, ?, ?, ?, ?, 1)
             ON CONFLICT(fingerprint) DO UPDATE SET
-                logical_id = COALESCE(excluded.logical_id, shown_findings.logical_id),
-                last_shown_at = excluded.last_shown_at,
-                status_updated_at = excluded.status_updated_at,
-                show_count = show_count + 1
+                last_seen_at = excluded.last_seen_at,
+                last_seen_branch = excluded.last_seen_branch,
+                last_seen_commit = excluded.last_seen_commit,
+                scan_count = shown_findings.scan_count + 1,
+                status = CASE shown_findings.status
+                    WHEN 'POTENTIALLY_FIXED' THEN 'SHOWN'
+                    WHEN 'FIXED' THEN 'REOPENED'
+                    ELSE shown_findings.status
+                END,
+                missed_scan_count = CASE
+                    WHEN shown_findings.status IN ('SHOWN', 'POTENTIALLY_FIXED', 'REOPENED') THEN 0
+                    ELSE shown_findings.missed_scan_count
+                END,
+                status_updated_at = excluded.status_updated_at
             """,
             (
                 finding.fingerprint,
@@ -90,18 +152,28 @@ class ShownFindingsStore:
                 finding.file_path,
                 finding.severity.value,
                 finding.scanner,
-                logical_id,
+                finding.category.value,
                 now,
+                branch,
+                commit,
+                branch,
+                commit,
                 now,
                 now,
             ),
         )
+        if logical_id:
+            await self._upsert_identity(finding, logical_id)
 
     async def record_shown_batch(
         self,
         findings: list[Finding],
         logical_ids: dict[str, str] | None = None,
+        *,
+        branch: str | None = None,
+        commit: str | None = None,
     ) -> None:
+        """Пакетный positive-merge (см. ``record_shown``) + связки logical_id → fingerprint."""
         now = _now()
         logical_ids = logical_ids or {}
         rows = [
@@ -112,8 +184,12 @@ class ShownFindingsStore:
                 f.file_path,
                 f.severity.value,
                 f.scanner,
-                logical_ids.get(f.fingerprint),
+                f.category.value,
                 now,
+                branch,
+                commit,
+                branch,
+                commit,
                 now,
                 now,
             )
@@ -123,18 +199,33 @@ class ShownFindingsStore:
             return
         await self.db.execute_many(
             """
-            INSERT INTO shown_findings (fingerprint, project_id, rule_id, file_path, severity, scanner,
-                                        logical_id,
-                                        first_shown_at, last_shown_at, status_updated_at, show_count, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SHOWN')
+            INSERT INTO shown_findings (fingerprint, project_id, rule_id, file_path, severity, scanner, category,
+                                        status, status_updated_at, missed_scan_count,
+                                        first_seen_branch, first_seen_commit, last_seen_branch, last_seen_commit,
+                                        first_seen_at, last_seen_at, scan_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'SHOWN', ?, 0, ?, ?, ?, ?, ?, ?, 1)
             ON CONFLICT(fingerprint) DO UPDATE SET
-                logical_id = COALESCE(excluded.logical_id, shown_findings.logical_id),
-                last_shown_at = excluded.last_shown_at,
-                status_updated_at = excluded.status_updated_at,
-                show_count = show_count + 1
+                last_seen_at = excluded.last_seen_at,
+                last_seen_branch = excluded.last_seen_branch,
+                last_seen_commit = excluded.last_seen_commit,
+                scan_count = shown_findings.scan_count + 1,
+                status = CASE shown_findings.status
+                    WHEN 'POTENTIALLY_FIXED' THEN 'SHOWN'
+                    WHEN 'FIXED' THEN 'REOPENED'
+                    ELSE shown_findings.status
+                END,
+                missed_scan_count = CASE
+                    WHEN shown_findings.status IN ('SHOWN', 'POTENTIALLY_FIXED', 'REOPENED') THEN 0
+                    ELSE shown_findings.missed_scan_count
+                END,
+                status_updated_at = excluded.status_updated_at
             """,
             rows,
         )
+        for f in findings:
+            lid = logical_ids.get(f.fingerprint)
+            if lid:
+                await self._upsert_identity(f, lid)
 
     async def mark_fixed(self, fingerprint: str) -> None:
         now = _now()
@@ -173,13 +264,7 @@ class ShownFindingsStore:
         *,
         cutoff: str,
     ) -> int:
-        """Удаляет показанные находки, неактивные дольше ``cutoff`` (ISO).
-
-        Удаляются только строки со статусом ``SHOWN``, у которых ``last_shown_at``
-        старше ``cutoff``. ``finding_identity`` и ``finding_context`` сохраняются
-        для детекта рецидивов (arch §4.7 Retention policy). Возвращает число
-        удалённых строк.
-        """
+        """Удаляет SHOWN-строки старше ``cutoff``; identity/context сохраняются (arch §4.7)."""
         cursor_count = await self.db.execute_rowcount(
             "DELETE FROM shown_findings WHERE status = 'SHOWN' AND last_shown_at < ?",
             (cutoff,),
@@ -200,10 +285,30 @@ class ShownFindingsStore:
         return [dict(row) for row in rows]
 
     async def find(self, finding_id: str) -> dict[str, Any] | None:
-        """Ищет показанную находку по fingerprint (в первую очередь) или по logical_id."""
+        """Находит показанную находку по fingerprint или logical_id (через finding_identity)."""
         row = await self.db.fetchone(
-            "SELECT * FROM shown_findings WHERE fingerprint = ? OR logical_id = ? LIMIT 1",
-            (finding_id, finding_id),
+            """
+            SELECT s.*, i.logical_id
+            FROM shown_findings s
+            LEFT JOIN finding_identity i
+                ON i.project_id = s.project_id AND i.last_fingerprint = s.fingerprint
+            WHERE s.fingerprint = ?
+            LIMIT 1
+            """,
+            (finding_id,),
+        )
+        if row is not None:
+            return dict(row)
+        row = await self.db.fetchone(
+            """
+            SELECT s.*, i.logical_id
+            FROM shown_findings s
+            JOIN finding_identity i
+                ON i.project_id = s.project_id AND i.last_fingerprint = s.fingerprint
+            WHERE i.project_id = ? AND i.logical_id = ?
+            LIMIT 1
+            """,
+            (self.project_id, finding_id),
         )
         return dict(row) if row else None
 
@@ -213,18 +318,21 @@ class ShownFindingsStore:
         status: str,
         *,
         reason: str | None = None,
+        confirmed_by: str | None = None,
     ) -> None:
-        """Переводит находку в статус верификации с заполнением временной метки.
-
-        ``status`` ∈ ``FIXED`` | ``WONT_FIX``. Метка пишется в ``fixed_at``
-        либо ``wont_fix_at`` соответственно, ``status_updated_at`` — всегда.
-        """
+        """Переводит находку в статус верификации (ADR-0005 §2.9): FIXED | REOPENED | WONT_FIX."""
         now = _now()
         if status == "FIXED":
             await self.db.execute(
-                "UPDATE shown_findings SET status='FIXED', fixed_at=?, status_updated_at=? "
+                "UPDATE shown_findings SET status='FIXED', fixed_at=?, "
+                "fixed_confirmed_by=?, status_updated_at=? WHERE fingerprint=?",
+                (now, confirmed_by, now, fingerprint),
+            )
+        elif status == "REOPENED":
+            await self.db.execute(
+                "UPDATE shown_findings SET status='REOPENED', status_updated_at=? "
                 "WHERE fingerprint=?",
-                (now, now, fingerprint),
+                (now, fingerprint),
             )
         elif status == "WONT_FIX":
             await self.db.execute(
@@ -234,3 +342,58 @@ class ShownFindingsStore:
             )
         else:
             raise ValueError(f"unsupported verification status: {status}")
+
+    async def get_negative_candidates(
+        self,
+        project_id: str,
+        file_paths: list[str] | None = None,
+        branch: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Кандидаты на negative-merge в охвате тула (branch-фильтр §2.4, К10).
+
+        ``file_paths=None`` — глобальный охват (scan_project, §2.1): все находки
+        проекта/ветки, файловый фильтр не применяется.
+        """
+        sql = (
+            "SELECT fingerprint, status, missed_scan_count, file_path "
+            "FROM shown_findings WHERE project_id = ?"
+        )
+        params: list[Any] = [project_id]
+        if file_paths:
+            placeholders = ",".join("?" * len(file_paths))
+            sql += f" AND file_path IN ({placeholders})"
+            params.extend(file_paths)
+        if branch and branch != "<unknown>":
+            sql += " AND last_seen_branch = ?"
+            params.append(branch)
+        sql += " ORDER BY fingerprint"
+        rows = await self.db.fetchall(sql, params)
+        return [dict(r) for r in rows]
+
+    async def mark_missing(self, updates: list[tuple[str, str, int]]) -> None:
+        """Применяет negative-merge переходы; не трогает терминальные статусы (К7)."""
+        now = _now()
+        await self.db.execute_many(
+            "UPDATE shown_findings SET status = ?, missed_scan_count = ?, status_updated_at = ? "
+            "WHERE fingerprint = ? AND status IN ('SHOWN', 'POTENTIALLY_FIXED', 'REOPENED')",
+            [(status, missed, now, fp) for fp, status, missed in updates],
+        )
+
+    async def get_statuses(self, fingerprints: list[str]) -> dict[str, str]:
+        """Пред-скан статусы находок (классификация new/reaffirmed/reopened, PR-C)."""
+        return await shown_report.get_statuses(self.db, fingerprints)
+
+    async def mark_shown(self, fingerprints: list[str]) -> None:
+        """K3: находка реально попала в ответ агенту (ADR-0005 §2.3)."""
+        await shown_report.mark_shown(self.db, fingerprints)
+
+    async def list_potentially_fixed(
+        self,
+        branch: str | None,
+        *,
+        limit: int = 25,
+    ) -> tuple[list[str], int, bool]:
+        """Актуальные POTENTIALLY_FIXED проекта/ветки (§2.5, К18)."""
+        return await shown_report.list_potentially_fixed(
+            self.db, self.project_id, branch, limit=limit
+        )

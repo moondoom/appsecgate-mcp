@@ -229,7 +229,7 @@ async def test_scan_persist_false_does_not_mark_shown(tmp_path, default_config):
     db.close()
 
 
-async def test_build_announce_output():
+async def test_build_diff_output():
     findings = [
         Finding(
             fingerprint=f"fp-{i}",
@@ -246,7 +246,7 @@ async def test_build_announce_output():
     state = server.SessionState()
     state.project_id = "pid-1"
     state.project_alias = "app"
-    out = await server._build_announce_output(state, result)
+    out = await server._build_diff_output(state, result)
 
     assert out["project"] == {"project_id": "pid-1", "project_alias": "app"}
     assert out["summary"]["total"] == 25

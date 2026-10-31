@@ -137,10 +137,19 @@ class Database:
 
 
 async def init_databases(paths: dict[str, Path]) -> dict[str, Database]:
-    """Создаёт и инициализирует все базы (schema — в setters каждого store)."""
+    """Создаёт и инициализирует все базы (schema — в setters каждого store).
+
+    Для каждой БД дополнительно проверяется ``schema_version`` (ADR-0005 §2.7):
+    при несовпадении/отсутствии — drop всех views и таблиц + warning в лог,
+    схему пересоздадут store-классы после возврата (см. session._init_storage).
+    Свежая (пустая) БД получает версию без дропа.
+    """
+    from appsecgate_mcp.storage.migrations import ensure_schema_version
+
     databases: dict[str, Database] = {}
     for name, path in paths.items():
         db = Database(path)
         db.connect()
+        ensure_schema_version(db)
         databases[name] = db
     return databases

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -95,7 +96,8 @@ def _write_snapshot(tmp_path, fp: str, **extra) -> str:
         "file": "b.py",
         "line": 1,
         "severity": "low",
-        "shown_at": "2026-10-01T00:00:00Z",
+        # Свежая дата: статичная дата против RETENTION_DAYS=30 — «бомба времени».
+        "shown_at": (datetime.now(UTC) - timedelta(days=1)).isoformat(),
         "verified_status": None,
         "suppression_scope": None,
         **extra,

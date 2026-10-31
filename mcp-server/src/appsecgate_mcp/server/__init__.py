@@ -35,7 +35,8 @@ from appsecgate_mcp.server.app import mcp
 from appsecgate_mcp.server.cli import _build_parser, _configure_http, main  # noqa: F401
 from appsecgate_mcp.server.logging_utils import _log_tool, _response_size  # noqa: F401
 from appsecgate_mcp.server.output import (  # noqa: F401
-    _build_announce_output,
+    _build_diff_output,
+    _build_project_report,
     _build_scan_output,
     _by_file_top10,
 )

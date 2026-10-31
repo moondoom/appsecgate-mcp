@@ -319,30 +319,38 @@ async def test_retention_purges_stale_shown_only(tmp_path):
     # Прямая вставка строк с заданными last_shown_at/status (record_shown ставит now).
     await db.execute(
         "INSERT INTO shown_findings"
-        " (fingerprint, project_id, rule_id, file_path, severity, scanner, logical_id,"
-        "  first_shown_at, last_shown_at, status_updated_at, show_count, status)"
-        " VALUES (?, 'pid-1', 'test.rule', 'a.py', 'high', 'semgrep', ?, ?, ?, ?, 1, ?)",
+        " (fingerprint, project_id, rule_id, file_path, severity, scanner, category,"
+        "  status, status_updated_at, missed_scan_count,"
+        "  first_seen_at, last_seen_at, scan_count,"
+        "  first_shown_at, last_shown_at, show_count)"
+        " VALUES (?, 'pid-1', 'test.rule', 'a.py', 'high', 'semgrep', 'sast',"
+        "  ?, ?, 0, ?, ?, 1, ?, ?, 1)",
         (
             "fp-old",
-            "lid-old",
-            "2024-01-01T00:00:00+00:00",
-            "2024-01-01T00:00:00+00:00",
-            "2024-01-01T00:00:00+00:00",
             "SHOWN",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
         ),
     )
     await db.execute(
         "INSERT INTO shown_findings"
-        " (fingerprint, project_id, rule_id, file_path, severity, scanner, logical_id,"
-        "  first_shown_at, last_shown_at, status_updated_at, show_count, status)"
-        " VALUES (?, 'pid-1', 'test.rule', 'a.py', 'high', 'semgrep', ?, ?, ?, ?, 1, ?)",
+        " (fingerprint, project_id, rule_id, file_path, severity, scanner, category,"
+        "  status, status_updated_at, missed_scan_count,"
+        "  first_seen_at, last_seen_at, scan_count,"
+        "  first_shown_at, last_shown_at, show_count)"
+        " VALUES (?, 'pid-1', 'test.rule', 'a.py', 'high', 'semgrep', 'sast',"
+        "  ?, ?, 0, ?, ?, 1, ?, ?, 1)",
         (
             "fp-fixed",
-            "lid-fixed",
-            "2024-01-01T00:00:00+00:00",
-            "2024-01-01T00:00:00+00:00",
-            "2024-01-01T00:00:00+00:00",
             "FIXED",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
         ),
     )
     removed = await shown.purge_stale_shown(cutoff="2024-06-01T00:00:00+00:00")
@@ -375,3 +383,4 @@ async def test_verify_fix_wont_fix_requires_note(tmp_path, monkeypatch):
     assert out["status"] == "error"
     assert "requires a note" in out["reason"]
     db.close()
+

@@ -1,4 +1,4 @@
-"""Формирование ответов сканов: полный (scan_file/scan_diff) и announce (scan_project)."""
+"""Формирование ответов сканов: полный (scan_file), announce (scan_diff), отчёт (scan_project)."""
 
 from __future__ import annotations
 
@@ -18,8 +18,23 @@ def _by_file_top10(findings: list[Finding]) -> list[dict[str, Any]]:
     return [{"file_path": fp, "count": n} for fp, n in ranked[:10]]
 
 
-async def _build_announce_output(state: SessionState, result: ScanResult) -> dict[str, Any]:
-    """Собирает announce-формат scan_project (arch §4.3)."""
+def _top_finding_item(f: Finding) -> dict[str, Any]:
+    """Компактный элемент сводки (T15): короткое имя правила + полный rule_id."""
+    return {
+        "finding_id": f.fingerprint,
+        "logical_id": None,
+        "rule_id": f.rule_id,
+        # Короткое имя правила для читаемости сводок (T15).
+        "rule": f.short_rule_id(),
+        "file_path": f.file_path,
+        "severity": f.severity.value,
+        "scanner": f.scanner,
+        "line_start": f.line_start,
+    }
+
+
+async def _build_diff_output(state: SessionState, result: ScanResult) -> dict[str, Any]:
+    """Собирает announce-формат scan_diff (top-20 + summary)."""
     by_severity: dict[str, int] = {}
     by_category: dict[str, int] = {}
     for f in result.findings:
@@ -29,21 +44,7 @@ async def _build_announce_output(state: SessionState, result: ScanResult) -> dic
         by_category[cat] = by_category.get(cat, 0) + 1
 
     ranked = sorted(result.findings, key=lambda f: f.sort_key(), reverse=True)
-    top = ranked[:20]
-    top_findings = [
-        {
-            "finding_id": f.fingerprint,
-            "logical_id": None,
-            "rule_id": f.rule_id,
-            # Короткое имя правила для читаемости сводок (T15).
-            "rule": f.short_rule_id(),
-            "file_path": f.file_path,
-            "severity": f.severity.value,
-            "scanner": f.scanner,
-            "line_start": f.line_start,
-        }
-        for f in top
-    ]
+    top_findings = [_top_finding_item(f) for f in ranked[:20]]
 
     return {
         "project": {
@@ -64,6 +65,58 @@ async def _build_announce_output(state: SessionState, result: ScanResult) -> dic
         ],
         "truncated": result.total > len(top_findings),
         "total_available": result.total,
+    }
+
+
+async def _build_project_report(state: SessionState, result: ScanResult) -> dict[str, Any]:
+    """Отчёт scan_project (ADR-0005 §2.5): counts + TOP-10 + requires_confirmation.
+
+    Без ``confirmed_fixed`` (К17), ``suggested_action`` вместо ``next_actions``
+    (К19). TOP-10 — UX-срез по severity (T15), не граница семантики.
+    """
+    ranked = sorted(result.findings, key=lambda f: f.sort_key(), reverse=True)
+    top_findings = [_top_finding_item(f) for f in ranked[:10]]
+
+    counts: dict[str, int] = {
+        "new": 0,
+        "reaffirmed": 0,
+        "reopened": 0,
+        "potentially_fixed": 0,
+        "suppressed": 0,
+    }
+    pf_ids: list[str] = []
+    pf_total = 0
+    pf_truncated = False
+    branch: str | None = None
+    commit: str | None = None
+    if result.reconcile is not None:
+        counts.update(result.reconcile.counts)
+        pf_ids = result.reconcile.potentially_fixed_fingerprints
+        pf_total = result.reconcile.potentially_fixed_total
+        pf_truncated = result.reconcile.requires_confirmation_truncated
+        branch = result.reconcile.branch
+        commit = result.reconcile.commit
+
+    if pf_total:
+        suggested_action = "run verify_fix_batch on requires_confirmation.finding_ids"
+    else:
+        suggested_action = "no findings require confirmation"
+
+    meta = result.meta.model_dump(mode="json")
+    meta["branch"] = branch
+    meta["commit"] = commit
+
+    return {
+        "status": "ok",
+        "counts": counts,
+        "top_findings": top_findings,
+        "requires_confirmation": {
+            "finding_ids": pf_ids,
+            "total_potentially_fixed": pf_total,
+            "truncated": pf_truncated,
+        },
+        "suggested_action": suggested_action,
+        "meta": meta,
     }
 
 

@@ -330,3 +330,38 @@ def test_finalize_appends_where_before_limit():
     out = _finalize("SELECT * FROM v_findings ORDER BY severity", "abc")
     assert "WHERE project_id = 'abc'" in out
     assert out.endswith("ORDER BY severity LIMIT 1000")
+
+
+# ---------------------------------------------------------------------------
+# finding_identity join (ADR-0005 §2.8, К1)
+# ---------------------------------------------------------------------------
+async def test_finding_identity_join_in_views(tmp_path):
+    """v_findings/find() берут logical_id джойном через finding_identity по fingerprint."""
+    db, path = _setup_db(tmp_path)
+    shown = ShownFindingsStore(db, "pid-1")
+    await shown.record_shown(_make_finding("fp-1"), logical_id="lid-1")
+    await shown.record_shown(_make_finding("fp-2"), logical_id="lid-2")
+
+    # v_findings: first_seen_at приходит из finding_identity (джойн по fingerprint).
+    rows = run_query(
+        path,
+        "SELECT fingerprint, first_seen_at FROM v_findings ORDER BY fingerprint",
+        None,
+        "pid-1",
+    )
+    assert rows["row_count"] == 2
+    assert all(r["first_seen_at"] for r in rows["rows"])
+
+    # find(): и по fingerprint, и по logical_id через finding_identity.
+    by_fp = await shown.find("fp-1")
+    assert by_fp is not None and by_fp["logical_id"] == "lid-1"
+    by_lid = await shown.find("lid-2")
+    assert by_lid is not None and by_lid["fingerprint"] == "fp-2"
+
+    # «Прыжок» fingerprint: тот же logical_id на новом fingerprint (К1).
+    await shown.record_shown(_make_finding("fp-1b"), logical_id="lid-1")
+    jumped = await shown.find("lid-1")
+    assert jumped is not None and jumped["fingerprint"] == "fp-1b"
+    assert jumped["logical_id"] == "lid-1"
+    db.close()
+

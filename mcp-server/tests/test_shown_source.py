@@ -25,10 +25,12 @@ def _line(fp: str, **extra) -> str:
 
 async def test_parse_snapshot_basic(tmp_path):
     path = tmp_path / "shown.ndjson"
+    # Свежая дата: статичная дата против RETENTION_DAYS=30 — «бомба времени».
+    fresh = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     path.write_text(
         _line("fp-1", verified_status="fixed")
         + "\n"
-        + _line("fp-2", suppression_scope="ci", shown_at="2026-10-01T00:00:00Z")
+        + _line("fp-2", suppression_scope="ci", shown_at=fresh)
         + "\n\n",
         encoding="utf-8",
     )
@@ -36,7 +38,7 @@ async def test_parse_snapshot_basic(tmp_path):
     assert len(snapshot.records) == 2
     assert snapshot.records[0].verified_status == "fixed"
     assert snapshot.records[1].suppression_scope == "ci"
-    assert snapshot.records[1].shown_at == "2026-10-01T00:00:00Z"
+    assert snapshot.records[1].shown_at == fresh
     assert snapshot.expired_count == 0
 
 

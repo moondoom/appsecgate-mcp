@@ -111,12 +111,23 @@ async def _verify_attempts(
             note=note,
             session_id=state.session_id,
         )
-        if verified_status in ("fixed", "wont_fix"):
+        if verified_status == "wont_fix":
             await state.shown_store.set_status(
                 target["fingerprint"],
-                verified_status.upper(),
-                reason=note if verified_status == "wont_fix" else None,
+                "WONT_FIX",
+                reason=note,
             )
+        elif reported == "fixed" and verified_status == "fixed":
+            # §2.9: явное подтверждение фикса — единственный путь в FIXED (§2.3).
+            await state.shown_store.set_status(
+                target["fingerprint"],
+                "FIXED",
+                confirmed_by="verify_fix",
+            )
+        elif reported == "fixed" and verified_status == "not_fixed":
+            # §2.9: заявили fixed, перескан нашёл — регрессия/ложное подтверждение.
+            await state.shown_store.set_status(target["fingerprint"], "REOPENED")
+        # reported == "not_fixed" → статус не меняется (§2.9).
 
         results.append(
             {

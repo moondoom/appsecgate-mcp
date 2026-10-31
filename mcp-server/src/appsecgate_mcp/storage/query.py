@@ -177,7 +177,7 @@ def init_views(db: Database) -> None:
         SELECT
             s.project_id,
             s.fingerprint,
-            s.logical_id,
+            i.logical_id,
             s.rule_id,
             s.file_path,
             s.severity,
@@ -192,7 +192,7 @@ def init_views(db: Database) -> None:
             c.remediation
         FROM shown_findings s
         LEFT JOIN finding_identity i
-            ON i.project_id = s.project_id AND i.logical_id = s.logical_id
+            ON i.project_id = s.project_id AND i.last_fingerprint = s.fingerprint
         LEFT JOIN finding_context c
             ON c.project_id = s.project_id AND c.fingerprint = s.fingerprint
         """
@@ -206,7 +206,9 @@ def init_views(db: Database) -> None:
             COUNT(*) AS total,
             SUM(CASE WHEN status = 'SHOWN' THEN 1 ELSE 0 END) AS shown,
             SUM(CASE WHEN status = 'FIXED' THEN 1 ELSE 0 END) AS fixed,
-            SUM(CASE WHEN status = 'SUPPRESSED' THEN 1 ELSE 0 END) AS suppressed
+            SUM(CASE WHEN status = 'SUPPRESSED' THEN 1 ELSE 0 END) AS suppressed,
+            SUM(CASE WHEN status = 'POTENTIALLY_FIXED' THEN 1 ELSE 0 END) AS potentially_fixed,
+            SUM(CASE WHEN status = 'REOPENED' THEN 1 ELSE 0 END) AS reopened
         FROM shown_findings
         GROUP BY project_id, severity
         """
@@ -235,15 +237,17 @@ def init_views(db: Database) -> None:
         CREATE VIEW IF NOT EXISTS v_verification_coverage AS
         SELECT
             s.project_id,
-            COUNT(DISTINCT s.logical_id) AS total_findings,
+            COUNT(DISTINCT i.logical_id) AS total_findings,
             COUNT(DISTINCT a.logical_id) AS attempted_findings,
-            CASE WHEN COUNT(DISTINCT s.logical_id) = 0 THEN 0
-                 ELSE ROUND(100.0 * COUNT(DISTINCT a.logical_id) / COUNT(DISTINCT s.logical_id), 2)
+            CASE WHEN COUNT(DISTINCT i.logical_id) = 0 THEN 0
+                 ELSE ROUND(100.0 * COUNT(DISTINCT a.logical_id) / COUNT(DISTINCT i.logical_id), 2)
             END AS coverage_pct
         FROM shown_findings s
+        LEFT JOIN finding_identity i
+            ON i.project_id = s.project_id AND i.last_fingerprint = s.fingerprint
         LEFT JOIN (
             SELECT DISTINCT project_id, logical_id FROM fix_attempts
-        ) a ON a.project_id = s.project_id AND a.logical_id = s.logical_id
+        ) a ON a.project_id = i.project_id AND a.logical_id = i.logical_id
         GROUP BY s.project_id
         """
     )

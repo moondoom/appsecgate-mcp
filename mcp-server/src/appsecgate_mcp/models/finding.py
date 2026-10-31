@@ -112,11 +112,30 @@ class ScanMeta(BaseModel):
     finished_at: str | None = None
 
 
+class ReconcileReport(BaseModel):
+    """Данные reconciliation-сверки для отчёта scan_project (ADR-0005 §2.5).
+
+    ``counts`` — new / reaffirmed / reopened / potentially_fixed / suppressed.
+    ``potentially_fixed_fingerprints`` — актуальные POTENTIALLY_FIXED
+    проекта/ветки после merge (лимит 25, К18); ``requires_confirmation_truncated``
+    — True при превышении лимита.
+    """
+
+    counts: dict[str, int] = Field(default_factory=dict)
+    potentially_fixed_fingerprints: list[str] = Field(default_factory=list)
+    potentially_fixed_total: int = 0
+    requires_confirmation_truncated: bool = False
+    branch: str | None = None
+    commit: str | None = None
+
+
 class ScanResult(BaseModel):
     """Результат сканирования, возвращаемый MCP-инструментам."""
 
     findings: list[Finding] = Field(default_factory=list)
     meta: ScanMeta = Field(default_factory=ScanMeta)
+    # Данные сверки scan_project (§2.5); None для scan_file/scan_diff.
+    reconcile: ReconcileReport | None = None
 
     @property
     def total(self) -> int:
