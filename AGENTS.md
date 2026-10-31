@@ -12,8 +12,8 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 ## Project Map
 - `mcp-server/src/` — код MCP-сервера (тулы, хуки, сканеры)
 - `appsecgate-master/src/` — центральный (master) сервер, Фаза 2 этап 2
-  (ADR-0004/ADR-0006): события/агрегат/аудит; пакет `appsecgate-master/`,
-  зависимость — только pydantic (FastAPI — MS-4). MS-2 выполнен.
+  (ADR-0004/ADR-0006): события/агрегат/аудит и REST API (`api/`); пакет
+  `appsecgate-master/`, зависимости — pydantic, FastAPI, uvicorn. MS-4 выполнен.
 - `mcp-server/src/appsecgate_mcp/sync/` — edge-синхронизация (MS-3, ADR-0004
   §4.2): подкоманда `appsecgate-mcp sync` на хосте — экспорт shown_findings.db
   в события, outbox `~/.appsecgate/sync/outbox.ndjson`, idempotent push
@@ -97,7 +97,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
-450 тестов mcp-server + 114 тестов appsecgate-master должны оставаться зелёными.
+450 тестов mcp-server + 140 тестов appsecgate-master должны оставаться зелёными.
 Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
 ## File Size Limits

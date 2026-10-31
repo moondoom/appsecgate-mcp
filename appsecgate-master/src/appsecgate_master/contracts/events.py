@@ -20,7 +20,14 @@ import uuid as _uuid
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 SCHEMA_VERSION = 1
 
@@ -51,6 +58,8 @@ class EventType(enum.StrEnum):
 
 class MasterEvent(BaseModel):
     """Одно push-событие. Валидируется при парсинге и перед записью в events."""
+
+    model_config = ConfigDict(extra="forbid")
 
     schema_version: int = SCHEMA_VERSION
     # ID в event-log (§3.3). Присутствует в snapshot-событиях; на master

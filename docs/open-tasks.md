@@ -340,7 +340,7 @@ edge-процесса на хосте, MCP-сервер остаётся `networ
 | MS-1 | Принятие ADR-0004 + обновление `docs/adr/README.md`, `docs/architecture.md` §8/§9.5 | ✅ решено |
 | MS-2 | Схема master-БД + события/агрегаты/аудит; unit-тесты агрегата (§5.3) | ✅ решено |
 | MS-3 | Edge `appsecgate-mcp sync`: экспорт локальных БД → события, outbox, idempotent push (urllib) | ✅ решено |
-| MS-4 | Master REST API (FastAPI): `/v1/events|findings|suppressions|config|audit`, `/healthz` | ⬜ не начато |
+| MS-4 | Master REST API (FastAPI): `/v1/events|findings|suppressions|config|audit`, `/healthz` | ✅ решено |
 | MS-5 | Pull вниз: CI/global suppressions + политики применяются локально (§4.6) | ⬜ не начато |
 | MS-6 | CI-источник: `--shown-source master` в `appsecgate ci`; контрактные тесты | ⬜ не начато |
 | MS-7 | Docker Compose (master + edge), документация развёртывания | ⬜ не начато |

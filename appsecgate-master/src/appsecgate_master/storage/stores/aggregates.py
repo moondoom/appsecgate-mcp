@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Collection
 
 from appsecgate_master.aggregate.fold import fold_events
 from appsecgate_master.aggregate.state import FindingState
@@ -93,12 +94,15 @@ class AggregateStore:
 
     async def rebuild(self) -> int:
         """Пересчитать все агрегаты из events. Возвращает число находок."""
-        keys = await self.db.fetchall(
+        rows = await self.db.fetchall(
             "SELECT DISTINCT project_key, fp FROM events WHERE fp IS NOT NULL"
         )
-        for row in keys:
-            project_key = str(row["project_key"])
-            fp = str(row["fp"])
+        keys = {(str(row["project_key"]), str(row["fp"])) for row in rows}
+        return await self.rebuild_keys(keys)
+
+    async def rebuild_keys(self, keys: Collection[tuple[str, str]]) -> int:
+        """Пересчитать только указанные ``(project_key, fp)`` из полного event-log."""
+        for project_key, fp in sorted(keys):
             events = await self._events_for(project_key, fp)
             state = fold_events(events, project_key=project_key, fp=fp)
             if state is not None:
@@ -111,9 +115,13 @@ class AggregateStore:
         )
         return _row_to_state(row) if row is not None else None
 
-    async def list_states(self, project_key: str) -> list[FindingState]:
+    async def list_states(
+        self, project_key: str, *, status: str | None = None
+    ) -> list[FindingState]:
         rows = await self.db.fetchall(
-            "SELECT * FROM aggregates WHERE project_key = ? ORDER BY fp", (project_key,)
+            "SELECT * FROM aggregates WHERE project_key = ?"
+            " AND (? IS NULL OR status = ?) ORDER BY fp",
+            (project_key, status, status),
         )
         return [_row_to_state(row) for row in rows]
 
