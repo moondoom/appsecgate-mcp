@@ -1,6 +1,6 @@
 # ADR-0006: Unified finding lifecycle model
 
-**Статус:** Proposed (принятые решения §7; статус → Accepted после реализации SM-1..SM-6)
+**Статус:** Proposed (→ Accepted после мержа PR-E)
 **Дата:** 2026-10-31
 **Файл:** `docs/adr/ADR-0006-unified-finding-lifecycle-model.md`
 **Контекст:** Фаза 1 завершена (ADR-0005), Фаза 2 приостановлена (ADR-0003/ADR-0004); требуется единая модель жизненного цикла находки, не зависящая от контура (local / snapshot / master)
@@ -37,7 +37,7 @@
 
 **Активные** (влияют на negative-merge): `SHOWN`, `POTENTIALLY_FIXED`, `REOPENED`.
 **Закрытые**: `FIXED`, `SUPPRESSED`, `WONT_FIX`.
-**Терминальные** (до явного снятия): `SUPPRESSED` (до `suppression_expired` или `unsuppressed`), `WONT_FIX` (до `unsuppressed`; интерфейс TBD, §5.2).
+**Терминальные** (до явного снятия): `SUPPRESSED` (до `suppression_expired` или `unsuppressed`), `WONT_FIX` (до `unsuppressed`; эмитент — `suppress_finding(action="unsuppress")`).
 
 ### 1.4. События (иммутабельные переходы)
 
@@ -51,7 +51,7 @@
 | `verify_wont_fix` | `verify_fix(reported=wont_fix)` | verify_fix |
 | `suppressed` | `suppress_finding(scope)` | suppress_finding |
 | `suppression_expired` | `expires_at` в прошлом (при чтении/скане) | internal |
-| `unsuppressed` | явное снятие suppression/WONT_FIX (**интерфейс TBD**, §5.2) | — |
+| `unsuppressed` | явное снятие suppression/WONT_FIX (`suppress_finding(action="unsuppress")`) | suppress_finding |
 | `reopened` | positive-merge поверх `FIXED` | scan |
 
 ### 1.5. Счётчики и таймстемпы
@@ -85,7 +85,7 @@
 
 ### 2.1. Матрица переходов
 
-| Prev ↓ / Event → | discovered | reaffirmed | not_found_in_scope | verify_fixed | verify_not_fixed | verify_wont_fix | suppressed | suppression_expired | unsuppressed (TBD) | reopened |
+| Prev ↓ / Event → | discovered | reaffirmed | not_found_in_scope | verify_fixed | verify_not_fixed | verify_wont_fix | suppressed | suppression_expired | unsuppressed | reopened |
 |---|---|---|---|---|---|---|---|---|---|---|
 | (none) | SHOWN | — | — | — | — | — | SUPPRESSED | — | — | — |
 | SHOWN | — | SHOWN | POTENTIALLY_FIXED | — | SHOWN | WONT_FIX | SUPPRESSED | — | — | — |
@@ -93,13 +93,13 @@
 | FIXED | — | REOPENED | FIXED | — | — | — | SUPPRESSED | — | — | — |
 | REOPENED | — | REOPENED | POTENTIALLY_FIXED | FIXED | REOPENED | WONT_FIX | SUPPRESSED | — | — | — |
 | SUPPRESSED | — | — | — | — | — | — | — | SHOWN | SHOWN | — |
-| WONT_FIX | — | — | — | **no-op** | **no-op** | **no-op** | SUPPRESSED | — | SHOWN (TBD) | — |
+| WONT_FIX | — | — | — | **no-op** | **no-op** | **no-op** | SUPPRESSED | — | SHOWN | — |
 
 **Инварианты:**
 
 - `not_found_in_scope` **не** применяется к `FIXED`, `SUPPRESSED`, `WONT_FIX`.
-- `verify_*` на `WONT_FIX` — **no-op** (решение владельца 2026-10-31: снятие WONT_FIX — только через `unsuppressed`, чтобы не путать намерения).
-- `SUPPRESSED → SHOWN` — только через `suppression_expired` (scope `ci`/`global`) или `unsuppressed` (TBD).
+- `verify_*` на `WONT_FIX` — **no-op** (решение владельца 2026-10-31: снятие WONT_FIX — только через `unsuppressed` = `suppress_finding(action="unsuppress")`, чтобы не путать намерения).
+- `SUPPRESSED → SHOWN` — только через `suppression_expired` (scope `ci`/`global`) или `unsuppressed` (`suppress_finding(action="unsuppress")`).
 - Каждый переход обновляет `status_updated_at`.
 
 ### 2.2. Ортогональные измерения
@@ -163,7 +163,7 @@ else:
 reported = payload.reported_status
 actual   = fp in scan_file(finding.file_path).fps
 
-if current == WONT_FIX: no-op; return
+if current == WONT_FIX: no-op; return   # снятие — только suppress_finding(action="unsuppress")
 
 match (reported, actual):
     (fixed,    False): emit(verify_fixed)     → FIXED   (fixed_confirmed_by='verify_fix')
@@ -234,7 +234,7 @@ match (reported, actual):
 | 3 | `suppressed(ci/global)` побеждает всё, кроме `reopened` после него (новый цикл) |
 | 4 | `suppressed(local)` хранится как событие, но **не влияет** на CI-вердикт |
 | 5 | LWW по `at` (UTC) + tie-break по `event_id` |
-| 6 | `WONT_FIX` терминален до `unsuppressed` (TBD) |
+| 6 | `WONT_FIX` терминален до `unsuppressed` (`suppress_finding(action="unsuppress")`) |
 
 ### 3.5. Cross-source consistency
 
@@ -260,27 +260,27 @@ match (reported, actual):
 - **§6.1** — snapshot = event-log (§3.3), поля `schema_version`, `event_id`, `event`, `branch`, `commit`, `severity`, `suppression_scope`, `suppression_expires_at`, `missed_scan_count`.
 - **§6.3** — монотонность enforced через append-only check (§3.3).
 - **§6.4** — retention 30d только для `FIXED`/`SUPPRESSED`/`WONT_FIX`.
-- **Статус:** `Partially superseded by ADR-0006`.
+- **Статус:** `Paused (superseded in parts by ADR-0006)`.
 
 ### 4.2. Влияние на ADR-0004
 
 - **§5.1** — события расширяются: `not_found_in_scope`, `suppressed`, `suppression_expired`, `verify_wont_fix`, `reopened`; во все `finding_*` — `first_seen_branch/commit`, `last_seen_branch/commit`, `missed_scan_count`.
 - **§5.3** — заменена §3.4 этого ADR.
 - **§6** — `--shown-source {snapshot,master}` (без `local` в CI).
-- **Статус:** `Partially superseded by ADR-0006`.
+- **Статус:** `Paused (superseded in parts by ADR-0006)`.
 
 ### 4.3. Влияние на ADR-0005
 
 - §2.6 (гейт) — заменена §2.3 этого ADR (расширение: конфиг-ключи, `<unknown>` → block).
 - §2.9 (маппинг verify_fix) — уточнена §3.2 (явно через `actual`, no-op для `WONT_FIX`).
 - §2.12 (snapshot) — расширена §3.3 (event-log).
-- §2.2 (state machine) — дополнена `suppression_expired`, `unsuppressed` (TBD).
+- §2.2 (state machine) — дополнена `suppression_expired`, `unsuppressed`.
 
 ### 4.4. Файлы для изменения
 
 - `orchestration/gate.py` — матрица §2.3, конфиг-ключи §1.7, `branch`/`<unknown>`.
 - `server/tools/verify_fix.py` — §3.2.
-- `server/tools/suppress.py` — `suppression_expired` при чтении.
+- `server/tools/suppress.py` — `action: suppress|unsuppress`, emit(`unsuppressed`); `suppression_expired` при чтении.
 - `storage/stores/shown.py` — `suppression_expired`, `WONT_FIX` no-op.
 - `server/ci.py` — snapshot event-log parser (§3.3), `--require-shown-snapshot` → exit 2.
 - `git.py` — `merge-base`, branch/commit.
@@ -303,15 +303,16 @@ match (reported, actual):
 
 ---
 
-## 5. Открытые вопросы
+## 5. Открытые вопросы и ограничения
 
 1. **`schema_version` bump** — правило: несовпадение → drop + warning (в духе ADR-0005 §2.7). При добавлении полей — bump.
-2. **Интерфейс `unsuppressed` (TBD).** Кандидаты:
-   - расширение `suppress_finding` полем `action: suppress|unsuppress`;
-   - новый тул;
-   - консолидация `suppress_finding(scope=wont_fix)` ≈ `verify_fix(reported=wont_fix)` (future work, §5.4).
-3. **`skip-if-same-branch` при `<unknown>`** — закрыто (block, §2.3).
-4. **Консолидация тулов.** `suppress_finding` и `verify_fix(reported=wont_fix)` семантически близки. Возможное объединение — future work, не в ADR-0006. Модель готова: `WONT_FIX` — first-class статус, не атрибут `fix_attempts`.
+2. **`skip-if-same-branch` при `<unknown>`** — закрыто (block, §2.3).
+3. **Консолидация тулов.** `suppress_finding` уже покрывает `wont_fix` через `scope=wont_fix`; консолидация с `verify_fix` — не в Фазе 2. Модель готова: `WONT_FIX` — first-class статус, не атрибут `fix_attempts`.
+4. **Known limitations:**
+   - classic multi-version → ADR-0007 (per-branch state);
+   - orchestrator-пресеты → ADR-0008 (**блокер Фазы 2**);
+   - RW-orchestrator — вне Фазы 2;
+   - `verified_since_last_scan` — отдельный PR.
 
 ---
 
@@ -319,7 +320,7 @@ match (reported, actual):
 
 | # | Содержание | Зависит |
 |---|---|---|
-| **SM-1** | Матрица §2.1 + `suppression_expired` + `test_status_matrix` | — |
+| **SM-1** | Матрица §2.1 + `suppression_expired` + `unsuppressed` через `suppress_finding(action=...)` + `test_status_matrix` + `test_unsuppress_via_suppress_finding` | — |
 | **SM-2** | Гейт-матрица §2.3 + конфиг-ключи §1.7 + `test_gate_matrix` | SM-1 |
 | **SM-3** | `verify_fix` merge (§3.2), no-op для `WONT_FIX`, `test_verify_fix_no_inversion` | SM-1 |
 | **SM-4** | Snapshot event-log (§3.3) + append-only check + `merge=union` + `schema_version` | SM-1 |
@@ -328,18 +329,19 @@ match (reported, actual):
 
 ---
 
-## 7. Принятые решения (Q1–Q8)
+## 7. Принятые решения (Q1–Q9)
 
 | # | Вопрос | Решение |
 |---|---|---|
 | Q1 | `wont_fix_action` | **`skip-if-same-branch`** (default), переопределяется конфигом; `<unknown>` → block |
 | Q2 | `potentially_fixed_on_block_severity` | **`block`** (default), переопределяется конфигом; severity-гейт не ослабляем |
 | Q3 | `SUPPRESSED` + scope `local` в CI | **block** (`unresolved_local`) — двойной контур |
-| Q4 | `verify_fix` на `WONT_FIX` | **no-op**; снятие — только `unsuppressed` (TBD) |
+| Q4 | `verify_fix` на `WONT_FIX` | **no-op**; снятие — только `unsuppressed` (`suppress_finding(action="unsuppress")`) |
 | Q5 | `suppressed(local)` в snapshot | **да**, для аудита; CI игнорирует по `suppression_scope` |
 | Q6 | Формат snapshot | **event-log**, `schema_version=1` |
 | Q7 | Retention | 30d только для `FIXED`/`SUPPRESSED`/`WONT_FIX`; `SHOWN`/`POTENTIALLY_FIXED`/`REOPENED` не истекают |
 | Q8 | Консолидация тулов | future work; модель готова (`WONT_FIX` first-class) |
+| Q9 | Интерфейс `unsuppressed` | расширение `suppress_finding(action)`; новый тул не создаём |
 
 ---
 
@@ -347,17 +349,17 @@ match (reported, actual):
 
 - Единая модель **жизненного цикла находки** для local / snapshot / master; гейт-логика и конфликт-резолюция — в одном месте.
 - Snapshot = event-log; append-only enforced; `schema_version` защищает от рассинхрона.
-- `verify_fix` явный (через `actual`), no-op для `WONT_FIX`; снятие `WONT_FIX`/`SUPPRESSED` — через `unsuppressed` (TBD) или `suppression_expired`.
+- `verify_fix` явный (через `actual`), no-op для `WONT_FIX`; снятие `WONT_FIX`/`SUPPRESSED` — через `suppress_finding(action="unsuppress")` или `suppression_expired`.
 - Retention не снимает `unresolved_local`; `<unknown>` branch консервативно блокирует.
 - Конфиг-ключи покрывают спорные случаи (`wont_fix_action`, `potentially_fixed_on_block_severity`), defaults — безопасные.
-- ADR-0003/ADR-0004 → `Partially superseded by ADR-0006`; ADR-0005 дополняется, не отменяется.
+- ADR-0003/ADR-0004 → `Paused (superseded in parts by ADR-0006)`; ADR-0005 дополняется, не отменяется.
 
 ---
 
 ## 9. Ссылки
 
 - ADR-0001 (fingerprint & dedup), ADR-0005 (state machine `shown_findings`)
-- ADR-0003 (CI-контур, snapshot — Partially superseded), ADR-0004 (master — Partially superseded)
+- ADR-0003 (CI-контур, snapshot — Paused, superseded in parts by ADR-0006), ADR-0004 (master — Paused, superseded in parts by ADR-0006)
 - `docs/architecture.md` §3.5, §4.1, §8, §9.5
 - `orchestration/gate.py`, `server/ci.py`, `storage/stores/shown.py`, `server/tools/verify_fix.py`, `server/tools/suppress.py`, `git.py`
 
@@ -369,12 +371,10 @@ match (reported, actual):
 | ADR | Название | Статус |
 |---|---|---|
 | ADR-0001 | Fingerprint and semantic dedup | Accepted |
-| ADR-0003 | CI unresolved local delivery | Partially superseded by ADR-0006 |
-| ADR-0004 | Master server sync | Partially superseded by ADR-0006 |
+| ADR-0003 | CI unresolved local delivery | Paused (superseded in parts by ADR-0006) |
+| ADR-0004 | Master server sync | Paused (superseded in parts by ADR-0006) |
 | ADR-0005 | Project reconciliation & shown state machine | Accepted (дополнен ADR-0006) |
-| ADR-0006 | Unified finding lifecycle model | Proposed → Accepted после SM-1..SM-6 |
+| ADR-0006 | Unified finding lifecycle model | Proposed (→ Accepted после мержа PR-E) |
+| ADR-0007 | Per-branch state | Proposed (Фаза 3) |
+| ADR-0008 | Orchestrator presets | Proposed (блокер Фазы 2) |
 ```
-
----
-
-Готово. Если ок — можно переходить к SM-1: матрица §2.1 + `suppression_expired` + `test_status_matrix`. Это самый дешёвый шаг и он разблокирует SM-2..SM-5.
