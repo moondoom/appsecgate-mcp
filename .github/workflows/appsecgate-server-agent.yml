@@ -1,0 +1,30 @@
+# Server-agent MVP (AG-5/AG-8): детерминированный report mode без LLM.
+# Запускать из checkout репозитория appsecgate-mcp с установленным uv.
+name: AppSecGate server-agent report
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Run server-agent report
+        run: |
+          uv run --directory appsecgate-agent appsecgate-agent \
+            --scope diff --policy escalate --format markdown \
+            --output appsecgate-report.md \
+            --mcp-command "docker run --rm -i --network=none --read-only --tmpfs=/tmp:size=100M,mode=1777 --cap-drop=ALL --security-opt=no-new-privileges:true -v .:/workspace:ro -v appsecgate-cache:/home/appsecgate/.cache -v appsecgate-data:/home/appsecgate/.appsecgate-mcp moondoom/appsecgate-mcp:0.1.0 --transport stdio --project /workspace"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appsecgate-report
+          path: appsecgate-report.md

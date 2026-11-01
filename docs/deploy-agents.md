@@ -312,6 +312,15 @@ For a headless PR report, copy `.github/workflows/appsecgate-agent.yml`; it
 runs Claude Code with only `scan_diff` and `check_gate` allowed. This job is
 advisory and does not provide a trustworthy LLM-derived exit code.
 
+### Server-agent report MVP
+
+`appsecgate-agent` is a separate deterministic Python package with no LLM. It
+calls `scan_diff`/`scan_project` and `check_gate` over MCP stdio, then renders
+Markdown or NDJSON. See `appsecgate-agent/README.md` for the CLI contract and
+`.github/workflows/appsecgate-server-agent.yml` for a scheduled report artifact.
+Report mode exits `0` after a successful report and `2` on infrastructure
+errors; use classic hard-gate when findings must block a pipeline.
+
 ### Classic hard-gate (Phase 2, ADR-0004 MS-6)
 
 The same image runs as a deterministic CI gate. It scans the diff against the base branch

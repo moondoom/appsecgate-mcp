@@ -22,7 +22,7 @@
 | OR-6 | Примеры classic PR/release/cron | выполнены | — | ADR-0008 §9 |
 | AG-3 | Шаблон AppSecGate policy для AGENTS.md | выполнен | — | ADR-0009 §4 |
 | OR-7/AG-4 | Пример CI-agent | выполнен | — | ADR-0008 §9, ADR-0009 §13 |
-| AG-5/AG-8 | Server-agent MVP: report + workflow | не начат | OR-1, OR-2 | ADR-0009 §13 |
+| AG-5/AG-8 | Server-agent MVP: report + workflow | выполнен | — | ADR-0009 §13 |
 | AG-6/AG-9 | Triage, action log и audit push | после MVP | AG-5 | ADR-0009 §13 |
 | — | E2E CI-полигон (фиктивный PR) | не начат | нет | ADR-0003 §9 |
 | ADR-0007 | Per-branch state | Proposed, Фаза 3 | classic multi-version | `adr/ADR-0007-*.md` |
@@ -53,8 +53,9 @@ Proposed, Фаза 3. Модель `(project, branch, fingerprint)` описан
 PB-1…PB-6 не начата. До неё classic multi-version остаётся ограничением Фазы 2.
 
 ### ADR-0009 — модель агентов
-ADR создан и имеет статус Proposed. Реализация ведётся через OR-1/OR-2 и
-AG-3…AG-9; server-agent и CI-agent в репозитории пока отсутствуют.
+ADR создан и имеет статус Proposed. OR-1/OR-2, AG-3…AG-5 и AG-8 выполнены;
+`appsecgate-agent` предоставляет report MVP. Triage, action log и audit push —
+следующий этап; RW-agent остаётся на паузе.
 
 ### MS-8 — DefectDojo/ASOC
 Отложено 2026-10-31, вне плана. Вернуть при актуализации vision (§5.2.4).

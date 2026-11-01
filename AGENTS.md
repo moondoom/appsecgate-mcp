@@ -14,6 +14,8 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `appsecgate-master/src/` — центральный (master) сервер, Фаза 2 этап 2
   (ADR-0004/ADR-0006): события/агрегат/аудит и REST API (`api/`); пакет
   `appsecgate-master/`, зависимости — pydantic, FastAPI, uvicorn. MS-4 выполнен.
+- `appsecgate-agent/src/` — server-agent MVP (AG-5): детерминированный MCP
+  stdio report mode без LLM; зависимости — mcp, pydantic.
 - `mcp-server/src/appsecgate_mcp/sync/` — edge-синхронизация (MS-3/MS-5,
   ADR-0004 §4.2): `appsecgate-mcp sync` на хосте — экспорт shown_findings.db,
   project-scoped outbox/push и pull CI/global suppressions + master policy в
@@ -86,10 +88,11 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 
 | Цель | Что делает | Когда |
 |------|-----------|-------|
-| `make check` | ruff + pytest для обоих пакетов (mcp-server + appsecgate-master) | перед каждым коммитом |
+| `make check` | ruff + pytest для всех трёх пакетов | перед каждым коммитом |
 | `make format` | форматирование ruff (mcp-server) | после изменений |
 | `make master-format` | форматирование ruff (appsecgate-master) | после изменений |
 | `make master-test` / `master-lint` | тесты / ruff appsecgate-master | при работе над master |
+| `make agent-test` / `agent-lint` / `agent-format` | проверки appsecgate-agent | при работе над agent |
 | `make docker-build` | сборка образа `moondoom/appsecgate-mcp:0.1.0` | после коммита |
 | `make docker-run` | запуск контейнера с проектом | для отладки |
 | `make docker-down` | остановка контейнера | после отладки |
@@ -97,7 +100,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
-496 тестов mcp-server + 143 теста appsecgate-master должны оставаться зелёными.
+496 тестов mcp-server + 143 appsecgate-master + 8 appsecgate-agent должны быть зелёными.
 Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
 ## File Size Limits
