@@ -4,7 +4,7 @@
 * Python (`.py`) — ≤ 400 строк **и** ≤ 20 КБ;
 * документация (`.md`/`.html`/`.txt`) — ≤ 500 строк **и** ≤ 40 КБ;
   исключения: `docs/product-vision.md` (исторический артефакт),
-  `docs/architecture.md` (живой справочник) — допускаются до жёсткого потолка;
+  `docs/architecture.md` и ADR-0011/0012 (живые справочники) — до жёсткого потолка;
 * `AGENTS.md` — ≤ 200 строк;
 * жёсткий потолок для всех текстовых файлов — ≤ 1500 строк **и** ≤ 60 КБ.
 
@@ -35,6 +35,9 @@ DOC_ALLOWLIST = {
     "docs/product-vision.md",
     # Живой справочник по архитектуре — единый документ.
     "docs/architecture.md",
+    # Живые ADR-спецификации — разделение нарушит связность решений и обоснований.
+    "docs/adr/ADR-0011-scan-run-observability.md",
+    "docs/adr/ADR-0012-master-database-and-auth.md",
 }
 
 TEXT_EXTENSIONS = {".py", ".md", ".html", ".txt"}
