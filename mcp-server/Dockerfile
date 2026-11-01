@@ -83,7 +83,7 @@ COPY pyproject.toml README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv venv /opt/appsecgate-venv && \
     uv pip install --python /opt/appsecgate-venv/bin/python --no-compile \
-        'mcp>=1.2.0,<2' 'pydantic>=2.7' 'PyYAML>=6.0' 'setuptools>=75,<76' semgrep
+        'mcp>=1.2.0,<2' 'pydantic>=2.7' 'PyYAML>=6.0' 'openai>=1.0' 'setuptools>=75,<76' semgrep
 
 COPY src ./src
 # Пакет приложения ставится из корня проекта (там pyproject.toml); --no-deps —
@@ -164,4 +164,4 @@ WORKDIR /workspace
 # Сканеры проверяются адаптерами через is_available(); отсутствие — не фатально.
 
 ENTRYPOINT ["/usr/local/bin/appsecgate-entrypoint.sh", "appsecgate-mcp"]
-CMD ["--transport", "stdio"]
+CMD ["serve", "--transport", "stdio"]

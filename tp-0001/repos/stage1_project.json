@@ -1,0 +1,21 @@
+{
+  "name": "pygoat",
+  "url": "https://github.com/adeyosemanputra/pygoat",
+  "commit": "1b63054befb45aca53c761c421d883aa2e5fd6c1",
+  "path": "repos/pygoat",
+  "difficulty": "mixed",
+  "critical": true,
+  "ground_truth_status": "approved",
+  "ground_truth": [
+    {"finding_id": "37abc94b0e639b43", "verdict": "TRUE_POSITIVE", "basis": "PyYAML 5.1 is below the fixed version for CVE-2019-20477"},
+    {"finding_id": "3cafea89f9e8cca9", "verdict": "TRUE_POSITIVE", "basis": "PyYAML 5.1 is below the fixed version for CVE-2019-20477"},
+    {"finding_id": "1a97de13eb73b919", "verdict": "TRUE_POSITIVE", "basis": "PyYAML 5.1 is below the fixed version for CVE-2020-14343"},
+    {"finding_id": "b5173533f865c1c8", "verdict": "TRUE_POSITIVE", "basis": "PyYAML 5.1 is below the fixed version for CVE-2020-14343"},
+    {"finding_id": "513d73097c15f78f", "verdict": "TRUE_POSITIVE", "basis": "PyYAML 5.1 is below the fixed version for CVE-2020-1747"},
+    {"finding_id": "cb45bee9d9fd9838", "verdict": "TRUE_POSITIVE", "basis": "PyYAML 5.1 is below the fixed version for CVE-2020-1747"},
+    {"finding_id": "4283f3c748fb28b3", "verdict": "TRUE_POSITIVE", "basis": "Pillow 8.0.0 is below the fixed version for CVE-2021-25289"},
+    {"finding_id": "af8338263fb695db", "verdict": "TRUE_POSITIVE", "basis": "Pillow 8.0.0 is below the fixed version for CVE-2021-34552"},
+    {"finding_id": "e1b5206bc258a964", "verdict": "TRUE_POSITIVE", "basis": "Pillow 8.0.0 is below the fixed version for CVE-2022-22817"},
+    {"finding_id": "a2fa17c20d085bbd", "verdict": "TRUE_POSITIVE", "basis": "Django 3.2.18 is below the fixed version for CVE-2023-31047"}
+  ]
+}

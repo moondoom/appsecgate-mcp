@@ -11,7 +11,7 @@
 - `GET /v1/findings` поддерживает фильтры `state`, `branch` и `commit` (OR-2).
 - `appsecgate-agent` реализует только детерминированный report MVP без LLM.
 - Master работает на SQLite WAL; PostgreSQL, MCP-master и `scan_run` не реализованы.
-- `appsecgate-mcp agent` отсутствует; `appsecgate-mcp ci` — отдельный hard-gate без LLM.
+- `appsecgate-mcp agent --mode=ro` реализован; `appsecgate-mcp ci` — отдельный hard-gate без LLM.
 - ADR-0007…ADR-0014 содержат проектные решения, но не означают реализацию.
 
 ## Сводка
@@ -21,10 +21,10 @@
 | OR-1/OR-2 | Gate API для agent mode | выполнено | — | ADR-0008/0009 |
 | AG-5/AG-8 | Server-agent report MVP + workflow | выполнено | — | ADR-0009 §13 |
 | AG-6/AG-9 | Triage, action log и audit push | не начато | AG-5 | ADR-0009 §13 |
-| MM-1/MM-2 | Общий CLI `serve`/`sync`/`ci`/`agent` | до TP-0001 | нет | ADR-0014 §5 |
-| MM-3/MM-5/MM-6 | RO-agent, OpenAI-compatible LLM, prompt и лимиты | до TP-0001 | MM-1 | ADR-0014 §5 |
-| MM-7/MM-9 | Multi-mode Docker и тесты RO-agent | до TP-0001 | MM-3 | ADR-0014 §5 |
-| TP-PREP | Тестовый контур и утверждённый пакет TP-0001 | до TP-0001 | MM-1…MM-9 | TP-0001 §6 |
+| MM-1/MM-2 | Общий CLI `serve`/`sync`/`ci`/`agent` | выполнено | — | ADR-0014 §5 |
+| MM-3/MM-5/MM-6 | RO-agent, OpenAI-compatible LLM, prompt и лимиты | выполнено | — | ADR-0014 §5 |
+| MM-7/MM-9 | Multi-mode Docker и тесты RO-agent | выполнено | — | ADR-0014 §5 |
+| TP-PREP | Тестовый контур и утверждённый пакет TP-0001 | в работе | параметры стенда и утверждение | TP-0001 §6 |
 | TP-EXEC | Выполнение TP-0001, отчёт и выбор модели | назначено Kimi | TP-PREP | TP-0001 |
 | MM-4/MM-8 | RW demo и полная документация режимов | после TP-0001 | RO-agent | ADR-0014 |
 | DB-1…DB-9 | PostgreSQL + auth-фундамент | до Стадии 2 TP-0001 | нет | ADR-0012 |

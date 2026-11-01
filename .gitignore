@@ -76,3 +76,8 @@ tmp/
 # E2E-харнесс: машинные артефакты прогонов (результаты дублируются в docs/E2E-report)
 scripts/e2e-results*.json
 
+# TP-0001: внешний проект, секреты и машинные артефакты стенда
+tp-0001/repos/pygoat/
+tp-0001/runtime/
+tp-0001/artifacts/
+

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["run_id", "mode", "model", "findings", "verdicts", "patches", "GateSummary", "action_log", "usage", "warnings", "duration_sec", "exit_reason"],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 1},
+    "mode": {"const": "ro"},
+    "model": {"type": "string"},
+    "prompt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "findings": {"type": "array"},
+    "verdicts": {"type": "array"},
+    "patches": {"type": "array"},
+    "GateSummary": {"type": "object", "required": ["should_fail"]},
+    "action_log": {"type": "array"},
+    "usage": {"type": "object"},
+    "warnings": {"type": "array"},
+    "duration_sec": {"type": "number", "minimum": 0},
+    "exit_reason": {"type": "string"}
+  }
+}

@@ -73,27 +73,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    """Точка входа: appsecgate-mcp / python -m appsecgate_mcp.
-
-    `appsecgate-mcp hook <name>` запускает хук (JSON из stdin, JSON в stdout).
-    Без подкоманды поднимается MCP-сервер, как раньше.
-    """
-    if len(sys.argv) > 1 and sys.argv[1] == "hook":
-        from appsecgate_mcp.hooks import hook_main  # ленивый импорт: нет цикла с server
-
-        raise SystemExit(hook_main(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "ci":
-        from appsecgate_mcp.server.ci import ci_main  # ленивый импорт: CI — отдельный процесс
-
-        raise SystemExit(ci_main(sys.argv[2:]))
-    if len(sys.argv) > 1 and sys.argv[1] == "sync":
-        # Edge-синхронизация с master (MS-3, ADR-0004 §4.2): запускается НА
-        # ХОСТЕ вне контейнера MCP-сервера (инвариант №2 не затрагивается).
-        from appsecgate_mcp.sync.cli import sync_main  # ленивый импорт: нет цикла
-
-        raise SystemExit(sync_main(sys.argv[2:]))
-    args = _build_parser().parse_args()
+def serve_main(argv: list[str] | None = None) -> None:
+    """Запускает MCP-сервер с прежними аргументами командной строки."""
+    args = _build_parser().parse_args(argv)
     configure_logging(args.log_level, args.log_file)
     logger.info("start appsecgate-mcp transport=%s", getattr(args, "transport", "stdio"))
 
@@ -119,6 +101,16 @@ def main() -> None:
         server_mod._configure_http(args.host, args.port)
 
     mcp.run(transport=transport)
+
+
+def main() -> None:
+    """Совместимый legacy-entrypoint с прежней диспетчеризацией подкоманд."""
+    if len(sys.argv) > 1 and sys.argv[1] in {"hook", "ci", "sync", "serve", "agent"}:
+        from appsecgate_mcp.cli import main as dispatch_main
+
+        dispatch_main()
+    else:
+        serve_main()
 
 
 if __name__ == "__main__":

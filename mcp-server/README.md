@@ -34,11 +34,15 @@ make clean     # удалить локальные артефакты
 ## Запуск
 
 ```bash
-# stdio (основной режим)
-appsecgate-mcp --transport stdio --project /workspace
+# stdio (основной режим; без подкоманды тоже поддерживается)
+appsecgate-mcp serve --transport stdio --project /workspace
 
 # streamable-http (HTTP-демон)
-appsecgate-mcp --transport streamable-http --host 0.0.0.0 --port 8765
+appsecgate-mcp serve --transport streamable-http --host 0.0.0.0 --port 8765
+
+# RO-agent: advisory-отчёт, проект не изменяется
+appsecgate-mcp agent --mode=ro --project /workspace \
+  --llm-url http://localhost:11434/v1 --llm-model qwen --output-format json
 ```
 
 ## Режимы транспорта

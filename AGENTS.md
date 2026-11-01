@@ -30,7 +30,7 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `mcp-server/src/appsecgate_mcp/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
 - `mcp-server/src/appsecgate_mcp/storage/` — SQLite-схема, views; store-классы в
   подмодулях `storage/stores/` (по классу на модуль)
-- `mcp-server/tests/` — 496 тестов, все должны быть зелёными
+- `mcp-server/tests/` — 511 тестов, все должны быть зелёными
 - `config/default.yaml` — дефолтная конфигурация
 - `docs/` — архитектура, ADR, открытые задачи, отчёты
 
@@ -72,8 +72,8 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - **Офлайн по умолчанию.** `network.mode: offline`, автодетекта сети нет.
 - **Изоляция сканеров.** Каждый сканер — отдельный процесс, без импорта AGPL-кода.
 - **Никакого автоопределения языков.** Профили задаются явно в конфиге.
-Только три: `mcp`, `pydantic`, `PyYAML`.
-Новые production-зависимости запрещены без явного указания.
+Обязательные только три: `mcp`, `pydantic`, `PyYAML`; optional extra `agent` —
+`openai` по ADR-0014. Иные production-зависимости запрещены без явного указания.
 Dev-зависимости (`pytest`, `ruff`) — не трогать без причины.
 
 ## No migration
@@ -100,7 +100,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
-496 тестов mcp-server + 143 appsecgate-master + 8 appsecgate-agent должны быть зелёными.
+511 тестов mcp-server + 143 appsecgate-master + 8 appsecgate-agent должны быть зелёными.
 Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
 ## File Size Limits
@@ -146,7 +146,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 ## Definition of Done
 Задача завершена, когда:
 1. `make check` зелёный.
-2. Все 622 теста + новые (если добавлены) проходят.
+2. Все 662 теста + новые (если добавлены) проходят.
 3. Изменения соответствуют одному этапу роадмапа (`docs/open-tasks.md`).
 4. Не нарушен ни один инвариант.
 5. Нет новых production-зависимостей.

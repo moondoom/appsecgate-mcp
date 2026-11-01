@@ -1,0 +1,10 @@
+[
+  {"id":"T-01","setup":"shown TP on master; repeat scan; block_on_unresolved_local=true","expect":{"should_fail":true,"reason":"unresolved_local","exit":0,"checks":["D1"]}},
+  {"id":"T-02","setup":"fixture local/remote suppression for FP","expect":{"finding_shown":false,"should_fail":false,"exit":0,"checks":["D6"]}},
+  {"id":"T-03","setup":"Kimi applies patch on a copy; verify and rescan","expect":{"finding_fixed":true,"should_fail":false,"exit":0,"checks":["D5"]}},
+  {"id":"T-04","setup":"required master unavailable","expect":{"exit":2,"checks":["D8"]}},
+  {"id":"T-05","setup":"pull changed master policy before scan","expect":{"gate_matches_policy":true,"exit":0,"checks":["D7"]}},
+  {"id":"T-06","setup":"pull CI/global suppression for fingerprint","expect":{"finding_shown":false,"should_fail":false,"exit":0,"checks":["D6"]}},
+  {"id":"T-07","setup":"two agent runs with same run_id; repeat push","expect":{"duplicates":0,"checks":["D3"]}},
+  {"id":"T-08","setup":"blockable TP; policy=block","expect":{"should_fail":true,"valid_json":true,"exit":0}}
+]
