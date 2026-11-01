@@ -138,9 +138,19 @@ async def suppress_finding(finding_id: str, reason: str, expires_at: str) -> Non
     await suppression_store.create(finding_id, reason, expires_at)
 ```
 
+#### Внешние режимы запуска (фактическое состояние)
+
+Кроме MCP `serve`, пакет предоставляет host-режимы `sync` и `ci`. `sync` —
+единственный сетевой edge-процесс синхронизации; `ci` — детерминированный
+classic hard-gate без LLM, сканирует diff и возвращает `0/1/2`. Встроенной
+команды `agent` пока нет. Отдельный пакет `appsecgate-agent` реализует только
+report MVP: MCP stdio `scan_project`/`scan_diff` → `check_gate` → Markdown/NDJSON,
+без LLM, триажа и записи в master. Advisory `check_gate` не заменяет enforced `ci`.
+
 ### 3.2. Orchestration Layer
 
-Мозг системы. Управляет потоком «скан → нормализация → автофикс → показ → логирование».
+Мозг системы. Управляет потоком «скан → нормализация → показ → логирование»;
+фикс генерирует и применяет внешний AI-агент, а не MCP-сервер.
 
 #### Scan Coordinator
 

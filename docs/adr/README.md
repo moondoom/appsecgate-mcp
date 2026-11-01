@@ -11,4 +11,8 @@
 | [ADR-0007](ADR-0007-per-branch-state.md) | Per-branch state | Proposed (Фаза 3) |
 | [ADR-0008](ADR-0008-orchestrator-presets.md) | Orchestrator modes | Proposed |
 | [ADR-0009](ADR-0009-agent-implementation-model.md) | Agent implementation model | Proposed (depends on ADR-0008) |
-| ADR-0010 | RW-agent | Пауза (ADR не создан) |
+| [ADR-0010](ADR-0010-rw-agent.md) | RW-agent | Proposed (Пауза) |
+| [ADR-0011](ADR-0011-scan-run-observability.md) | Scan run observability, passive counters, pattern promotion | Proposed |
+| [ADR-0012](ADR-0012-master-database-and-auth.md) | Master database and auth foundation | Proposed |
+| [ADR-0013](ADR-0013-master-mcp-interface.md) | Master MCP interface | Proposed (зависит от ADR-0012) |
+| [ADR-0014](ADR-0014-multi-mode-mcp-image.md) | Multi-mode MCP image (serve/sync/ci/agent ro+rw) | Proposed; изменяет G7 ADR-0004 |
