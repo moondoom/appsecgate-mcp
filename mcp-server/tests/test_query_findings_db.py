@@ -364,4 +364,3 @@ async def test_finding_identity_join_in_views(tmp_path):
     assert jumped is not None and jumped["fingerprint"] == "fp-1b"
     assert jumped["logical_id"] == "lid-1"
     db.close()
-

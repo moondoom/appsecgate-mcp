@@ -97,7 +97,11 @@ def decide(
         # 1. severity-гейт независим от статуса (§2.2).
         (sev_block, "block", GateReason.CI_SEVERITY),
         # 2. SHOWN → «знал и не починил».
-        (status == "SHOWN", "block", GateReason.UNRESOLVED_LOCAL),
+        (
+            status == "SHOWN" and cfg.block_on_unresolved_local,
+            "block",
+            GateReason.UNRESOLVED_LOCAL,
+        ),
         # 3. REOPENED → блок.
         (status == "REOPENED", "block", GateReason.REOPENED),
         # 6. FIXED → skip.

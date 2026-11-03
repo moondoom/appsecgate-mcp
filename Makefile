@@ -118,6 +118,12 @@ docker-master-build: ## Собрать Docker-образ master (context = appse
 compose-up: ## Поднять master-сервер (корневой compose, master + edge)
 	docker compose up -d master
 
+compose-postgres-up: ## Поднять master с PostgreSQL (ADR-0012)
+	docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d master
+
+compose-postgres-down: ## Остановить master и PostgreSQL
+	docker compose -f docker-compose.yml -f docker-compose.postgres.yml down
+
 compose-edge-sync: ## Запустить edge-синхронизацию (корневой compose)
 	docker compose run --rm edge
 

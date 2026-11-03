@@ -29,10 +29,21 @@ async def authenticate(
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise _unauthorized()
     settings: MasterSettings = request.app.state.settings
-    for project, api_key in settings.api_keys.items():
-        if secrets.compare_digest(credentials.credentials, api_key):
-            return project
-    raise _unauthorized()
+    project = None
+    if settings.database_url is not None:
+        project = await request.app.state.db.authenticate_key(credentials.credentials)
+    else:
+        for candidate, api_key in settings.api_keys.items():
+            if secrets.compare_digest(credentials.credentials, api_key):
+                project = candidate
+                break
+    if project is None:
+        raise _unauthorized()
+    if settings.database_url is not None:
+        from appsecgate_master.storage.postgres import set_project
+
+        set_project(project)
+    return project
 
 
 def authorize_project(authenticated: str, requested: str) -> None:

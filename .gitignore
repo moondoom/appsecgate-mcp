@@ -80,4 +80,6 @@ scripts/e2e-results*.json
 experiments/tp-0001/repos/
 experiments/tp-0001/runtime/
 experiments/tp-0001/artifacts/
+experiments/tp-0001/progress.json
+experiments/tp-0001/stage2-freeze.json
 

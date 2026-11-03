@@ -383,4 +383,3 @@ async def test_verify_fix_wont_fix_requires_note(tmp_path, monkeypatch):
     assert out["status"] == "error"
     assert "requires a note" in out["reason"]
     db.close()
-

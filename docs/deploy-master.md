@@ -100,7 +100,22 @@ APPSECGATE_MASTER_API_KEYS='{"my-project":"dev-key"}' \
   TLS reverse-proxy (nginx/caddy) и HTTPS-ключи.
 - Образ master: non-root `1000:1000`, read_only rootfs, cap_drop ALL.
 
-## 8. Troubleshooting
+## 8. PostgreSQL для параллельных edge (ADR-0012)
+
+SQLite остаётся backend по умолчанию с текущей project-scoped Bearer-проверкой.
+Для параллельной Стадии 2 используйте PostgreSQL 16:
+
+```bash
+export APPSECGATE_POSTGRES_PASSWORD='<сгенерированный-пароль>'
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d master
+```
+
+Override задаёт `APPSECGATE_MASTER_DATABASE_URL` и поднимает `postgres` с healthcheck.
+В PostgreSQL API keys хранятся как SHA-256, событие + audit + aggregate фиксируются
+одной транзакцией, изоляция проектов обеспечивается RLS. SQLite-специфичная
+авторизация и поведение REST не меняются.
+
+## 9. Troubleshooting
 
 | Симптом | Причина | Действие |
 |---|---|---|

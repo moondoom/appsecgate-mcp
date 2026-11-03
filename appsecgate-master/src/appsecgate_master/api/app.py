@@ -19,8 +19,10 @@ def create_app(settings: MasterSettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        db = await init_database(resolved.db_path)
+        db = await init_database(resolved.db_path, resolved.database_url)
         await init_schema(db)
+        if resolved.database_url is not None:
+            await db.init_security(resolved.api_keys)
         app.state.db = db
         app.state.events = MasterEventStore(db)
         app.state.aggregates = AggregateStore(db)

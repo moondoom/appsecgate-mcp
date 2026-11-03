@@ -93,7 +93,7 @@ class MasterEventStore:
             await self.audit.record(event, "rejected:redaction", received_at)
             return IngestOutcome(event.client_event_id, "rejected:redaction")
 
-        await self.db.execute(
+        inserted = await self.db.execute_rowcount(
             "INSERT INTO events (client_event_id, event_id, project_key, event_type, fp, at,"
             " payload, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
@@ -107,8 +107,9 @@ class MasterEventStore:
                 received_at,
             ),
         )
-        await self.audit.record(event, "accepted", received_at)
-        return IngestOutcome(event.client_event_id, "accepted")
+        outcome = "accepted" if inserted else "duplicate"
+        await self.audit.record(event, outcome, received_at)
+        return IngestOutcome(event.client_event_id, outcome)
 
     async def list_events(
         self,

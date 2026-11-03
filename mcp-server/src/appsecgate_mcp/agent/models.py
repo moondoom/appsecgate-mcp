@@ -23,6 +23,10 @@ class AgentConfig(BaseModel):
     llm_model: str
     llm_api_key: str = "local"
     llm_timeout: float = 120
+    llm_temperature: float = 0
+    llm_top_p: float = 1
+    llm_max_tokens: int = 2048
+    llm_num_ctx: int = 32768
     timeout: float = 1800
     max_iterations: int = 50
     max_tokens: int = 500_000

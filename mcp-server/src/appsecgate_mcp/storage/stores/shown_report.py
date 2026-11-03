@@ -18,8 +18,7 @@ async def get_statuses(db: Any, fingerprints: list[str]) -> dict[str, str]:
         return {}
     placeholders = ",".join("?" * len(fingerprints))
     rows = await db.fetchall(
-        f"SELECT fingerprint, status FROM shown_findings "
-        f"WHERE fingerprint IN ({placeholders})",
+        f"SELECT fingerprint, status FROM shown_findings WHERE fingerprint IN ({placeholders})",
         fingerprints,
     )
     return {r["fingerprint"]: r["status"] for r in rows}
@@ -58,9 +57,11 @@ async def list_potentially_fixed(
     ``truncated`` — True при превышении ``limit``.
     """
     severity_order = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}
-    case_sql = "CASE severity " + " ".join(
-        "WHEN ? THEN ?" for _ in severity_order
-    ) + " END DESC, last_seen_at DESC"
+    case_sql = (
+        "CASE severity "
+        + " ".join("WHEN ? THEN ?" for _ in severity_order)
+        + " END DESC, last_seen_at DESC"
+    )
     severity_params: list[Any] = []
     for sev, rank in severity_order.items():
         severity_params.extend((sev, rank))
@@ -72,8 +73,7 @@ async def list_potentially_fixed(
         where_params.append(branch)
 
     rows = await db.fetchall(
-        f"SELECT fingerprint FROM shown_findings {where_sql} "
-        f"ORDER BY {case_sql} LIMIT ?",
+        f"SELECT fingerprint FROM shown_findings {where_sql} ORDER BY {case_sql} LIMIT ?",
         [*where_params, *severity_params, limit],
     )
     total_row = await db.fetchone(

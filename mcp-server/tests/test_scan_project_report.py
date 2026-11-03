@@ -364,6 +364,10 @@ async def test_build_project_report_no_requires_confirmation():
         branch="<unknown>",
     )
     out = await server._build_project_report(state, result)
-    assert out["requires_confirmation"] == {"finding_ids": [], "total_potentially_fixed": 0, "truncated": False}
+    assert out["requires_confirmation"] == {
+        "finding_ids": [],
+        "total_potentially_fixed": 0,
+        "truncated": False,
+    }
     assert out["suggested_action"] == "no findings require confirmation"
     assert out["top_findings"] == []

@@ -108,20 +108,14 @@ async def test_drop_on_schema_mismatch_removes_views_and_sequence(tmp_path):
     await ShownFindingsStore(dbs["shown"], "pid-1").record_shown(
         _make_finding("fp-1"), logical_id="lid-1"
     )
-    old_id = await FeedbackStore(dbs["feedback"]).save(
-        "fp-1", "CONFIRMED", reason="seen"
-    )
+    old_id = await FeedbackStore(dbs["feedback"]).save("fp-1", "CONFIRMED", reason="seen")
     assert old_id >= 1
     assert _objects(dbs["shown"], "view")
     assert "sqlite_sequence" in _objects(dbs["shown"], "table")
 
     # Портим версию и перепроверяем.
-    dbs["shown"]._write(
-        "UPDATE schema_meta SET value='999' WHERE key='schema_version'"
-    )
-    dbs["feedback"]._write(
-        "UPDATE schema_meta SET value='999' WHERE key='schema_version'"
-    )
+    dbs["shown"]._write("UPDATE schema_meta SET value='999' WHERE key='schema_version'")
+    dbs["feedback"]._write("UPDATE schema_meta SET value='999' WHERE key='schema_version'")
     for db in dbs.values():
         db.close()
 
@@ -142,9 +136,7 @@ async def test_drop_on_schema_mismatch_removes_views_and_sequence(tmp_path):
     assert await ShownFindingsStore(dbs2["shown"], "pid-1").get_all() == []
 
     # AUTOINCREMENT-счётчик сброшен: первый INSERT после дропа получает id=1.
-    new_id = await FeedbackStore(dbs2["feedback"]).save(
-        "fp-2", "CONFIRMED", reason="after drop"
-    )
+    new_id = await FeedbackStore(dbs2["feedback"]).save("fp-2", "CONFIRMED", reason="after drop")
     assert new_id == 1
 
 
@@ -182,13 +174,10 @@ async def test_all_three_databases_get_schema_meta(tmp_path):
 async def test_mismatch_logs_warning(tmp_path, caplog):
     """Drop по несовпадению версии логируется как warning."""
     dbs = await init_databases(_paths(tmp_path))
-    dbs["shown"]._write(
-        "UPDATE schema_meta SET value='0' WHERE key='schema_version'"
-    )
+    dbs["shown"]._write("UPDATE schema_meta SET value='0' WHERE key='schema_version'")
 
     with caplog.at_level(logging.WARNING, logger="appsecgate_mcp.storage.migrations"):
         assert ensure_schema_version(dbs["shown"]) is True
 
     assert any("schema_version" in r.message for r in caplog.records)
     assert _version(dbs["shown"]) == SCHEMA_VERSION
-

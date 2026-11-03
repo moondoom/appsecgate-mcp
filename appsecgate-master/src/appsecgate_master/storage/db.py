@@ -12,7 +12,8 @@ import asyncio
 import sqlite3
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -139,13 +140,18 @@ class Database:
     async def fetchall(self, sql: str, params: Sequence[Any] = ()) -> list[sqlite3.Row]:
         return await asyncio.to_thread(self._fetchall, sql, params)
 
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        yield
 
-async def init_database(path: str | Path) -> Database:
-    """Создаёт Database, коннектится и проверяет schema_version (ADR-0005 §2.7).
 
-    Точка вызова для приложения. Store-классы создают схему после этого
-    через ``init_schema()``.
-    """
+async def init_database(path: str | Path, database_url: str | None = None) -> Any:
+    """Создаёт выбранный backend и проверяет schema_version для SQLite."""
+    if database_url is not None:
+        from appsecgate_master.storage.postgres import init_postgres
+
+        return await init_postgres(database_url)
+
     from appsecgate_master.storage.migrations import ensure_schema_version
 
     db = Database(path)

@@ -42,6 +42,26 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=float(os.environ.get("APPSECGATE_LLM_TIMEOUT", "120")),
     )
+    parser.add_argument(
+        "--llm-temperature",
+        type=float,
+        default=float(os.environ.get("APPSECGATE_LLM_TEMPERATURE", "0")),
+    )
+    parser.add_argument(
+        "--llm-top-p",
+        type=float,
+        default=float(os.environ.get("APPSECGATE_LLM_TOP_P", "1")),
+    )
+    parser.add_argument(
+        "--llm-max-tokens",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_LLM_MAX_TOKENS", "2048")),
+    )
+    parser.add_argument(
+        "--llm-num-ctx",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_LLM_NUM_CTX", "32768")),
+    )
     parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--max-tokens", type=int, default=500_000)
@@ -118,6 +138,10 @@ def agent_main(argv: list[str] | None = None) -> int:
         llm_model=args.llm_model,
         llm_api_key=args.llm_api_key,
         llm_timeout=args.llm_timeout,
+        llm_temperature=args.llm_temperature,
+        llm_top_p=args.llm_top_p,
+        llm_max_tokens=args.llm_max_tokens,
+        llm_num_ctx=args.llm_num_ctx,
         timeout=args.timeout,
         max_iterations=args.max_iterations,
         max_tokens=args.max_tokens,

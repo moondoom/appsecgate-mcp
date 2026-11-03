@@ -10,7 +10,8 @@
 - В MCP зарегистрировано 15 тулов; `check_gate` реализован (OR-1).
 - `GET /v1/findings` поддерживает фильтры `state`, `branch` и `commit` (OR-2).
 - `appsecgate-agent` реализует только детерминированный report MVP без LLM.
-- Master работает на SQLite WAL; PostgreSQL, MCP-master и `scan_run` не реализованы.
+- Master поддерживает SQLite WAL (default) и PostgreSQL 16 с RLS/API-key auth;
+  MCP-master и `scan_run` не реализованы.
 - `appsecgate-mcp agent --mode=ro` реализован; `appsecgate-mcp ci` — отдельный hard-gate без LLM.
 - ADR-0007…ADR-0014 содержат проектные решения, но не означают реализацию.
 
@@ -27,7 +28,7 @@
 | TP-PREP | Тестовый контур и утверждённый пакет TP-0001 | в работе | параметры стенда и утверждение | TP-0001 §6 |
 | TP-EXEC | Выполнение TP-0001, отчёт и выбор модели | назначено Kimi | TP-PREP | TP-0001 |
 | MM-4/MM-8 | RW demo и полная документация режимов | после TP-0001 | RO-agent | ADR-0014 |
-| DB-1…DB-9 | PostgreSQL + auth-фундамент | до Стадии 2 TP-0001 | нет | ADR-0012 |
+| DB-1…DB-9 | PostgreSQL + auth-фундамент | выполнено | — | ADR-0012 |
 | RSS-2…RSS-6/RSS-9 | Scan run observability MVP | после TP-0001 | нет | ADR-0011 |
 | MCP-M-1…MCP-M-7 | Read-only MCP master | отложено | DB-5 | ADR-0013 |
 | ADR-0007 | Per-branch state | Proposed, Фаза 3 | classic multi-version | ADR-0007 |

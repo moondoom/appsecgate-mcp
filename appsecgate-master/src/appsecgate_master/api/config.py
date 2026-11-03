@@ -29,10 +29,13 @@ class MasterSettings:
 
     db_path: Path
     api_keys: dict[str, str]
+    database_url: str | None = None
 
     def __post_init__(self) -> None:
         self.db_path = Path(self.db_path).expanduser()
         self.api_keys = _validate_api_keys(self.api_keys)
+        if self.database_url is not None and not self.database_url.startswith("postgresql://"):
+            raise ValueError("APPSECGATE_MASTER_DATABASE_URL must use postgresql://")
 
     @classmethod
     def from_env(cls) -> MasterSettings:
@@ -44,4 +47,5 @@ class MasterSettings:
         return cls(
             db_path=Path(os.environ.get("APPSECGATE_MASTER_DB", str(DEFAULT_DB_PATH))),
             api_keys=_validate_api_keys(parsed),
+            database_url=os.environ.get("APPSECGATE_MASTER_DATABASE_URL") or None,
         )

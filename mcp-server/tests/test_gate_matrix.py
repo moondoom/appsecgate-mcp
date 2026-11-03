@@ -47,6 +47,16 @@ def test_row_shown_blocks_unresolved():
     assert (d.action, d.reason) == ("block", "unresolved_local")
 
 
+def test_row_shown_does_not_block_when_unresolved_gate_disabled():
+    d = decide(
+        _finding(Severity.LOW),
+        _record("SHOWN"),
+        cfg=_cfg(block_on_unresolved_local=False),
+        branch="main",
+    )
+    assert d.action != "block"
+
+
 # Ряд 3: REOPENED → block reopened.
 def test_row_reopened_blocks():
     d = decide(_finding(Severity.LOW), _record("REOPENED"), cfg=_cfg(), branch="main")

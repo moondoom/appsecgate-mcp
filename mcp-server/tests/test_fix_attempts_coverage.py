@@ -41,9 +41,15 @@ async def test_coverage_counts_through_finding_identity(tmp_path):
     await shown.record_shown(_finding("fp-1"), logical_id="lid-1")
     await shown.record_shown(_finding("fp-2"), logical_id="lid-2")
     await attempts.record(
-        project_id="pid-1", logical_id="lid-1", fingerprint="fp-1",
-        rule_id="test.rule", file_path="a.py", reported_status="fixed",
-        verified_status="fixed", note="", session_id="sess-1",
+        project_id="pid-1",
+        logical_id="lid-1",
+        fingerprint="fp-1",
+        rule_id="test.rule",
+        file_path="a.py",
+        reported_status="fixed",
+        verified_status="fixed",
+        note="",
+        session_id="sess-1",
     )
 
     assert await attempts.coverage("pid-1") == {"attempts": 1, "total": 2}

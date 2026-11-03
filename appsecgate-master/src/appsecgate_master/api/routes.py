@@ -55,14 +55,15 @@ async def push_events(
     if any(event.project_key != authenticated for event in payload.events):
         authorize_project(authenticated, "another-project")
 
-    outcomes = await request.app.state.events.ingest(payload.events)
-    keys = {
-        (event.project_key, event.fp)
-        for event, outcome in zip(payload.events, outcomes, strict=True)
-        if outcome.outcome in {"accepted", "duplicate"} and event.fp is not None
-    }
-    if keys:
-        await request.app.state.aggregates.rebuild_keys(keys)
+    async with request.app.state.db.transaction():
+        outcomes = await request.app.state.events.ingest(payload.events)
+        keys = {
+            (event.project_key, event.fp)
+            for event, outcome in zip(payload.events, outcomes, strict=True)
+            if outcome.outcome in {"accepted", "duplicate"} and event.fp is not None
+        }
+        if keys:
+            await request.app.state.aggregates.rebuild_keys(keys)
 
     response = EventsResponse(
         outcomes=[
