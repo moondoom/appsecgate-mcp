@@ -13,7 +13,8 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `mcp-server/src/` — код MCP-сервера (тулы, хуки, сканеры)
 - `appsecgate-master/src/` — центральный (master) сервер, Фаза 2 этап 2
   (ADR-0004/ADR-0006): события/агрегат/аудит и REST API (`api/`); пакет
-  `appsecgate-master/`, зависимости — pydantic, FastAPI, uvicorn. MS-4 выполнен.
+  `appsecgate-master/`, зависимости — pydantic, FastAPI, uvicorn, psycopg.
+  MS-4 и PostgreSQL backend (DB-1…DB-9, ADR-0012) выполнены.
 - `appsecgate-agent/src/` — server-agent MVP (AG-5): детерминированный MCP
   stdio report mode без LLM; зависимости — mcp, pydantic.
 - `mcp-server/src/appsecgate_mcp/sync/` — edge-синхронизация (MS-3/MS-5,
@@ -65,6 +66,7 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
   только через `storage/db.py`.
 - Все пути в ответах и fingerprint относительные от корня проекта, с прямыми слэшами.
 - Конфиг `update_config` сначала валидируется, потом пишется атомарно (`_atomic_write`), при сбое откатывается.
+- Язык документации: `README.md` и `docs/` — только английский; русский — только в `README.ru.md`.
 
 ## Product Principles (неизменны)
 - **Warn-only локально.** Блокировка только в CI (Фаза 2).
