@@ -127,6 +127,7 @@ appsecgate-mcp/
 - [План E2E-тестирования](docs/e2e-test-plan.md)
 - [Видение продукта](docs/product-vision.md)
 - [План публикации](docs/publishing.md)
+- [Статья на Хабре](https://habr.com/ru/articles/1099840/) -- «Вызываем паранойю у ИИ-агентов: заменит ли MCP AppSec?»
 
 ## Лицензия
 

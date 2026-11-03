@@ -294,6 +294,7 @@ make docker-build   # build moondoom/appsecgate-mcp:0.1.0
 - [E2E report](docs/reports/e2e-report-2026-10-30.md)
 - [Product vision](docs/product-vision.md)
 - [Open tasks](docs/open-tasks.md)
+- [Article on Habr (RU)](https://habr.com/ru/articles/1099840/) — "Making AI agents paranoid: will MCP replace AppSec?"
 
 ## License
 
