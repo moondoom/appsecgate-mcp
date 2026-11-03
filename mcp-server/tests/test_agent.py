@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from appsecgate_mcp.agent.cli import agent_main
 from appsecgate_mcp.agent.llm import LlmError, triage
 from appsecgate_mcp.agent.models import AgentConfig, LlmResult, Verdict
@@ -75,6 +73,33 @@ def test_agent_gate_block_is_success(monkeypatch, tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["exit_reason"] == "gate_block"
 
 
+def test_agent_reads_llm_generation_parameters(monkeypatch, tmp_path):
+    captured = {}
+
+    async def fake_run(config):
+        captured.update(
+            temperature=config.llm_temperature,
+            top_p=config.llm_top_p,
+            max_tokens=config.llm_max_tokens,
+            num_ctx=config.llm_num_ctx,
+        )
+        return _report(config)
+
+    monkeypatch.setattr("appsecgate_mcp.agent.cli.run_agent", fake_run)
+    monkeypatch.setenv("APPSECGATE_LLM_TEMPERATURE", "0.2")
+    monkeypatch.setenv("APPSECGATE_LLM_TOP_P", "0.9")
+    monkeypatch.setenv("APPSECGATE_LLM_MAX_TOKENS", "1024")
+    monkeypatch.setenv("APPSECGATE_LLM_NUM_CTX", "8192")
+
+    assert agent_main(_args(tmp_path)) == 0
+    assert captured == {
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "max_tokens": 1024,
+        "num_ctx": 8192,
+    }
+
+
 def test_agent_llm_failure_is_exit_2(monkeypatch, tmp_path, capsys):
     async def fake_run(config):
         raise LlmError("invalid protocol")
@@ -128,16 +153,62 @@ def test_triage_batches_each_finding_and_sums_usage(monkeypatch, tmp_path):
     assert result.usage["total_tokens"] == 20
 
 
-def test_triage_rejects_unknown_verdict_id(monkeypatch, tmp_path):
+def test_triage_retries_invalid_verdict_id_once(monkeypatch, tmp_path):
+    config = _config(tmp_path)
+    responses = iter(
+        [
+            LlmResult(verdicts=[Verdict(finding_id="other", verdict="FALSE_POSITIVE")]),
+            LlmResult(
+                verdicts=[Verdict(finding_id="expected", verdict="TRUE_POSITIVE")],
+                usage={"total_tokens": 10},
+            ),
+        ]
+    )
+    monkeypatch.setattr("appsecgate_mcp.agent.llm._request", lambda *args: next(responses))
+    contexts = [{"finding": {"fingerprint": "expected"}}]
+
+    import asyncio
+
+    result = asyncio.run(triage(config, contexts))
+
+    assert result.verdicts[0].finding_id == "expected"
+    assert result.usage["protocol_retries"] == 1
+    assert result.usage["total_tokens"] == 10
+
+
+def test_triage_fuzzy_remaps_verdict_id(monkeypatch, tmp_path):
+    config = _config(tmp_path)
+    result = LlmResult(
+        verdicts=[Verdict(finding_id=" Expected ", verdict="TRUE_POSITIVE")],
+        usage={"total_tokens": 7},
+    )
+    monkeypatch.setattr("appsecgate_mcp.agent.llm._request", lambda *args: result)
+    contexts = [{"finding": {"fingerprint": "expected"}}]
+
+    import asyncio
+
+    result = asyncio.run(triage(config, contexts))
+
+    assert result.verdicts[0].finding_id == "expected"
+    assert result.verdicts[0].verdict == "TRUE_POSITIVE"
+    assert result.usage.get("protocol_failures", 0) == 0
+
+
+def test_triage_persistent_mismatch_yields_needs_review(monkeypatch, tmp_path):
     config = _config(tmp_path)
     result = LlmResult(verdicts=[Verdict(finding_id="other", verdict="FALSE_POSITIVE")])
     monkeypatch.setattr("appsecgate_mcp.agent.llm._request", lambda *args: result)
     contexts = [{"finding": {"fingerprint": "expected"}}]
 
-    with pytest.raises(LlmError, match="do not match"):
-        import asyncio
+    import asyncio
 
-        asyncio.run(triage(config, contexts))
+    result = asyncio.run(triage(config, contexts))
+
+    assert [item.finding_id for item in result.verdicts] == ["expected"]
+    assert result.verdicts[0].verdict == "NEEDS_REVIEW"
+    assert "protocol failure" in result.verdicts[0].explanation
+    assert result.usage["protocol_retries"] == 1
+    assert result.usage["protocol_failures"] == 1
 
 
 def test_agent_mcp_failure_is_exit_2(monkeypatch, tmp_path, capsys):
