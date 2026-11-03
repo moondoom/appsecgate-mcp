@@ -15,6 +15,8 @@ returned to the agent as fix contexts.
 > Security should not be a drag. It should be invisible to the developer and
 > transparent to security.
 
+**Read:** [Making AI agents paranoid: will MCP replace AppSec? (Habr, RU)](https://habr.com/ru/articles/1099840/)
+
 ## When to use / When NOT to use
 
 **Use it when:**
@@ -136,6 +138,7 @@ Cline (v4.x) reads MCP servers from the shared settings file
 
 For a shared (user-level) config use an **absolute** project path in `-v` and
 `cwd`; a relative `.:/workspace:ro` works only in a per-project `.mcp.json`.
+
 ### Continue
 
 Add to `<project>/.continue/mcpServers/appsecgate.yaml`:
@@ -176,6 +179,26 @@ mcpServers:
 **Verify the install:** restart the client, then run `scan_file` on any file; tools
 appear with the `mcp__appsecgate__` prefix. Full instructions, edge cases, and
 diagnostics: [docs/deploy-agents.md](docs/deploy-agents.md).
+
+## Agent mode (coming in 0.1.8)
+
+The source tree already includes a read-only agent runner. It performs a complete
+triage loop: `scan_project`/`scan_diff` → fix-context collection → LLM verdicts,
+explanations, and patch suggestions → `check_gate` → report → optional master
+synchronization. It never modifies the project or applies patches.
+
+The LLM runs outside the MCP server and is configured through an
+OpenAI-compatible endpoint; the server's no-LLM invariant is unchanged.
+
+```bash
+appsecgate-mcp agent \
+  --mode=ro --scan=full --policy=warn --output-format=markdown \
+  --project . \
+  --llm-url http://<llm-host>/v1 --llm-model <model>
+```
+
+See the [TP-0001 experiment report](experiments/tp-0001/REPORT.md) for model
+benchmarks and aggregate results from 100 repositories.
 
 ## MCP tools (15)
 
@@ -244,38 +267,19 @@ scanners:
 gates:
   local:
     warn_on: [CRITICAL, HIGH, MEDIUM]
-    block_on: []            # локально не блокируем никогда
+    block_on: []            # never block locally
   ci:
     block_on: [CRITICAL, HIGH]
     warn_on: [MEDIUM]
-    block_on_unresolved_local: true   # "знал и не починил" (Фаза 2)
-    diff_base_ref: origin/main        # база для `appsecgate ci`
+    block_on_unresolved_local: true   # "seen but not fixed" (Phase 2)
+    diff_base_ref: origin/main        # base for `appsecgate ci`
 ```
 
-**CI gate (Фаза 2, ADR-0004 MS-6).** `appsecgate-mcp ci` сканирует diff
-против `gates.ci.diff_base_ref` (или `--base-ref`) и блокирует по
-`gates.ci.block_on`. «Показанное» CI **всегда** тянет с master
-(`GET /v1/findings`): master недоступен или ключ неверный → exit 2
-(fail-closed; snapshot-канал удалён решением владельца 2026-10-31).
-Параметры: `--master-url` (или `APPSECGATE_MASTER_URL`), `--api-key`
-(`APPSECGATE_MASTER_API_KEY`), `--project-id` (`APPSECGATE_PROJECT_ID`).
-Exit codes: `0` pass, `1` blocked, `2` инфраструктурная ошибка. Формат
-вывода: `text` или `ndjson`. Пример workflow: `.github/workflows/appsecgate-ci.yml`.
+### Optional: centralized CI and master sync
 
-**Sync to master (Фаза 2, MS-3–MS-5, ADR-0004).** `appsecgate-mcp sync`
-запускается на хосте (MCP-сервер остаётся без сети): идемпотентно пушит события
-из `shown_findings.db` через project-scoped outbox и скачивает CI/global
-suppressions + центральную policy в локальный data-dir. Remote-suppressions
-применяются на следующем скане; policy — в новой MCP-сессии с приоритетом
-`default < project < master < env`. Exit codes: `0` ok, `1` push/pull частично
-не удался, `2` инфраструктурная ошибка.
-
-**Master + edge (Фаза 2, MS-7, ADR-0004).** Корневой `docker-compose.yml`
-поднимает master (`moondoom/appsecgate-master:0.1.0`, REST :8000) и edge
-(контейнер MCP-образа с командой `sync`) на общей bridge-сети; `network_mode:
-none` остаётся только у STDIO MCP-сервера. Быстрый старт:
-`cp .env.example .env`, `make docker-master-build`, `make compose-up`,
-`make compose-edge-sync`. Подробно: [docs/deploy-master.md](docs/deploy-master.md).
+Local MCP scanning stays offline and warn-only. For shared findings, policy
+synchronization, and blocking CI scans, use the separate master + edge setup
+described in [docs/deploy-master.md](docs/deploy-master.md).
 
 ## Build from source
 
@@ -292,6 +296,8 @@ make docker-build   # build moondoom/appsecgate-mcp:0.1.0
 - [Architecture](docs/architecture.md)
 - [E2E test plan](docs/e2e-test-plan.md)
 - [E2E report](docs/reports/e2e-report-2026-10-30.md)
+- [TP-0001 Stage 2 test plan](docs/test-plans/TP-0001-ci-agent-local-llm.md)
+- [TP-0001 Stage 2 experiment report](experiments/tp-0001/REPORT.md) — model benchmarks and aggregate findings
 - [Product vision](docs/product-vision.md)
 - [Open tasks](docs/open-tasks.md)
 - [Article on Habr (RU)](https://habr.com/ru/articles/1099840/) — "Making AI agents paranoid: will MCP replace AppSec?"
@@ -301,4 +307,4 @@ make docker-build   # build moondoom/appsecgate-mcp:0.1.0
 MIT — see [LICENSE](LICENSE). Bundled scanner rules are third-party (see
 [third-party notices](mcp-server/rules/THIRD_PARTY_NOTICES.md)).
 
-Русскоязычная версия: [README.ru.md](README.ru.md).
+Russian version: [README.ru.md](README.ru.md).

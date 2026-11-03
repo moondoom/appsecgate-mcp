@@ -4,131 +4,308 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/moondoom/appsecgate-mcp)](https://hub.docker.com/r/moondoom/appsecgate-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Английская версия — основная:** [README.md](README.md)
-> Ниже — русскоязычная версия для разработчиков, работающих с AI-агентами.
+**Локальный security-сканер для AI-агентов.**
 
-**Локальный security-сканер для AI-агентов и разработчиков.**
+AI-агенты поставляют код быстрее, чем security успевает его проверить. AppSecGate —
+MCP-сервер, который сканирует файлы, diff и целые проекты **прямо внутри Claude
+Code, Cursor, Cline или Continue** — офлайн, без отправки вашего кода куда-либо.
+Находки нормализуются, дедуплицируются по fingerprint, отслеживаются между
+сканами и возвращаются агенту как контекст для исправления.
 
-AppSecGate -- MCP-сервер, который сканирует файлы, diffы и целые проекты
-прямо внутри Claude Code, Cursor, Cline и Continue. Офлайн, без отправки кода
-куда-либо, без LLM-вызовов на сервере.
+> Security не должно тормозить разработку. Оно должно быть незаметным для
+> разработчика и прозрачным для специалиста по безопасности.
 
-## Проблема
+**Читайте:** [«Вызываем паранойю у ИИ-агентов: заменит ли MCP AppSec?» (Хабр)](https://habr.com/ru/articles/1099840/)
 
-AI-агенты пишут код быстрее, чем security успевает его проверить. AppSecGate
-закрывает этот разрыв:
+## Когда использовать / Когда НЕ использовать
 
-- Сканирует изменения сразу после того, как агент написал код -- до коммита.
-- Ведет журнал показанных находок (shown_findings.db) -- каждая находка
-  регистрируется до того, как её увидят.
-- Идентифицирует находки детерминированным fingerprint -- повторный скан
-  не плодит дубликатов.
-- Готовит контекстные данные для LLM-агента (ContextPack) -- не промпт, а
-  данные: фрагмент кода, документация правила, дедуплицированные находки.
+**Используйте, если:**
 
-## Ключевые концепции
+- вы разрабатываете с AI-агентом и хотите сканировать каждый diff до его принятия;
+- вам нужно отслеживание находок между сканами с дедупликацией по fingerprint, а не гора отчётов;
+- важна работа офлайн: никаких сетевых вызовов, код не покидает машину, а сам сервер не вызывает LLM;
+- агент должен получать контекст для исправления находки (`get_fix_context`) и позже проверять исправление (`verify_fix`).
 
-- **Три контура сканирования:** warn-only локально, блокировка в CI (Фаза 2),
-  аудит после релиза.
-- **Пять ролей (Фаза 3):** Developer, Lead, AppSec, CISO, Admin.
-- **Жизненный цикл находки:** detected shown suppressed/false_positive
-  accepted/fixed verified/resurrected/blamed.
+**НЕ используйте, если:**
 
-## MCP-тулы (15)
+- вам нужны масштабный GUI-триаж, RBAC, командные дашборды или интеграция с ASOC.
+  Локальное сканирование, централизованная policy и классическая блокировка в CI
+  уже реализованы; дашборды и интеграция с ASOC — нет.
 
-| Инструмент | Что делает |
-|------------|------------|
-| scan_file | Сканирует один файл. |
-| scan_diff | Сканирует staged + unstaged + untracked изменения в git. |
-| scan_project | Сканирует весь проект (без аргументов) — отчёт сверки: counts + requires_confirmation. |
-| check_gate | Оценивает последний скан по advisory policy и возвращает GateSummary с рекомендуемым действием. |
-| get_fix_context | Контекстный пакет для фикса (находка + код + правило). |
-| get_fix_context_batch | Пакеты для нескольких находок (до 20). |
-| verify_fix | Проверяет фикс: пересканирует файл, сравнивает fingerprint. |
-| verify_fix_batch | Проверяет до 20 находок. |
-| query_findings_db | Только SELECT по публичным представлениям. |
-| export_snapshot | Экспорт находок в ndjson (parquet -- Фаза 2). |
-| get_config / update_config | Чтение и обновление конфигурации сессии. |
-| submit_feedback | Обратная связь: FALSE_POSITIVE / CONFIRMED / WONT_FIX. |
-| get_scan_history | Журнал показанных находок с попытками верификации. |
-| suppress_finding | Локальное подавление находки (`action: suppress\|unsuppress`). |
+## Demo
 
-## Сканеры (Фаза 1)
+<!-- Demo GIF (установка + сканирование Juice Shop): docs/assets/demo.gif — ещё не записан. -->
 
-- **SAST:** Semgrep (локальный Rules Bundle, без обращений к реестру).
-- **Секреты:** Gitleaks, TruffleHog (редакция до записи в БД).
-- **SCA:** Trivy (база уязвимостей на момент сборки образа).
+## Быстрая установка
 
-## Модель безопасности
-
-- **Read-only монтирование.** Сервер никогда не пишет в файлы проекта.
-- **Offline по умолчанию.** network_mode: none -- никаких HTTP-вызовов.
-- **Ноль LLM-вызовов.** На сервере нет вызовов к языковым моделям.
-- **Редакция секретов.** При записи, а не при отдаче.
-- **Контейнер:** non-root, read-only rootfs, cap-drop=ALL.
-
-## Быстрый старт
+Сервер работает в Docker-контейнере. Проект монтируется **только для чтения**
+(`:ro`), у контейнера **нет сетевого доступа** (`--network=none`), а сканирование
+никогда не пишет в дерево исходников.
 
 ```bash
-# Сборка образа
-make docker-build
+docker pull moondoom/appsecgate-mcp:0.1.0
+```
 
-# Запуск в docker-compose
-PROJECT_PATH=/путь/к/проекту docker compose run --rm appsecgate-mcp
+### Claude Code
 
-# Или напрямую
-docker run --rm -i --network=none --read-only \
+Добавьте в `<project>/.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "appsecgate": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--network=none", "--read-only",
+        "--tmpfs=/tmp:size=100M,mode=1777", "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "-v", ".:/workspace:ro",
+        "-v", "appsecgate-cache:/home/appsecgate/.cache",
+        "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
+        "moondoom/appsecgate-mcp:0.1.0",
+        "--transport", "stdio", "--project", "/workspace"
+      ]
+    }
+  }
+}
+```
+
+Или зарегистрируйте напрямую:
+
+```bash
+claude mcp add appsecgate -- docker run --rm -i --network=none --read-only \
   --tmpfs=/tmp:size=100M,mode=1777 --cap-drop=ALL \
   --security-opt=no-new-privileges:true \
   -v .:/workspace:ro \
   -v appsecgate-cache:/home/appsecgate/.cache \
   -v appsecgate-data:/home/appsecgate/.appsecgate-mcp \
-  moondoom/appsecgate-mcp:0.1.0 \
-  --transport stdio --project /workspace
+  moondoom/appsecgate-mcp:0.1.0 --transport stdio --project /workspace
 ```
 
-## Разработка
+### Cursor
+
+Добавьте в `<project>/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "appsecgate": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--network=none", "--read-only",
+        "--tmpfs=/tmp:size=100M,mode=1777", "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "-v", ".:/workspace:ro",
+        "-v", "appsecgate-cache:/home/appsecgate/.cache",
+        "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
+        "moondoom/appsecgate-mcp:0.1.0",
+        "--transport", "stdio", "--project", "/workspace"
+      ]
+    }
+  }
+}
+```
+
+### Cline
+
+Cline (v4.x) читает MCP-серверы из общего файла настроек
+`~/.cline/data/settings/cline_mcp_settings.json`. Добавьте сервер `appsecgate`:
+
+```json
+{
+  "mcpServers": {
+    "appsecgate": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--network=none", "--read-only",
+        "--tmpfs=/tmp:size=100M,mode=1777", "--cap-drop=ALL",
+        "--security-opt=no-new-privileges:true",
+        "-v", "/absolute/path/to/your/project:/workspace:ro",
+        "-v", "appsecgate-cache:/home/appsecgate/.cache",
+        "-v", "appsecgate-data:/home/appsecgate/.appsecgate-mcp",
+        "moondoom/appsecgate-mcp:0.1.0",
+        "--transport", "stdio", "--project", "/workspace"
+      ],
+      "cwd": "/absolute/path/to/your/project",
+      "env": {},
+      "disabled": false,
+      "timeout": 600
+    }
+  }
+}
+```
+
+Для общей пользовательской конфигурации укажите **абсолютный** путь к проекту
+в `-v` и `cwd`; относительный путь `.:/workspace:ro` работает только в
+проектном `.mcp.json`.
+
+### Continue
+
+Добавьте в `<project>/.continue/mcpServers/appsecgate.yaml`:
+
+```yaml
+name: appsecgate
+version: 0.1.0
+schema: v1
+mcpServers:
+  - name: appsecgate
+    type: stdio
+    command: docker
+    args:
+      - run
+      - --rm
+      - -i
+      - --network=none
+      - --read-only
+      - --tmpfs=/tmp:size=100M,mode=1777
+      - --cap-drop=ALL
+      - --security-opt=no-new-privileges:true
+      - -v
+      - .:/workspace:ro
+      - -v
+      - appsecgate-cache:/home/appsecgate/.cache
+      - -v
+      - appsecgate-data:/home/appsecgate/.appsecgate-mcp
+      - moondoom/appsecgate-mcp:0.1.0
+      - --transport
+      - stdio
+      - --project
+      - /workspace
+    connectionTimeout: 600000
+    requestOptions:
+      timeout: 600000
+```
+
+**Проверка установки:** перезапустите клиент и выполните `scan_file` для любого
+файла; инструменты появятся с префиксом `mcp__appsecgate__`. Полная инструкция,
+краевые случаи и диагностика: [docs/deploy-agents.md](docs/deploy-agents.md).
+
+## Режим агента (появится в 0.1.8)
+
+В исходном дереве уже есть read-only agent runner. Он выполняет полный цикл
+триажа: `scan_project`/`scan_diff` → сбор контекста для исправления → вердикты,
+объяснения и предложения патчей от LLM → `check_gate` → отчёт → опциональная
+синхронизация с master. Он не изменяет проект и не применяет патчи.
+
+LLM работает вне MCP-сервера и настраивается через OpenAI-compatible endpoint;
+инвариант «ноль LLM-вызовов на сервере» сохраняется.
+
+```bash
+appsecgate-mcp agent \
+  --mode=ro --scan=full --policy=warn --output-format=markdown \
+  --project . \
+  --llm-url http://<llm-host>/v1 --llm-model <model>
+```
+
+Бенчмарки моделей и агрегированные результаты на 100 репозиториях:
+[отчёт TP-0001](experiments/tp-0001/REPORT.md).
+
+## MCP-инструменты (15)
+
+| Инструмент | Что делает |
+|------------|------------|
+| `scan_file` | Сканирует один файл и возвращает нормализованные находки. |
+| `scan_diff` | Сканирует staged + unstaged + untracked изменения в текущем git-репозитории. |
+| `scan_project` | Сканирует весь проект без аргументов — отчёт сверки: counts + TOP-10 + requires_confirmation. |
+| `check_gate` | Оценивает последнее сканирование по advisory policy и возвращает GateSummary с рекомендуемым действием. |
+| `get_fix_context` | Возвращает ContextPack для находки: находка + фрагмент кода + документация правила. |
+| `get_fix_context_batch` | Возвращает ContextPack для нескольких находок, до 20. |
+| `verify_fix` | Проверяет одну находку: повторно сканирует файл и сопоставляет по logical_id. |
+| `verify_fix_batch` | Проверяет до 20 находок; каждый файл сканируется один раз. |
+| `query_findings_db` | Выполняет только SELECT по публичным представлениям v_findings, v_summary, v_projects. |
+| `export_snapshot` | Экспортирует снимок находок в ndjson (parquet — Фаза 2). |
+| `get_config` | Возвращает активную объединённую конфигурацию сессии. |
+| `update_config` | Выполняет deep-merge изменений в `.appsecgate-mcp/config.yaml` и перезагружает сессию. |
+| `submit_feedback` | Отправляет обратную связь по находке: FALSE_POSITIVE / CONFIRMED / WONT_FIX. |
+| `get_scan_history` | Возвращает журнал показанных находок (shown_findings.db) с попытками верификации. |
+| `suppress_finding` | Создаёт или удаляет локальное подавление (`action: suppress\|unsuppress`; не влияет на CI gate в Фазе 1). |
+
+## Сканеры (Фаза 1)
+
+| Категория | Сканеры | Примечания |
+|-----------|---------|------------|
+| SAST | Semgrep | Встроенные офлайн-правила (Rules Bundle), доступ к реестру не нужен |
+| Секреты | Gitleaks, TruffleHog | Значения редактируются до сохранения |
+| SCA | Trivy | База уязвимостей добавляется при сборке образа |
+
+Каждый сканер запускается отдельным subprocess без shell. В следующих фазах:
+Bandit, ESLint (SAST); OSV-Scanner, Dependency-Track (SCA); Checkov, KICS (IaC);
+OWASP ZAP (DAST).
+
+## Модель безопасности
+
+- **Проект только для чтения.** Проект монтируется `:ro`; сервер никогда не пишет в исходники.
+- **Офлайн по умолчанию.** `network_mode: none` — никаких исходящих сетевых вызовов.
+- **Ноль LLM-вызовов.** Исправление генерирует модель вашего агента; сервер передаёт только контекстные данные, не промпты.
+- **Редакция секретов до сохранения.** При записи, а не при чтении.
+- **Усиленный контейнер.** Non-root UID 1000, read-only rootfs, `cap-drop=ALL`, `no-new-privileges`.
+
+## Конфигурация
+
+Настройки проекта хранятся в `.appsecgate-mcp/config.yaml` и объединяются
+(deep-merge) поверх defaults из образа (`/etc/appsecgate/default.yaml`):
+
+```yaml
+version: 1
+stack:
+  languages: [python, typescript]
+  frameworks: [fastapi, react]
+
+scanners:
+  sast:
+    enabled: true
+    tool: semgrep
+    rulesets: []          # правила Semgrep берутся из локального Rules Bundle
+  secrets:
+    enabled: true
+    tool: gitleaks
+  sca:
+    enabled: true
+    tool: trivy
+    severity_threshold: HIGH
+
+gates:
+  local:
+    warn_on: [CRITICAL, HIGH, MEDIUM]
+    block_on: []            # локально никогда не блокируем
+  ci:
+    block_on: [CRITICAL, HIGH]
+    warn_on: [MEDIUM]
+    block_on_unresolved_local: true   # «увидели и не исправили» (Фаза 2)
+    diff_base_ref: origin/main        # база для `appsecgate ci`
+```
+
+### Опционально: централизованный CI и синхронизация с master
+
+Локальное MCP-сканирование остаётся офлайн и warn-only. Для общих находок,
+синхронизации policy и блокирующих проверок в CI используется отдельная схема
+master + edge, описанная в [docs/deploy-master.md](docs/deploy-master.md).
+
+## Сборка из исходников
 
 ```bash
 make setup          # создание uv-окружения
-make check          # ruff + pytest (622 теста в двух пакетах)
-make docker-build   # moondoom/appsecgate-mcp:0.1.0
-```
-
-## Структура репозитория
-
-```
-appsecgate-mcp/
-  README.md                  # Основная (английская) версия
-  README.ru.md               # Этот файл
-  llms.txt                   # Индекс для AI-агентов
-  server.json                # MCP Registry
-  docs/
-    publishing.md            # План публикации
-    deploy-agents.md         # Развертывание для AI-агентов
-    architecture.md          # Архитектура
-    open-tasks.md            # Открытые задачи
-    e2e-test-plan.md         # План E2E
-    reports/                 # Отчеты (E2E, замеры)
-    adr/                     # Architectural Decision Records
-    product-vision.md        # Видение продукта
-  mcp-server/                # Код сервера
-    src/appsecgate_mcp/      # MCP-тулы, сканеры, storage
-    config/default.yaml      # Конфигурация по умолчанию
-    tests/                   # 496 тестов
-  Makefile
-  docker-compose.yml
+make check          # линтер (ruff) + тесты (pytest)
+make docker-build   # сборка moondoom/appsecgate-mcp:0.1.0
 ```
 
 ## Документация
 
-- [Развертывание для AI-агентов](docs/deploy-agents.md) -- все четыре клиента
+- [Развёртывание для AI-агентов](docs/deploy-agents.md) — все четыре клиента, проверка, диагностика
+- [Развёртывание master + edge](docs/deploy-master.md) — master-сервер, синхронизация, CI gate
 - [Архитектура](docs/architecture.md)
 - [План E2E-тестирования](docs/e2e-test-plan.md)
+- [E2E-отчёт](docs/reports/e2e-report-2026-10-30.md)
+- [План Stage 2 TP-0001](docs/test-plans/TP-0001-ci-agent-local-llm.md)
+- [Отчёт Stage 2 TP-0001](experiments/tp-0001/REPORT.md) — бенчмарки моделей и агрегированные находки
 - [Видение продукта](docs/product-vision.md)
-- [План публикации](docs/publishing.md)
-- [Статья на Хабре](https://habr.com/ru/articles/1099840/) -- «Вызываем паранойю у ИИ-агентов: заменит ли MCP AppSec?»
+- [Открытые задачи](docs/open-tasks.md)
+- [Статья на Хабре](https://habr.com/ru/articles/1099840/) — «Вызываем паранойю у ИИ-агентов: заменит ли MCP AppSec?»
 
 ## Лицензия
 
-MIT -- см. [LICENSE](LICENSE).
+MIT — см. [LICENSE](LICENSE). Встроенные правила сканеров принадлежат третьим
+сторонам (см. [third-party notices](mcp-server/rules/THIRD_PARTY_NOTICES.md)).
+
+Английская версия: [README.md](README.md).
