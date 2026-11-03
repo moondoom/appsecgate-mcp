@@ -14,7 +14,9 @@ def get_json(url: str, api_key: str) -> list[dict]:
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
     with urllib.request.urlopen(request, timeout=30) as response:
         payload = json.load(response)
-    return payload.get("items", payload.get("findings", payload if isinstance(payload, list) else []))
+    if isinstance(payload, list):
+        return payload
+    return payload.get("items") or payload.get("findings") or payload.get("audit") or []
 
 
 def timestamp(value: str | None) -> datetime | None:
@@ -42,6 +44,16 @@ def main() -> int:
     edge = {row["fingerprint"]: row["last_shown_at"] for row in rows}
     url = f"{args.master_url.rstrip('/')}/v1/findings?project={args.project_id}"
     master_rows = get_json(url, args.api_key)
+    audit_url = f"{args.master_url.rstrip('/')}/v1/audit?project={args.project_id}"
+    audit_rows = get_json(audit_url, args.api_key)
+    received_by_fp: dict[str, datetime] = {}
+    for item in audit_rows:
+        fingerprint = item.get("fp")
+        received = timestamp(item.get("received_at"))
+        if fingerprint and received:
+            current = received_by_fp.get(fingerprint)
+            if current is None or received < current:
+                received_by_fp[fingerprint] = received
     fingerprints = [item.get("fingerprint") or item["fp"] for item in master_rows]
     master = set(fingerprints)
     edge_set = set(edge)
@@ -51,17 +63,18 @@ def main() -> int:
         fingerprint = item.get("fingerprint") or item["fp"]
         shown = timestamp(edge.get(fingerprint))
         received = timestamp(item.get("master_received_at") or item.get("created_at"))
+        received = received or received_by_fp.get(fingerprint)
         if shown and received:
             delays.append(max(0.0, (received - shown).total_seconds()))
     delays.sort()
     p95 = delays[min(len(delays) - 1, int(len(delays) * 0.95))] if delays else None
     duplicates = sum(count - 1 for count in Counter(fingerprints).values())
     result = {
-        "D1": float(edge_set == master),
+        "D1": float(bool(edge_set) and edge_set == master),
         "D2": p95 is not None and p95 < 300,
         "D2_p95_sec": p95,
         "D3": float(duplicates == 0),
-        "D4": float(edge_set == master),
+        "D4": float(bool(edge_set) and edge_set == master),
         "D5": None,
         "D6": None,
         "D7": None,

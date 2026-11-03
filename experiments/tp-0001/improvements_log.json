@@ -1,0 +1,56 @@
+{
+  "budget": {"T_days": 7, "K": 3},
+  "used": 2,
+  "entries": [
+    {
+      "at": "2026-11-02",
+      "scope": "test-harness",
+      "issue": "invoke-docker.sh sourced runtime/master.env after explicit environment, overriding the per-run project ID and master key; D-checks queried empty projects.",
+      "fix": "Explicit APPSECGATE_PROJECT_ID and APPSECGATE_MASTER_API_KEY now take precedence; POLICY is configurable for T-08.",
+      "resume": "Invalidated the first cycle01 attempt and restarted the complete three-model cycle with clean data directories.",
+      "consumes_fix_budget": false
+    },
+    {
+      "at": "2026-11-02",
+      "scope": "test-harness",
+      "issue": "D1/D4 accepted empty equality, D2 had no timestamps because findings lack master_received_at, and eval lacked the required critical-TP metric.",
+      "fix": "D1/D4 now require nonempty edge findings; D2 uses audit received_at; eval reports critical TP precision/recall/F1 and leaves FP F1 null without FP ground truth.",
+      "resume": "Recompute metrics for every clean cycle01 run; no product code or prompt changed.",
+      "consumes_fix_budget": false
+    },
+    {
+      "at": "2026-11-02",
+      "scope": "test-harness",
+      "issue": "Initial gate fixtures masked unresolved_local behind ci_severity, scanned PyGoat in one repeated case, patched only one of nine Django CVEs, and suppressed only one finding.",
+      "fix": "Isolated every repeated run to gate_project, added explicit policies, upgrade T-03 to Django 5.2.8, and create CI suppressions for all target findings.",
+      "resume": "Invalidated gate01 and restarted all T-01…T-08 for all models as gate01r2 with clean project/data IDs.",
+      "consumes_fix_budget": false
+    },
+    {
+      "at": "2026-11-02",
+      "scope": "mcp-server gate",
+      "issue": "T-05 failed on every model: CiGateConfig.block_on_unresolved_local=false was pulled and loaded but SHOWN was blocked unconditionally.",
+      "fix": "Gate matrix now checks block_on_unresolved_local for SHOWN; regression test added.",
+      "approval": "Approved by the user as fix 1/3 on 2026-11-02.",
+      "resume": "Run make check, rebuild the canonical image, and repeat the complete Stage 1A/1B cycle 1.",
+      "consumes_fix_budget": true
+    },
+    {
+      "at": "2026-11-02",
+      "scope": "RO-agent LLM protocol",
+      "issue": "Qwen and GLM intermittently returned invalid verdict objects or finding IDs; six diagnostic cycles gave 72.2% overall stability.",
+      "fix": "Use strict JSON Schema, temperature=0, and one protocol-only retry per finding; expose protocol_retries in usage. Prompt unchanged.",
+      "approval": "User explicitly requested stabilization before Stage 2 on 2026-11-02.",
+      "resume": "Validate and rebuild, then restart acceptance numbering from cycle 1; previous cycles remain diagnostic.",
+      "consumes_fix_budget": true
+    },
+    {
+      "at": "2026-11-02",
+      "scope": "test-harness patch metrics",
+      "issue": "The patch evaluator passed a relative patch path after changing cwd, so git apply could not open the file and every valid proposal was scored as unapplicable.",
+      "fix": "Pass patch.resolve() to git apply and recompute all stabilized acceptance and DeepSeek patch metrics.",
+      "resume": "Corrected totals: Qwen 38/38, GLM 16/100, Gemma4 0/69, DeepSeek 65/70. No product code changed.",
+      "consumes_fix_budget": false
+    }
+  ]
+}

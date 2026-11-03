@@ -36,7 +36,28 @@ def main() -> int:
             fp += 1
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else None
+    critical_tp = sum(
+        label == "TRUE_POSITIVE" and actual.get(finding_id) == "TRUE_POSITIVE"
+        for finding_id, label in expected.items()
+    )
+    critical_fn = sum(
+        label == "TRUE_POSITIVE" and actual.get(finding_id) != "TRUE_POSITIVE"
+        for finding_id, label in expected.items()
+    )
+    critical_fp = sum(
+        label != "TRUE_POSITIVE" and actual.get(finding_id) == "TRUE_POSITIVE"
+        for finding_id, label in expected.items()
+    )
+    critical_precision = (
+        critical_tp / (critical_tp + critical_fp) if critical_tp + critical_fp else 0.0
+    )
+    critical_recall = critical_tp / (critical_tp + critical_fn) if critical_tp + critical_fn else 0.0
+    critical_f1 = (
+        2 * critical_precision * critical_recall / (critical_precision + critical_recall)
+        if critical_precision + critical_recall
+        else 0.0
+    )
     master = load(args.master_checks) if args.master_checks else {}
     master_applicable = [master.get(f"D{i}") for i in range(1, 8)]
     master_applicable = [item for item in master_applicable if item is not None]
@@ -48,6 +69,9 @@ def main() -> int:
         "fp_precision": precision,
         "fp_recall": recall,
         "fp_f1": f1,
+        "critical_tp_precision": critical_precision,
+        "critical_tp_recall": critical_recall,
+        "critical_tp_f1": critical_f1,
         "verdicts": dict(Counter(item["verdict"] for item in report["verdicts"])),
         "usage": report["usage"],
         "duration_sec": report["duration_sec"],

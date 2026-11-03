@@ -7,8 +7,8 @@
 ## Подготовка
 
 1. `invoke.sh` загружает корневой `.env` и использует `LITELLM_API_KEY`, не копируя секрет.
-2. Задать `APPSECGATE_LLM_MODEL` из `ci_config/<model>.env.example`; URL по умолчанию —
-   `http://10.0.0.222:4000/v1`. Для master-прогона задать URL и project-scoped key.
+2. Задать `APPSECGATE_LLM_MODEL` из `ci_config/<model>.env.example` и `APPSECGATE_LLM_URL`
+   для своего окружения. Для master-прогона задать URL и project-scoped key.
 3. Для каждого прогона создать чистый writable `DATA_DIR`, новые `RUN_ID` и project-scoped key.
 4. Выполнить `invoke.sh`. Без master-параметров допустим только предварительный `--no-sync` прогон.
 5. Исходный PyGoat монтируется только read-only. Патчи применяются лишь на отдельной копии.
