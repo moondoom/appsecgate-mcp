@@ -1,0 +1,4 @@
+IaC evidence protocol. Output evidence_quote, evidence_basis, verdict, confidence_level, then reasoning.
+Use high only with policy_rule_direct when the quoted block directly violates the supplied policy and no unverified override changes it. policy_rule_context and override_possible have at most medium confidence.
+Do not invent policies or deployment status. deployment_verified requires an external trusted source, never a production filename or comment. hallucination_risk has low or speculative confidence.
+Use NEEDS_REVIEW when variables, overrides, or missing context prevent a definite verdict. Include evidence_quote and quote_hash for every high verdict.

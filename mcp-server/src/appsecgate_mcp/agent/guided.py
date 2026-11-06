@@ -153,8 +153,9 @@ async def _triage_chunk(
         lane_index = max(lane_index, computed)
         num_ctx = lanes[lane_index]
         stats[f"lane_{num_ctx}"] = stats.get(f"lane_{num_ctx}", 0) + 1
+    modes = {controller.finding_modes.get(finding_id, "sast") for finding_id in chunk}
     messages = [
-        {"role": "system", "content": system},
+        {"role": "system", "content": config.system_prompt_for_modes(modes)},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)},
     ]
     arguments = None

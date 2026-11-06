@@ -15,6 +15,7 @@ from appsecgate_mcp.agent.journal import TriageJournal
 from appsecgate_mcp.agent.llm import triage
 from appsecgate_mcp.agent.master import MasterClient
 from appsecgate_mcp.agent.models import AgentConfig
+from appsecgate_mcp.agent.verdict_validator import finding_mode
 
 
 class AgentError(RuntimeError):
@@ -110,6 +111,9 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
                 journal.project_id = controller.project_id
                 findings = await _all_findings(call, config.scan) if controller.finding_ids else []
                 journal.findings = {item["finding_id"]: item for item in findings}
+                controller.finding_modes = {
+                    item["finding_id"]: finding_mode(item.get("category")) for item in findings
+                }
                 if not controller.finding_ids:
                     llm = controller.result()
                 elif config.agent_mode == "guided":

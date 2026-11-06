@@ -54,24 +54,26 @@ async def triage_guided_sched(config: AgentConfig, controller: AgentController) 
     await reuse_prior_verdicts(config, controller, stats)
     batch_size = _batch_size(config)
     pending = [fid for fid in controller.finding_ids if fid in controller.pending]
-    prepared: list[tuple[int, list[str], dict[str, Any]]] = []
+    prepared: list[tuple[str, int, list[str], dict[str, Any]]] = []
     for chunk in _chunks(pending, batch_size):
-        contexts = await controller.call("get_fix_context_batch", {"finding_ids": chunk})
-        manifests = await _manifest_contents(controller, chunk, findings)
-        payload = {
-            "task": "Submit one verdict for every provided finding ID.",
-            "project_context": project_context,
-            "findings": [findings[fid] for fid in chunk if fid in findings],
-            "contexts": contexts,
-            "manifest_files": manifests,
-        }
-        estimate = len(json.dumps(payload, ensure_ascii=False, default=str)) // 3 + 4000
-        lane_index = next(
-            (i for i, lane in enumerate(config.sched_lanes) if estimate <= lane),
-            len(config.sched_lanes) - 1,
-        )
-        prepared.append((lane_index, chunk, payload))
-    prepared.sort(key=lambda item: item[0])
+        for mode in sorted({controller.finding_modes.get(fid, "sast") for fid in chunk}):
+            mode_chunk = [fid for fid in chunk if controller.finding_modes.get(fid, "sast") == mode]
+            contexts = await controller.call("get_fix_context_batch", {"finding_ids": mode_chunk})
+            manifests = await _manifest_contents(controller, mode_chunk, findings)
+            payload = {
+                "task": "Submit one verdict for every provided finding ID.",
+                "project_context": project_context,
+                "findings": [findings[fid] for fid in mode_chunk if fid in findings],
+                "contexts": contexts,
+                "manifest_files": manifests,
+            }
+            estimate = len(json.dumps(payload, ensure_ascii=False, default=str)) // 3 + 4000
+            lane_index = next(
+                (i for i, lane in enumerate(config.sched_lanes) if estimate <= lane),
+                len(config.sched_lanes) - 1,
+            )
+            prepared.append((mode, lane_index, mode_chunk, payload))
+    prepared.sort(key=lambda item: (item[0], item[1]))
     semaphore = asyncio.Semaphore(max(1, config.sched_parallel))
 
     async def _worker(chunk: list[str], payload: dict[str, Any]) -> None:
@@ -91,15 +93,16 @@ async def triage_guided_sched(config: AgentConfig, controller: AgentController) 
                 payload=payload,
             )
 
-    current_lane = None
+    current_group = None
     group: list = []
-    for lane_index, chunk, payload in [*prepared, (None, None, None)]:
-        if lane_index != current_lane and group:
+    for mode, lane_index, chunk, payload in [*prepared, (None, None, None, None)]:
+        group_key = (mode, lane_index)
+        if group_key != current_group and group:
             await asyncio.gather(*group)
             group = []
         if chunk is not None:
             group.append(_worker(chunk, payload))
-        current_lane = lane_index
+        current_group = group_key
     result = controller.result()
     result.usage = {
         **usage,

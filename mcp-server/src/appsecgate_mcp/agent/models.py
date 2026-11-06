@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentConfig(BaseModel):
@@ -58,6 +58,17 @@ class AgentConfig(BaseModel):
     def prompt_sha256(self) -> str:
         return hashlib.sha256(self.prompt_path.read_bytes()).hexdigest()
 
+    def prompt_sha256_for_mode(self, mode: str) -> str:
+        path = Path(__file__).parent / "prompts" / f"agent_{mode}.md"
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def system_prompt_for_modes(self, modes: set[str]) -> str:
+        parts = [self.guided_prompt_path.read_text(encoding="utf-8")]
+        for mode in sorted(modes):
+            path = Path(__file__).parent / "prompts" / f"agent_{mode}.md"
+            parts.append(path.read_text(encoding="utf-8"))
+        return "\n\n".join(parts)
+
 
 class Verdict(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -65,20 +76,46 @@ class Verdict(BaseModel):
     finding_id: str
     verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"]
     explanation: str = ""
-    confidence: int | None = Field(default=None, ge=0, le=100)
+    confidence_level: Literal["high", "medium", "low", "speculative"] | None = None
+    evidence_basis: (
+        Literal[
+            "direct_snippet",
+            "direct_snippet_credential",
+            "file_verified",
+            "indirect_pattern",
+            "test_or_fixture",
+            "assumption",
+            "placeholder_or_example",
+            "manifest_version_match",
+            "reachability_verified",
+            "reachability_unverified",
+            "cve_reference_only",
+            "vex_upstream",
+            "manifest_absent",
+            "policy_rule_direct",
+            "policy_rule_context",
+            "override_possible",
+            "hallucination_risk",
+            "deployment_verified",
+        ]
+        | None
+    ) = None
+    evidence_quote: str = ""
+    source_file: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    read_event_id: str | None = None
+    quote_hash: str | None = None
+    reasoning: str = ""
+    model_confidence_level: Literal["high", "medium", "low", "speculative"] | None = None
+    model_verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"] | None = None
+    downgrade_reason: str | None = None
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     patch: str | list[dict[str, Any]] | None = None
     supersedes_verdict_id: str | None = Field(default=None, exclude=True)
-    revision_reason: Literal["initial", "ttl_expired", "legacy_confidence_missing", "manual"] = (
-        Field(default="initial", exclude=True)
-    )
-
-    @field_validator("confidence", mode="before")
-    @classmethod
-    def _normalize_confidence(cls, value: Any) -> int | None:
-        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100:
-            return value
-        return None
+    revision_reason: Literal[
+        "initial", "ttl_expired", "legacy_confidence_missing", "manual", "prompt_updated"
+    ] = Field(default="initial", exclude=True)
 
 
 class LlmResult(BaseModel):

@@ -49,12 +49,26 @@ SELECT
     json_extract(payload, '$.scanner') AS scanner,
     json_extract(payload, '$.ruleset_hash') AS ruleset_hash,
     json_extract(payload, '$.rule_hash') AS rule_hash,
-    json_extract(payload, '$.rule_hash_status') AS rule_hash_status
+    json_extract(payload, '$.rule_hash_status') AS rule_hash_status,
+    json_extract(payload, '$.confidence_level') AS confidence_level,
+    json_extract(payload, '$.model_confidence_level') AS model_confidence_level,
+    json_extract(payload, '$.model_verdict') AS model_verdict,
+    json_extract(payload, '$.downgrade_reason') AS downgrade_reason,
+    json_extract(payload, '$.evidence_basis') AS evidence_basis,
+    json_extract(payload, '$.evidence_quote') AS evidence_quote,
+    json_extract(payload, '$.source_file') AS source_file,
+    json_extract(payload, '$.start_line') AS start_line,
+    json_extract(payload, '$.end_line') AS end_line,
+    json_extract(payload, '$.read_event_id') AS read_event_id,
+    json_extract(payload, '$.quote_hash') AS quote_hash,
+    json_extract(payload, '$.reasoning') AS reasoning,
+    json_extract(payload, '$.prompt_mode') AS prompt_mode
 FROM events WHERE event_type = 'triage_verdicted';
 CREATE VIEW IF NOT EXISTS v_triage_knowledge AS
 SELECT
     verdict_id, supersedes_verdict_id, verdict, rule_id, package, ecosystem,
-    cve_id, explanation, evidence, agent_version, model, created_at, at
+    cve_id, explanation, evidence, agent_version, model, created_at, at,
+    confidence_level, evidence_basis
 FROM v_triage_verdicts
 WHERE verdict_source = 'human' AND review_status = 'confirmed';
 CREATE VIEW IF NOT EXISTS v_cve AS

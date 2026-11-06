@@ -240,8 +240,9 @@ confidence/evidence, cross-project history, human labels, CVE/reachability и
 deployment evidence. Решения не перезаписывают исходные verdict events. При
 недоступном master edge сохраняет базовый severity (fail-deferred).
 
-Стартовый Mode A: SAST `direct_snippet`, Secrets `direct_snippet_credential`,
-CVE `manifest_version_match`, IaC `policy_rule_direct`. Mode B
+Стартовый Mode A реализован и прошёл controlled `rev4` E2E: 5 fresh reused,
+2 TTL revisions и 3 legacy revisions; scheduler группирует batches по
+(`mode`, `lane`) для prompt cache. Mode B
 (`file_verified`/`reachability_verified`) отложен из-за prefill. Эскалация остаётся
 выключенной до слепой человеческой калибровки на master. См.
 `docs/adr/ADR-0018-evidence-based-confidence.md`.

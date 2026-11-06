@@ -23,13 +23,17 @@ def _config(tmp_path, **overrides):
     return AgentConfig(**values)
 
 
-def _row(fp, verdict_id, at, confidence, verdict="TRUE_POSITIVE"):
+def _row(fp, verdict_id, at, level, verdict="TRUE_POSITIVE"):
     return {
         "fp": fp,
         "verdict_id": verdict_id,
         "verdict": verdict,
         "explanation": f"explanation-{verdict_id}",
-        "confidence": confidence,
+        "confidence_level": level,
+        "evidence_basis": "direct_snippet" if level else None,
+        "evidence_quote": "quote" if level else "",
+        "quote_hash": "hash" if level else None,
+        "prompt_sha256": "prompt",
         "created_at": at,
         "at": at,
     }
@@ -50,13 +54,15 @@ async def _inventory(name, arguments):
 
 def test_reuse_selects_latest_and_marks_stale_revisions(tmp_path):
     rows = [
-        _row("fp-1", "old", "2026-11-06T11:30:00Z", 20, "FALSE_POSITIVE"),
-        _row("fp-1", "fresh", "2026-11-06T11:45:00Z", "90"),
-        _row("fp-2", "expired", "2026-11-06T10:00:00Z", 80),
+        _row("fp-1", "old", "2026-11-06T11:30:00Z", "medium", "FALSE_POSITIVE"),
+        _row("fp-1", "fresh", "2026-11-06T11:45:00Z", "high"),
+        _row("fp-2", "expired", "2026-11-06T10:00:00Z", "high"),
         _row("fp-3", "legacy", "2026-11-06T11:50:00Z", None),
-        _row("fp-4", "invalid-date", "not-a-date", 50),
-        _row("fp-5", "boundary", "2026-11-06T11:00:00Z", 50),
+        _row("fp-4", "invalid-date", "not-a-date", "medium"),
+        _row("fp-5", "boundary", "2026-11-06T11:00:00Z", "medium"),
     ]
+    for row in rows:
+        row["prompt_sha256"] = _config(tmp_path).prompt_sha256_for_mode("sast")
     journaled = []
 
     async def master_call(name, arguments):
@@ -79,7 +85,8 @@ def test_reuse_selects_latest_and_marks_stale_revisions(tmp_path):
                         "finding_id": "fp-2",
                         "verdict": "NEEDS_REVIEW",
                         "explanation": "new evidence",
-                        "confidence": 40,
+                        "confidence_level": "medium",
+                        "evidence_basis": "indirect_pattern",
                     }
                 ]
             },
@@ -88,13 +95,15 @@ def test_reuse_selects_latest_and_marks_stale_revisions(tmp_path):
 
     controller, stats = asyncio.run(run())
 
-    assert controller.verdicts["fp-1"].confidence == 90
+    assert controller.verdicts["fp-1"].confidence_level == "high"
+    assert controller.verdicts["fp-1"].evidence_basis == "direct_snippet"
     assert stats == {
         "reuse_candidates": 5,
         "reused_verdicts": 1,
         "reevaluated_verdicts": 4,
         "reevaluated_ttl_expired": 3,
         "reevaluated_legacy_confidence_missing": 1,
+        "reevaluated_prompt_updated": 0,
         "reuse_ttl_seconds": 3600,
     }
     assert controller.revisions["fp-2"] == {
@@ -111,7 +120,10 @@ def test_zero_ttl_reevaluates_even_fresh_confident_verdict(tmp_path):
     async def master_call(name, arguments):
         return {
             "status": "ok",
-            "rows": [_row("fp-1", "fresh", "2026-11-06T11:59:00Z", 100)],
+            "rows": [
+                _row("fp-1", "fresh", "2026-11-06T11:59:00Z", "high")
+                | {"prompt_sha256": _config(tmp_path).prompt_sha256_for_mode("sast")}
+            ],
         }
 
     async def run():
@@ -147,3 +159,27 @@ def test_disabled_reuse_does_not_query_master(tmp_path):
 
     assert len(controller.pending) == 5
     assert stats == {}
+
+
+def test_prompt_hash_change_forces_prompt_updated_revision(tmp_path):
+    async def master_call(name, arguments):
+        return {
+            "status": "ok",
+            "rows": [_row("fp-1", "old-prompt", "2026-11-06T11:59:00Z", "high")],
+        }
+
+    async def run():
+        controller = AgentController(_inventory, master_call=master_call)
+        await controller.initialize("full")
+        stats = {}
+        await reuse_prior_verdicts(_config(tmp_path), controller, stats, now=_NOW)
+        return controller, stats
+
+    controller, stats = asyncio.run(run())
+
+    assert stats["reused_verdicts"] == 0
+    assert stats["reevaluated_prompt_updated"] == 1
+    assert controller.revisions["fp-1"] == {
+        "supersedes_verdict_id": "old-prompt",
+        "revision_reason": "prompt_updated",
+    }

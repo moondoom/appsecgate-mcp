@@ -5,6 +5,12 @@
 **Related:** ADR-0015 (autonomous triage), ADR-0016 (LLM throughput),
 ADR-0017 (TTL reuse/revisions/provenance and numeric legacy confidence)
 
+**Implementation note (2026-11-06):** Mode A edge protocol, per-mode prompts and
+hashes, edge/master field validation, and prompt-aware reuse are implemented.
+Controlled `rev4` E2E passed with 5 fresh reused verdicts, 2 TTL revisions, and 3
+legacy revisions. Escalation and Mode B remain disabled and this ADR remains
+Proposed pending human calibration.
+
 ## 1. Context
 
 ADR-0017 introduced TTL reuse, revisions, and provenance, but its numeric

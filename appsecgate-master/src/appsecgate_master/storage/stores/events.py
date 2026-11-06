@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from appsecgate_master.contracts.events import SCHEMA_VERSION, MasterEvent
+from appsecgate_master.contracts.verdict_validation import edge_validation_error
 from appsecgate_master.security.redact import contains_suspected_secret
 from appsecgate_master.storage.db import Database
 from appsecgate_master.storage.stores.audit import AuditLogStore
@@ -93,6 +94,10 @@ class MasterEventStore:
         if event.schema_version != SCHEMA_VERSION:
             await self.audit.record(event, "rejected:schema_version", received_at)
             return IngestOutcome(event.client_event_id, "rejected:schema_version")
+
+        if edge_validation_error(event):
+            await self.audit.record(event, "rejected:edge_validator", received_at)
+            return IngestOutcome(event.client_event_id, "rejected:edge_validator")
 
         if _has_suspected_secret(event):
             await self.audit.record(event, "rejected:redaction", received_at)

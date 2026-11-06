@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -285,21 +286,27 @@ def test_guided_unparseable_single_finding_left_pending(monkeypatch, tmp_path):
     ("triage_fn", "mode"),
     [(triage_guided, "guided"), (triage_guided_sched, "guided-sched")],
 )
-def test_guided_confidence_is_optional_and_normalized(monkeypatch, tmp_path, triage_fn, mode):
+def test_guided_confidence_is_optional_and_validated(monkeypatch, tmp_path, triage_fn, mode):
     backend = _Backend(["fp-1", "fp-2", "fp-3"])
     verdicts = [
         {
             "finding_id": "fp-1",
             "verdict": "TRUE_POSITIVE",
             "explanation": "direct evidence",
-            "confidence": 88,
+            "confidence_level": "high",
+            "evidence_basis": "direct_snippet",
+            "evidence_quote": "dangerous(input)",
+            "quote_hash": hashlib.sha256(b"dangerous(input)").hexdigest(),
         },
         {"finding_id": "fp-2", "verdict": "NEEDS_REVIEW", "explanation": "uncertain"},
         {
             "finding_id": "fp-3",
-            "verdict": "FALSE_POSITIVE",
-            "explanation": "fixture",
-            "confidence": 101,
+            "verdict": "TRUE_POSITIVE",
+            "explanation": "pattern only",
+            "confidence_level": "high",
+            "evidence_basis": "indirect_pattern",
+            "evidence_quote": "pattern",
+            "quote_hash": "hash-3",
         },
     ]
     responses = iter([_response([_call("submit_verdicts", json.dumps({"verdicts": verdicts}))])])
@@ -314,4 +321,32 @@ def test_guided_confidence_is_optional_and_normalized(monkeypatch, tmp_path, tri
 
     assert result.usage["missing"] == 0
     assert result.usage["failed_findings"] == 0
-    assert [item.confidence for item in result.verdicts] == [88, None, None]
+    assert [item.confidence_level for item in result.verdicts] == ["high", None, "medium"]
+    assert result.verdicts[2].downgrade_reason == "basis_not_high_capable"
+
+
+def test_guided_sched_groups_prompts_by_mode_and_lane(monkeypatch, tmp_path):
+    backend = _Backend(["fp-sast", "fp-cve", "fp-iac"])
+    seen = []
+
+    def fake_request(config, messages, tools, num_ctx=None):
+        payload = json.loads(messages[1]["content"])
+        seen.append((messages[0]["content"], [item["finding_id"] for item in payload["findings"]]))
+        finding_id = payload["findings"][0]["finding_id"]
+        return _response([_submit(finding_id)])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+
+    async def run():
+        controller = AgentController(backend)
+        await controller.initialize("full")
+        controller.finding_modes = {"fp-sast": "sast", "fp-cve": "cve", "fp-iac": "iac"}
+        return await triage_guided_sched(_config(tmp_path, agent_mode="guided-sched"), controller)
+
+    result = asyncio.run(run())
+
+    assert result.usage["missing"] == 0
+    assert [ids for _, ids in seen] == [["fp-cve"], ["fp-iac"], ["fp-sast"]]
+    assert "CVE evidence protocol" in seen[0][0]
+    assert "IaC evidence protocol" in seen[1][0]
+    assert "SAST evidence protocol" in seen[2][0]

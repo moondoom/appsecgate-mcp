@@ -92,7 +92,7 @@ def _run(label: str, projects: tuple[str, ...], ttl: str) -> dict[str, dict[str,
 
 def _signature(report: dict[str, Any]) -> dict[str, tuple[Any, Any]]:
     return {
-        item["finding_id"]: (item["verdict"], item.get("confidence"))
+        item["finding_id"]: (item["verdict"], item.get("confidence_level"))
         for item in report.get("verdicts", [])
     }
 
@@ -160,7 +160,7 @@ def _revision_errors(
             errors.append(f"{event.get('fp')}: wrong revision reason")
         if event.get("supersedes_verdict_id") != previous_ids.get(event.get("fp")):
             errors.append(f"{event.get('fp')}: wrong supersedes ID")
-        if event.get("confidence") is None or not event.get("ruleset_hash"):
+        if event.get("confidence_level") is None or not event.get("ruleset_hash"):
             errors.append(f"{event.get('fp')}: incomplete new provenance")
     errors.extend(_coverage_errors(report))
     return errors

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 
 from appsecgate_mcp.agent.controller import AgentController
@@ -89,7 +90,10 @@ def test_triage_journal_redacts_and_deduplicates(tmp_path):
                 {
                     "finding_id": "fp-1",
                     "verdict": "TRUE_POSITIVE",
-                    "confidence": 92,
+                    "confidence_level": "high",
+                    "evidence_basis": "direct_snippet",
+                    "evidence_quote": "dangerous(input)",
+                    "quote_hash": hashlib.sha256(b"dangerous(input)").hexdigest(),
                     "explanation": "token AKIAIOSFODNN7EXAMPLE",
                     "evidence": [{"file": "a.py", "note": "AKIAIOSFODNN7EXAMPLE"}],
                 }
@@ -110,7 +114,11 @@ def test_triage_journal_redacts_and_deduplicates(tmp_path):
     assert event["project_key"] == "p1"
     assert event["verdict_source"] == "model"
     assert event["actor_id"] == "model:test-model"
-    assert event["confidence"] == 92
+    assert event["confidence_level"] == "high"
+    assert event["evidence_basis"] == "direct_snippet"
+    assert event["prompt_mode"] == "sast"
+    assert event["prompt_sha256"] == config.prompt_sha256_for_mode("sast")
+    assert "confidence" not in event
     assert event["supersedes_verdict_id"] == "previous-verdict"
     assert event["revision_reason"] == "ttl_expired"
     assert event["ruleset_hash"] == "sha256:rules"

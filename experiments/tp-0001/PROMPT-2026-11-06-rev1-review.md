@@ -5,14 +5,16 @@
 ## Текущий статус
 
 ADR-0017 **Accepted только для TTL reuse / revisions / provenance**. Основной
-корпус 300 **не запускать**. Severity escalation **не включать**. Git commit не
-создан. ADR-0018 **Proposed** заменяет numeric confidence для новых событий на
-categorical evidence-based protocol и переносит severity escalation на master;
-он ещё НЕ реализован. Исторические numeric events не удаляются, но в новый reuse
-не входят. Прочитать:
+корпус 300 **не запускать**. Severity escalation **не включать**. ADR-0018
+**Proposed** заменяет numeric confidence для новых событий на categorical
+evidence-based protocol и переносит severity escalation на master. Mode A,
+edge/master validation, per-mode prompts/hashes и prompt-aware reuse реализованы;
+controlled `rev4` E2E passed. Исторические numeric events не удаляются, но в новый
+reuse не входят. Прочитать:
 
 - `docs/adr/ADR-0018-evidence-based-confidence.md`
 - `docs/adr/ADR-0017-ttl-verdict-reevaluation-experiment.md`
+- `experiments/tp-0001/artifacts/rev4-validation.json`
 - `experiments/tp-0001/artifacts/rev1v3-validation.json`
 - `experiments/tp-0001/artifacts/rev1-operations.json`
 - `experiments/tp-0001/artifacts/rev1-confidence-review.json`

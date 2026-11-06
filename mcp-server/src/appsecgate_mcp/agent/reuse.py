@@ -8,8 +8,11 @@ from appsecgate_mcp.agent.models import AgentConfig
 
 _EPOCH = datetime.min.replace(tzinfo=UTC)
 _VERDICTS = {"TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"}
+_LEVELS = {"high", "medium", "low", "speculative"}
 _QUERY = """
-SELECT fp, verdict_id, verdict, explanation, confidence, created_at, at
+SELECT fp, verdict_id, verdict, explanation, confidence_level, evidence_basis,
+       evidence_quote, source_file, start_line, end_line, read_event_id, quote_hash,
+       reasoning, prompt_mode, prompt_sha256, created_at, at
 FROM v_triage_verdicts WHERE project_key = ?
 """.strip()
 
@@ -25,18 +28,6 @@ def _timestamp(row: dict[str, Any]) -> datetime | None:
     if parsed.tzinfo is None:
         return None
     return parsed.astimezone(UTC)
-
-
-def _confidence(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        candidate = value
-    elif isinstance(value, str) and value.isdigit():
-        candidate = int(value)
-    else:
-        return None
-    return candidate if 0 <= candidate <= 100 else None
 
 
 def _latest_rows(rows: list[dict[str, Any]], pending: set[str]) -> dict[str, dict[str, Any]]:
@@ -74,6 +65,7 @@ async def reuse_prior_verdicts(
         reevaluated_verdicts=0,
         reevaluated_ttl_expired=0,
         reevaluated_legacy_confidence_missing=0,
+        reevaluated_prompt_updated=0,
         reuse_ttl_seconds=config.reuse_ttl_seconds,
     )
     response = await controller.execute(
@@ -88,21 +80,44 @@ async def reuse_prior_verdicts(
         if row is None:
             continue
         stats["reuse_candidates"] += 1
-        confidence = _confidence(row.get("confidence"))
+        confidence_level = row.get("confidence_level")
         timestamp = _timestamp(row)
         age = (current - timestamp).total_seconds() if timestamp is not None else None
-        fresh = confidence is not None and age is not None and 0 <= age < config.reuse_ttl_seconds
+        mode = controller.finding_modes.get(finding_id, "sast")
+        prompt_matches = row.get("prompt_sha256") == config.prompt_sha256_for_mode(mode)
+        fresh = (
+            confidence_level in _LEVELS
+            and prompt_matches
+            and age is not None
+            and 0 <= age < config.reuse_ttl_seconds
+        )
         if fresh:
-            reused.append(
-                {
-                    "finding_id": finding_id,
-                    "verdict": row["verdict"],
-                    "explanation": f"Reused prior verdict: {row.get('explanation') or ''}",
-                    "confidence": confidence,
-                }
-            )
+            reused_item = {
+                "finding_id": finding_id,
+                "verdict": row["verdict"],
+                "explanation": f"Reused prior verdict: {row.get('explanation') or ''}",
+            }
+            for key in (
+                "confidence_level",
+                "evidence_basis",
+                "evidence_quote",
+                "source_file",
+                "start_line",
+                "end_line",
+                "read_event_id",
+                "quote_hash",
+                "reasoning",
+            ):
+                if row.get(key) is not None:
+                    reused_item[key] = row[key]
+            reused.append(reused_item)
             continue
-        reason = "legacy_confidence_missing" if confidence is None else "ttl_expired"
+        if confidence_level not in _LEVELS:
+            reason = "legacy_confidence_missing"
+        elif not prompt_matches:
+            reason = "prompt_updated"
+        else:
+            reason = "ttl_expired"
         stats["reevaluated_verdicts"] += 1
         stats[f"reevaluated_{reason}"] += 1
         controller.revisions[finding_id] = {

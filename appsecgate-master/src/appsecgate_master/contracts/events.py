@@ -108,10 +108,46 @@ class MasterEvent(BaseModel):
     run_id: str | None = None
     verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"] | None = None
     confidence: int | None = Field(default=None, ge=0, le=100)
+    confidence_level: Literal["high", "medium", "low", "speculative"] | None = None
+    model_confidence_level: Literal["high", "medium", "low", "speculative"] | None = None
+    model_verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"] | None = None
+    downgrade_reason: str | None = None
+    evidence_basis: (
+        Literal[
+            "direct_snippet",
+            "direct_snippet_credential",
+            "file_verified",
+            "indirect_pattern",
+            "test_or_fixture",
+            "assumption",
+            "placeholder_or_example",
+            "manifest_version_match",
+            "reachability_verified",
+            "reachability_unverified",
+            "cve_reference_only",
+            "vex_upstream",
+            "manifest_absent",
+            "policy_rule_direct",
+            "policy_rule_context",
+            "override_possible",
+            "hallucination_risk",
+            "deployment_verified",
+        ]
+        | None
+    ) = None
+    evidence_quote: str | None = None
+    source_file: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    read_event_id: str | None = None
+    quote_hash: str | None = None
+    reasoning: str | None = None
+    prompt_mode: Literal["sast", "secrets", "cve", "iac"] | None = None
     verdict_source: Literal["model", "human"] | None = None
     actor_id: str | None = None
     revision_reason: (
-        Literal["initial", "ttl_expired", "legacy_confidence_missing", "manual"] | None
+        Literal["initial", "ttl_expired", "legacy_confidence_missing", "manual", "prompt_updated"]
+        | None
     ) = None
     review_status: Literal["unreviewed", "confirmed", "rejected"] | None = None
     explanation: str | None = None

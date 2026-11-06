@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from appsecgate_mcp.agent.models import LlmResult, Verdict
+from appsecgate_mcp.agent.verdict_validator import validate_verdict
 
 McpCall = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
 VerdictJournal = Callable[[Verdict], Awaitable[Verdict]]
@@ -33,6 +34,7 @@ class AgentController:
         self.pending: set[str] = set()
         self.verdicts: OrderedDict[str, Verdict] = OrderedDict()
         self.revisions: dict[str, dict[str, Any]] = {}
+        self.finding_modes: dict[str, str] = {}
         self.action_log: list[dict[str, Any]] = []
         self.recent_signatures: list[str] = []
         self.actions_without_progress = 0
@@ -165,11 +167,18 @@ class AgentController:
                                         ],
                                     },
                                     "explanation": {"type": "string"},
-                                    "confidence": {
-                                        "type": "integer",
-                                        "minimum": 0,
-                                        "maximum": 100,
+                                    "confidence_level": {
+                                        "type": "string",
+                                        "enum": ["high", "medium", "low", "speculative"],
                                     },
+                                    "evidence_basis": {"type": "string"},
+                                    "evidence_quote": {"type": "string"},
+                                    "source_file": {"type": "string"},
+                                    "start_line": {"type": "integer", "minimum": 1},
+                                    "end_line": {"type": "integer", "minimum": 1},
+                                    "read_event_id": {"type": "string"},
+                                    "quote_hash": {"type": "string"},
+                                    "reasoning": {"type": "string"},
                                     "evidence": {
                                         "type": "array",
                                         "items": {"type": "object"},
@@ -286,6 +295,8 @@ class AgentController:
         for item in raw:
             verdict = Verdict.model_validate(item)
             finding_id = verdict.finding_id
+            if record:
+                verdict = validate_verdict(verdict, self.finding_modes.get(finding_id, "sast"))
             if finding_id not in self.pending:
                 if finding_id in self.verdicts and self.verdicts[finding_id] == verdict:
                     self.metrics["duplicate_verdicts"] += 1

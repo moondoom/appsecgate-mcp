@@ -195,7 +195,7 @@ def test_rev1_revision_gate_checks_reason_and_supersedes(monkeypatch, tmp_path):
         "fp": "fp-1",
         "revision_reason": "ttl_expired",
         "supersedes_verdict_id": "old",
-        "confidence": 90,
+        "confidence_level": "high",
         "ruleset_hash": "sha256:rules",
     }
     journal_dir = tmp_path / "runtime" / "data-rev1-b-gemmaq3-p1-structlog"

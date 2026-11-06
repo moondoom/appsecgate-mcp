@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from appsecgate_mcp.agent.models import AgentConfig, Verdict
+from appsecgate_mcp.agent.verdict_validator import finding_mode
 from appsecgate_mcp.normalization.redactor import redact_text
 
 _NAMESPACE = uuid.UUID("c54b1c08-d93d-4f0a-bb4d-c438ea93a2d8")
@@ -40,6 +41,8 @@ class TriageJournal:
         sanitized = verdict.model_copy(
             update={
                 "explanation": redact_text(verdict.explanation),
+                "reasoning": redact_text(verdict.reasoning),
+                "evidence_quote": redact_text(verdict.evidence_quote),
                 "evidence": _safe(verdict.evidence),
                 "patch": None,
             }
@@ -52,6 +55,7 @@ class TriageJournal:
         )
         created_at = datetime.now(UTC).isoformat()
         finding = self.findings.get(sanitized.finding_id, {})
+        prompt_mode = finding_mode(finding.get("category"))
         event = {
             "schema_version": 1,
             "client_event_id": verdict_id,
@@ -64,7 +68,18 @@ class TriageJournal:
             "revision_reason": sanitized.revision_reason,
             "run_id": self.config.run_id,
             "verdict": sanitized.verdict,
-            "confidence": sanitized.confidence,
+            "confidence_level": sanitized.confidence_level,
+            "evidence_basis": sanitized.evidence_basis,
+            "evidence_quote": sanitized.evidence_quote,
+            "source_file": sanitized.source_file,
+            "start_line": sanitized.start_line,
+            "end_line": sanitized.end_line,
+            "read_event_id": sanitized.read_event_id,
+            "quote_hash": sanitized.quote_hash,
+            "reasoning": sanitized.reasoning,
+            "model_confidence_level": sanitized.model_confidence_level,
+            "model_verdict": sanitized.model_verdict,
+            "downgrade_reason": sanitized.downgrade_reason,
             "verdict_source": "model",
             "actor_id": f"model:{self.config.llm_model}",
             "review_status": "unreviewed",
@@ -72,7 +87,8 @@ class TriageJournal:
             "evidence": sanitized.evidence,
             "agent_version": "autonomous-v1",
             "model": self.config.llm_model,
-            "prompt_sha256": self.config.prompt_sha256,
+            "prompt_mode": prompt_mode,
+            "prompt_sha256": self.config.prompt_sha256_for_mode(prompt_mode),
             "scanner": finding.get("scanner"),
             "rule_id": finding.get("rule_id"),
             "ruleset_hash": self.scan_meta.get("ruleset_hash"),
