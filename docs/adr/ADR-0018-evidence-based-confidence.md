@@ -11,6 +11,28 @@ Controlled `rev4` E2E passed with 5 fresh reused verdicts, 2 TTL revisions, and 
 legacy revisions. Escalation and Mode B remain disabled and this ADR remains
 Proposed pending human calibration.
 
+**Design finding (2026-11-06, spec-as-written baseline):** §3.1 requires
+`quote_hash` as "SHA-256 of pre-redaction quote" without specifying who computes
+it. The per-mode prompts assumed the model supplies it; the edge validator
+(§5.1) computes `sha256(evidence_quote)` itself and compares. An LLM cannot
+produce an exact SHA-256, so every model-`high` with a non-empty quote is
+deterministically downgraded to `medium` with `downgrade_reason=quote_mismatch`
+(confirmed 2/2 in the `adr18smoke` controlled run). As written, the spec
+measures model arithmetic, not calibration, and `quote_mismatch` counts are a
+spec-defect signal, not a model-quality signal. Fix direction (deferred to a
+separate §3.1 addendum decision after the baseline is recorded): the model
+submits only `evidence_quote`; the edge computes `quote_hash` and verifies that
+the raw quote appears in the finding source (a substantive anti-hallucination
+check); `quote_hash` remains in the journal as an integrity field. Open
+question for the addendum: redaction of secret quotes conflicts with
+quote-in-source verification — raw-check-before-redaction, dual hashes
+(raw/redacted), or a secrets-specific policy must be decided before the fix.
+This is an instance of the general rule recorded in AGENTS.md ("model output is
+for judgment, not computation"): deterministic values are computed by the
+system, model judgment is verified against ground truth, and mixed fields are
+split. The rule exists because the same pattern occurred in ADR-0016 and
+ADR-0017; treat this finding as a class, not a single bug.
+
 ## 1. Context
 
 ADR-0017 introduced TTL reuse, revisions, and provenance, but its numeric

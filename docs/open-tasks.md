@@ -249,6 +249,29 @@ deployment evidence. Решения не перезаписывают исход
 
 Оба варианта совместимы: A — частный случай B с неявным confidence=high.
 
+### ADR-0018 follow-ups (зарегистрировано 2026-11-06, по итогам adr18smoke)
+
+- **open: перенести вычисление `quote_hash` с модели на edge** (addendum к
+  ADR-0018 §3.1). Сейчас промпты просят у модели SHA-256 цитаты, а edge
+  валидатор считает его сам и сравнивает — модель детерминированно не может
+  его угадать, поэтому 100% model-`high` с цитатой уходят в `medium` через
+  `quote_mismatch` (2/2 в adr18smoke). Модель должна отдавать только
+  `evidence_quote`; edge считает hash и проверяет вхождение raw-цитаты в
+  источник. Блокеров нет, ждёт решения владельца после spec-as-written baseline.
+- **open: заменить арифметическую проверку содержательной** — «quote appears in
+  source» (substring/fuzzy) как anti-hallucination check. Требует заранее
+  решить конфликт redaction vs matching для секретов: проверка raw до redaction,
+  двойной hash (raw + redacted) или отдельная secrets-политика. Решать до
+  фикса, иначе фикс будет половинчатым.
+- **Правило для будущих серий (третий повтор паттерна):** перед запуском серии
+  измерений smoke обязан проверять, что измеряемая величина вообще может быть
+  измерена данным протоколом. ADR-0016 мерил cache-hit вместо prefill, ADR-0017
+  — отсутствие reuse из-за cutoff, ADR-0018 spec-as-written — арифметику модели
+  вместо calibration. Smoke ловит capability mismatch до baseline, а не после.
+  Действует как класс задач: spec-writing checklist из AGENTS.md «Rule: model
+  output is for judgment, not computation» обязателен для каждого нового поля
+  в контракте модели (включая `submit_verdicts`).
+
 Предусловия перед включением:
 
 1. Ручная выборочная валидация TP-вердиктов на secret-эвристиках (vibetunnel
