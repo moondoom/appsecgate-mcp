@@ -151,8 +151,11 @@ async def _triage_chunk(
         estimate = len(json.dumps(payload, ensure_ascii=False, default=str)) // 3 + 4000
         computed = next((i for i, lane in enumerate(lanes) if estimate <= lane), len(lanes) - 1)
         lane_index = max(lane_index, computed)
-        num_ctx = lanes[lane_index]
-        stats[f"lane_{num_ctx}"] = stats.get(f"lane_{num_ctx}", 0) + 1
+        lane_ctx = lanes[lane_index]
+        stats[f"lane_{lane_ctx}"] = stats.get(f"lane_{lane_ctx}", 0) + 1
+        # Keep request num_ctx constant (config.llm_num_ctx): per-lane num_ctx
+        # makes ollama reload the runner per lane, wiping the prefix cache.
+        num_ctx = None
     modes = {controller.finding_modes.get(finding_id, "sast") for finding_id in chunk}
     messages = [
         {"role": "system", "content": config.system_prompt_for_modes(modes)},
@@ -170,9 +173,9 @@ async def _triage_chunk(
         if response is None:
             break
         _add_usage(usage, response)
-        if lanes is not None and num_ctx is not None:
+        if lanes is not None:
             actual = getattr(getattr(response, "usage", None), "prompt_tokens", 0) or 0
-            if actual + config.llm_max_tokens > num_ctx:
+            if actual + config.llm_max_tokens > lane_ctx:
                 stats["lane_underestimated"] += 1
         message = _message(response)
         truncated = getattr(response.choices[0], "finish_reason", None) == "length"

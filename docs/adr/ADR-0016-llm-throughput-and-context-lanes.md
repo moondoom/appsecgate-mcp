@@ -593,7 +593,25 @@ Remaining before any status change: zep parity, heavy-repo sweep
 (PilotDeck, costrict, vibetunnel), P90/P99 and sustained-load check
 (§9.5), reuse validation, then corpus decision.
 
-## 12. References (as cited in review)
+## 12. Update 2026-11-06: lane num_ctx switching removed (§8 fallback enacted)
+
+Live `agent300fix1` run exposed the thrash the ADR warned about: **14
+runner reloads in 90 minutes** because `guided_sched` passed per-lane
+`num_ctx` (8k/16k/32k) while `_triage_chunk` sent it per request; each
+switch rebuilds the runner and wipes the prefix cache. Fix enacts the
+§8 fallback: lanes now size prompts and feed `lane_*` /
+`lane_underestimated` stats only; every request carries constant
+`config.llm_num_ctx` (36864 = 32k lane + output reserve, avoids the
+silent truncation of >32k prompts observed on a 32768 slot). Server
+side: `OLLAMA_NUM_PARALLEL=4` explicit (auto silently gave 1 slot from
+the trained 262144 context — all client parallelism serialized), slots
+4×36864, KV q4_0. Measured on RTX 4060 Ti 16 GB: aggregate decode
+~64 → ~78 t/s at par4 (bandwidth-saturated); the real win is pipeline
+overlap and no head-of-line blocking, not raw throughput. The "2–4%
+CPU" in `ollama ps` is the idle vision encoder (mmproj ~1.1 GB)
+CPU-mapped, not compute layers — no perf impact for text-only runs.
+
+## 13. References (as cited in review)
 
 - Beyond Prediction: Tail-Aware Scheduling (ICML 2026) — prediction-based
   schedulers are fragile to distribution shift; P99 tail degrades even

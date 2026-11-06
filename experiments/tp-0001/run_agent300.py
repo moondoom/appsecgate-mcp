@@ -51,7 +51,9 @@ def main() -> None:
             "APPSECGATE_LLM_MODEL": config["model"]["litellm_model"],
             "APPSECGATE_AGENT_MODE": config.get("agent_mode", "guided"),
             "APPSECGATE_AGENT_REUSE_TTL": args.reuse_ttl or config.get("reuse_ttl", "1w"),
-            "APPSECGATE_LLM_NUM_CTX": str(config["num_ctx"]),
+            "APPSECGATE_LLM_NUM_CTX": os.environ.get(
+                "APPSECGATE_LLM_NUM_CTX"
+            ) or str(config["num_ctx"]),
             "APPSECGATE_AGENT_MAX_ITERATIONS": str(config["max_iterations"]),
             "APPSECGATE_AGENT_MAX_RESTARTS": str(config["max_restarts"]),
             "APPSECGATE_AGENT_MAX_COMPACTIONS": str(config["max_compactions"]),
