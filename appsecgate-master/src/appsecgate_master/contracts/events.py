@@ -49,6 +49,7 @@ class EventType(enum.StrEnum):
     UNSUPPRESSED = "unsuppressed"  # явное снятие suppression/WONT_FIX
     REOPENED = "reopened"  # positive-merge поверх FIXED (новый цикл)
     CONFIG_POLICY = "config_policy"  # справочная синхронизация политик (§5.1)
+    TRIAGE_VERDICTED = "triage_verdicted"  # версионированный LLM/human verdict
 
     @classmethod
     def finding_types(cls) -> set[EventType]:
@@ -102,6 +103,24 @@ class MasterEvent(BaseModel):
     # config_policy (ADR-0004 §5.1): gates.ci.*, gates.local.*, rules.*
     policy: dict[str, Any] | None = None
 
+    verdict_id: str | None = None
+    supersedes_verdict_id: str | None = None
+    run_id: str | None = None
+    verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"] | None = None
+    verdict_source: Literal["model", "human"] | None = None
+    review_status: Literal["unreviewed", "confirmed", "rejected"] | None = None
+    explanation: str | None = None
+    evidence: list[dict[str, Any]] | None = None
+    agent_version: str | None = None
+    model: str | None = None
+    model_digest: str | None = None
+    prompt_sha256: str | None = None
+    tool_hashes: dict[str, str] | None = None
+    package: str | None = None
+    ecosystem: str | None = None
+    cve_id: str | None = None
+    created_at: str | None = None
+
     @field_validator("at", "expires_at")
     @classmethod
     def _validate_utc(cls, value: str | None) -> str | None:
@@ -138,6 +157,10 @@ class MasterEvent(BaseModel):
             raise ValueError("verify_wont_fix requires note (причина WONT_FIX)")
         if self.event_type is EventType.UNSUPPRESSED and self.note is None:
             raise ValueError("unsuppressed requires note (причина снятия)")
+        if self.event_type is EventType.TRIAGE_VERDICTED and not all(
+            (self.verdict_id, self.run_id, self.verdict, self.verdict_source, self.review_status)
+        ):
+            raise ValueError("triage_verdicted requires verdict identity and classification")
         return self
 
     def sort_key(self) -> tuple[str, str]:

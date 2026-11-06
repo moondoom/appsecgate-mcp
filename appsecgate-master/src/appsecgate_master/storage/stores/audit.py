@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
+
 from appsecgate_master.contracts.events import MasterEvent
 from appsecgate_master.storage.db import Database
 
@@ -51,6 +54,23 @@ class AuditLogStore:
                 event.fp,
                 event.event_type.value,
                 outcome,
+                received_at,
+            ),
+        )
+
+    async def record_tool(
+        self, *, project_key: str, tool: str, sql_hash: str, result_count: int
+    ) -> None:
+        received_at = datetime.now(UTC).isoformat()
+        await self.db.execute(
+            "INSERT INTO audit_log (client_event_id, project_key, fp, event_type, outcome,"
+            " received_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                str(uuid.uuid4()),
+                project_key,
+                tool,
+                "mcp_tool_call",
+                f"accepted:{sql_hash}:{result_count}",
                 received_at,
             ),
         )

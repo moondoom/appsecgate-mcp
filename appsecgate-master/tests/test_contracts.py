@@ -39,7 +39,7 @@ def test_event_type_values(expected: str):
 
 def test_finding_types_excludes_config_policy():
     assert EventType.CONFIG_POLICY not in EventType.finding_types()
-    assert len(EventType.finding_types()) == 10
+    assert len(EventType.finding_types()) == 11
 
 
 def test_finding_event_requires_fp():

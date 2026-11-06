@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -59,7 +60,11 @@ def _utc_now() -> str:
 
 def _has_suspected_secret(event: MasterEvent) -> bool:
     """Признаки секрета в свободных текстовых полях (§5.4)."""
-    return contains_suspected_secret(event.note) or contains_suspected_secret(event.reason)
+    evidence = json.dumps(event.evidence, ensure_ascii=False) if event.evidence else None
+    return any(
+        contains_suspected_secret(value)
+        for value in (event.note, event.reason, event.explanation, evidence)
+    )
 
 
 class MasterEventStore:

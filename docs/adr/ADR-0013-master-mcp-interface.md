@@ -1,10 +1,10 @@
 # ADR-0013: MCP-интерфейс для master-сервера
 
-**Статус:** Proposed
+**Статус:** Accepted (MCP-M-1..7 implemented)
 **Дата:** 2026-11-01
 **Файл:** `docs/adr/ADR-0013-master-mcp-interface.md`
 **Контекст:** Master получил REST API (ADR-0004 MS-4) и PostgreSQL с auth-фундаментом (ADR-0012). Агентам нужен нативный MCP-доступ к master — по аналогии с `query_findings_db` в MCP-сервере сканера.
-**Связанные:** ADR-0004 (master API), ADR-0006 (§3.4 master merge), ADR-0012 (PostgreSQL + auth-фундамент)
+**Связанные:** ADR-0004 (master API), ADR-0006 (§3.4 master merge), ADR-0012 (PostgreSQL + auth-фундамент), ADR-0015 (autonomous triage and master knowledge)
 **Зависит от:** ADR-0012 (auth-фундамент, RLS, `api_keys`)
 **Не путать с:** `appsecgate-mcp` — MCP-сервер сканера (stdio, `network_mode: none`, инвариант №2). Этот ADR описывает **другой** MCP-сервер, работающий с master.
 
@@ -93,11 +93,15 @@
 | `v_config` | Политики gates, thresholds, rules для проекта | ✅ |
 | `v_audit` | Audit trail с фильтрами по `at`, `actor`, `event` | ✅ |
 | `v_events` | Raw event-log (с `LIMIT` по умолчанию) | ✅ |
+| `v_triage_verdicts` | Project-scoped model/human verdict history with provenance and review status | ✅ |
+| `v_triage_knowledge` | Sanitized cross-project, human-confirmed verdict knowledge | Global, sanitized only |
+| `v_cve` | CVE/GHSA records with source, fetch time and content hash | Global reference |
+| `v_cve_affected` | Ecosystem/package affected and fixed ranges | Global reference |
 | `v_schema` | Метаданные: список views, колонки, типы | — (глобальная) |
 
-Все views — с `security_invoker = true`. Это гарантирует, что RLS срабатывает от имени **сессии пользователя**, а не владельца view. Без этого `security_invoker` view мог бы обходить RLS.
+Project-scoped views use `security_invoker = true`, so RLS executes as the session user. `v_triage_knowledge` intentionally exposes only the sanitized cross-project dataset defined in ADR-0015; unreviewed model verdicts and tenant identifiers are excluded.
 
-`v_schema` — без RLS, только описание схемы (не данные). Доступна всем аутентифицированным.
+`v_schema` — без RLS, только описание схемы (не данные). Доступна всем аутентифицированным. Knowledge queries support `knowledge_cutoff`; PostgreSQL executes them in a read-only transaction, SQLite uses a read-only connection and authorizer.
 
 ### 4.3. Вспомогательный инструмент: `describe_schema`
 

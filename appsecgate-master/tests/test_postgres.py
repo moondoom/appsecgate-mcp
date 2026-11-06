@@ -35,18 +35,14 @@ def test_postgres_ingest_duplicate_and_project_isolation(postgres_client: TestCl
     assert push(postgres_client, [event]).json()["outcomes"][0]["outcome"] == "accepted"
     assert push(postgres_client, [event]).json()["outcomes"][0]["outcome"] == "duplicate"
 
-    findings = postgres_client.get(
-        "/v1/findings", params={"project": "proj"}, headers=PROJ_HEADERS
-    )
+    findings = postgres_client.get("/v1/findings", params={"project": "proj"}, headers=PROJ_HEADERS)
     assert findings.status_code == 200
     assert [item["fp"] for item in findings.json()["findings"]] == [FP]
     forbidden = postgres_client.get(
         "/v1/findings", params={"project": "other"}, headers=PROJ_HEADERS
     )
     assert forbidden.status_code == 403
-    other = postgres_client.get(
-        "/v1/findings", params={"project": "other"}, headers=OTHER_HEADERS
-    )
+    other = postgres_client.get("/v1/findings", params={"project": "other"}, headers=OTHER_HEADERS)
     assert other.status_code == 200
     assert other.json()["findings"] == []
 
@@ -58,7 +54,5 @@ def test_postgres_concurrent_idempotency(postgres_client: TestClient):
     outcomes = [response.json()["outcomes"][0]["outcome"] for response in responses]
     assert outcomes.count("accepted") == 1
     assert outcomes.count("duplicate") == 15
-    findings = postgres_client.get(
-        "/v1/findings", params={"project": "proj"}, headers=PROJ_HEADERS
-    )
+    findings = postgres_client.get("/v1/findings", params={"project": "proj"}, headers=PROJ_HEADERS)
     assert len(findings.json()["findings"]) == 1

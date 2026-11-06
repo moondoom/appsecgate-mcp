@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from appsecgate_master.api.config import MasterSettings
 from appsecgate_master.api.routes import router
+from appsecgate_master.mcp import create_master_mcp
 from appsecgate_master.storage import AggregateStore, AuditLogStore, MasterEventStore, init_schema
 from appsecgate_master.storage.db import init_database
 
@@ -39,4 +40,13 @@ def create_app(settings: MasterSettings | None = None) -> FastAPI:
     )
     app.state.settings = resolved
     app.include_router(router)
+    mcp_app = create_master_mcp(app)
+
+    @asynccontextmanager
+    async def combined_lifespan(app: FastAPI) -> AsyncIterator[None]:
+        async with lifespan(app), mcp_app.lifespan(app):
+            yield
+
+    app.router.lifespan_context = combined_lifespan
+    app.mount("/mcp", mcp_app)
     return app

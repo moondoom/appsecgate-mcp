@@ -27,7 +27,12 @@ def _sql(statement: str) -> str:
     if match:
         table, raw_columns, suffix = match.groups()
         columns = [item.strip() for item in raw_columns.split(",")]
-        conflict = "key" if table == "schema_meta" else "project_key, fp"
+        conflicts = {
+            "schema_meta": "key",
+            "cve_records": "cve_id",
+            "cve_affected_ranges": "cve_id, ecosystem, package",
+        }
+        conflict = conflicts.get(table, "project_key, fp")
         assignments = ", ".join(f"{column}=EXCLUDED.{column}" for column in columns)
         return (
             f"INSERT INTO {table} ({raw_columns}){suffix} "
