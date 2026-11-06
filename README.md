@@ -279,6 +279,36 @@ gates:
     diff_base_ref: origin/main        # base for `appsecgate ci`
 ```
 
+### Optional: user-downloaded Semgrep rules
+
+The image ships only rules that AppSecGate may redistribute. You can download
+additional rules yourself; they are stored in the user data directory, not in
+the project, image, or bundled rules. List the pinned sources and licenses:
+
+```bash
+appsecgate-mcp rules list
+appsecgate-mcp rules install \
+  --source semgrep --source trailofbits --profile agent300 --accept-licenses
+```
+
+For a custom selection, replace `--profile agent300` with, for example,
+`--languages python,javascript,go`. The `agent300` profile keeps Python,
+JavaScript, TypeScript, Go, Java, Ruby, PHP, and configuration/IaC rules while
+excluding unrelated languages and test fixtures. Downloading happens only in
+this host command; MCP scanning remains offline. No image rebuild is needed.
+
+Set `APPSECGATE_RULES_DISTRIBUTION_MODE=commercial` on the MCP container and
+mount the same `~/.appsecgate-mcp` host directory at
+`/home/appsecgate/.appsecgate-mcp`. With a named `appsecgate-data` volume, run
+the install command in a separate networked container using that volume. The
+`commercial` setting means that you accept responsibility for the selected
+licenses; it is not an AppSecGate commercial license. In particular, Semgrep
+rules are for internal use and must not be redistributed.
+
+Review `rules/.external-rules.json` for revisions, hashes, selected files, and
+duplicates. Remove a source with `appsecgate-mcp rules remove --source semgrep`.
+A changed ruleset also changes scan results and `ruleset_hash`.
+
 ### Optional: centralized CI and master sync
 
 Local MCP scanning stays offline and warn-only. For shared findings, policy

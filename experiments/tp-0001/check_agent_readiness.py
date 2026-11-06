@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+
+def external_rules_hash(rules_dir: Path, names: list[str]) -> str:
+    digest = hashlib.sha256()
+    for name in sorted(names):
+        root = rules_dir / f"external-{name}"
+        for path in sorted(root.rglob("*.y*ml")):
+            digest.update(str(path.relative_to(rules_dir)).encode("utf-8"))
+            digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return f"sha256:{digest.hexdigest()}"
 
 
 def main() -> None:
@@ -14,6 +25,15 @@ def main() -> None:
     keys = json.loads((ROOT / "runtime" / "agent300-keys.json").read_text())
     cve = json.loads((ROOT / "artifacts" / "agent300-cve-manifest.json").read_text())
     cve_input = json.loads((ROOT / "runtime" / "cve-input.json").read_text())
+    rules_path = ROOT / "runtime" / "research-rules" / "rules" / ".external-rules.json"
+    if not rules_path.is_file():
+        raise SystemExit("research rules missing; run make experiment-semgrep-rules-prepare")
+    external_rules = json.loads(rules_path.read_text())
+    if external_rules != config.get("external_rules"):
+        raise SystemExit("external rules changed after freeze; regenerate the run config")
+    actual_hash = external_rules_hash(rules_path.parent, list(external_rules["sources"]))
+    if actual_hash != external_rules["ruleset_hash"]:
+        raise SystemExit("external rule files changed after freeze; regenerate the run config")
     if len(set(keys.values())) != len(keys):
         raise SystemExit("project keys must be unique by value as well as by project")
     if len(manifest) != 300 or len(config["repositories"]) != 300:

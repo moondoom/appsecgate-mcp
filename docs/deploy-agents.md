@@ -257,6 +257,31 @@ Agent recommendation: in summary responses, refer to the issue as
 `rule_id` (+ `message` in parentheses), for example:
 `aws-access-token` (AWS Access Key detected) in `src/secrets.py:12`.
 
+## Optional: external Semgrep rules
+
+Run `appsecgate-mcp rules list` on the host, then install selected pinned
+sources with an explicit language profile and license acceptance:
+
+```bash
+appsecgate-mcp rules install \
+  --source semgrep --source trailofbits --profile agent300 --accept-licenses
+```
+
+Use `--languages python,javascript,go` instead of the profile for a custom
+set. Files are filtered once during installation and stored under
+`~/.appsecgate-mcp/rules`; unrelated languages and test fixtures are omitted.
+No Docker rebuild is required. Add
+`APPSECGATE_RULES_DISTRIBUTION_MODE=commercial` to the MCP container environment
+and mount the same host data directory used by the install command. For the
+named `appsecgate-data` volume, run the install command in a separate networked
+container with that volume mounted at `/home/appsecgate/.appsecgate-mcp`.
+
+Review the source licenses before `--accept-licenses`. Semgrep's official rules
+permit internal use but not redistribution. `commercial` records this user
+choice; it is not a commercial AppSecGate license. Use `rules remove` to remove
+a managed source without deleting custom overlay bundles. See
+`rules/.external-rules.json` for provenance and hashes.
+
 ## 6. Post-installation verification steps
 
 1. Restart the client and open the MCP tool list.

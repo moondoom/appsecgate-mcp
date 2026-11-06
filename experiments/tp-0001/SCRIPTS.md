@@ -137,6 +137,8 @@ After metadata changes, rerun collection and clustering to refresh dependent art
 
 ## Autonomous corpus preparation
 
+`make experiment-semgrep-rules-prepare` runs the general host-only `appsecgate-mcp rules install` command with pinned Semgrep and Trail of Bits sources and the `agent300` profile. It writes only to ignored `runtime/research-rules/`; no image rebuild is needed. The corpus launchers mount this directory read-only and enable the external rules explicitly. Source revisions, archive hashes, filtered files, and duplicates are recorded in `rules/.external-rules.json` and frozen into the run config. Do not mix reports produced with different ruleset hashes.
+
 `prepare_agent_corpus.py` builds `agent300-manifest.json`: the existing 100 development repositories plus 200 new held-out repositories. Git clones have a timeout and a codeload tarball fallback with a fixed commit SHA.
 
 `prepare_agent_run_config.py` writes the frozen model/image/prompt/budget configuration, repeat list, knowledge cutoff and test-only project keys.

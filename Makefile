@@ -196,6 +196,31 @@ experiment-corpus-prepare: ## Подготовить 300 репозиторие�
 experiment-agent300-master: ## Поднять master со всеми project keys для 300
 	cd experiments/tp-0001 && python3 start_agent_master.py
 
+experiment-semgrep-rules-prepare: ## Скачать оптимизированные внешние Semgrep-правила для 300
+	mcp-server/.venv/bin/appsecgate-mcp rules install \
+		--data-dir experiments/tp-0001/runtime/research-rules \
+		--source semgrep --source trailofbits --profile agent300 --accept-licenses
+
+experiment-semgrep-rules-validate: ## Проверить внешние правила в существующем образе
+	docker run --rm --read-only --network none --tmpfs /tmp:size=100M \
+		-e SEMGREP_SETTINGS_FILE=/tmp/semgrep-settings.yml \
+		-e SEMGREP_VERSION_CACHE_PATH=/tmp/semgrep-version \
+		--entrypoint semgrep \
+		-v $(CURDIR)/experiments/tp-0001/runtime/research-rules/rules:/research-rules:ro \
+		$(TAG) scan --json --quiet --metrics=off --disable-version-check \
+		--config /opt/appsecgate/rules/opengrep-community \
+		--config /opt/appsecgate/rules/semgrep-custom \
+		--config /research-rules/external-semgrep \
+		--config /research-rules/external-trailofbits \
+		/opt/appsecgate/rules/semgrep-custom/appsecgate-base.yaml
+	docker run --rm --read-only --network none --tmpfs /tmp:size=100M \
+		-e APPSECGATE_RULES_DISTRIBUTION_MODE=commercial \
+		--entrypoint /opt/appsecgate-venv/bin/python \
+		-v $(CURDIR)/experiments/tp-0001/runtime/research-rules/rules:/home/appsecgate/.appsecgate-mcp/rules:ro \
+		-v $(CURDIR)/projects/juice-shop:/workspace:ro \
+		$(TAG) -c \
+		"from appsecgate_mcp.config.loader import ConfigLoader; c = ConfigLoader().load('/workspace'); ids = {b.id for b in c.resolved_rules.bundles}; assert {'external/semgrep', 'external/trailofbits'} <= ids; print(c.resolved_rules.ruleset_hash, sorted(ids))"
+
 experiment-run-config: ## Сформировать frozen run config и project keys для 300
 	cd experiments/tp-0001 && python3 prepare_agent_run_config.py
 
@@ -210,13 +235,13 @@ experiment-readiness-check: ## Проверить готовность 300 бе�
 	cd experiments/tp-0001 && python3 check_agent_readiness.py
 
 experiment-agent300-preflight: ## Запустить preflight 300 без sync для CVE manifest
-	cd experiments/tp-0001 && python3 run_agent300.py --label agent300-preflight --no-sync
+	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 run_agent300.py --label agent300-preflight --no-sync
 
 experiment-agent300-run: ## Запустить замороженный основной корпус 300
-	cd experiments/tp-0001 && python3 run_agent300.py --label agent300
+	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 run_agent300.py --label agent300
 
 experiment-agent300-repeat: ## Повторить 10 development репозиториев для стабильности
-	cd experiments/tp-0001 && python3 run_agent300.py --label agent300repeat
+	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 run_agent300.py --label agent300repeat
 
 clean: ## Удалить локальные артефакты uv всех пакетов
 	cd $(SERVER_DIR) && rm -rf .venv .pytest_cache .ruff_cache

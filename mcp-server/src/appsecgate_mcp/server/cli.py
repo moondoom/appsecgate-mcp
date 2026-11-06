@@ -105,7 +105,7 @@ def serve_main(argv: list[str] | None = None) -> None:
 
 def main() -> None:
     """Совместимый legacy-entrypoint с прежней диспетчеризацией подкоманд."""
-    if len(sys.argv) > 1 and sys.argv[1] in {"hook", "ci", "sync", "serve", "agent"}:
+    if len(sys.argv) > 1 and sys.argv[1] in {"hook", "ci", "sync", "serve", "agent", "rules"}:
         from appsecgate_mcp.cli import main as dispatch_main
 
         dispatch_main()

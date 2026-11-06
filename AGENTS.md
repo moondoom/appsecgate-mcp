@@ -21,6 +21,10 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
   ADR-0004 §4.2): `appsecgate-mcp sync` на хосте — экспорт shown_findings.db,
   project-scoped outbox/push и pull CI/global suppressions + master policy в
   data-dir (stdlib urllib). MCP-сервер сеть не вызывает (инвариант №2).
+- `mcp-server/src/appsecgate_mcp/rules/fetch.py` — host-only `appsecgate-mcp
+  rules list/install/remove`: пользовательская загрузка pinned внешних правил
+  в user overlay с явными языковыми профилями и provenance. Внешние правила не
+  вендорятся; MCP-сервер сеть не вызывает (инвариант №2).
 - `mcp-server/src/appsecgate_mcp/server/` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
   `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`,
   `query_findings_db`, `export_snapshot`, `get_config`, `update_config`,

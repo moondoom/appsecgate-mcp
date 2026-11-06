@@ -33,6 +33,19 @@ CACHE_DIR="${CACHE_DIR:-${ROOT}/runtime/shared-cache}"
 LLM_API_KEY="${APPSECGATE_LLM_API_KEY:-${LITELLM_API_KEY:-}}"
 mkdir -p "${DATA_DIR}" "${CACHE_DIR}/trivy-cache" "${CACHE_DIR}/semgrep-cache" "${ARTIFACT_DIR}"
 
+DOCKER_RULES_ARGS=()
+if [[ "${RESEARCH_SEMGREP_RULES:-0}" == "1" ]]; then
+  RESEARCH_RULES_DIR="${ROOT}/runtime/research-rules/rules"
+  if [[ ! -f "${RESEARCH_RULES_DIR}/manifest.yaml" || ! -f "${RESEARCH_RULES_DIR}/.external-rules.json" ]]; then
+    printf '%s\n' "Research rules are missing; run make experiment-semgrep-rules-prepare" >&2
+    exit 2
+  fi
+  DOCKER_RULES_ARGS+=(
+    -v "${RESEARCH_RULES_DIR}:/home/appsecgate/.appsecgate-mcp/rules:ro"
+    -e APPSECGATE_RULES_DISTRIBUTION_MODE=commercial
+  )
+fi
+
 set +e
 timeout --signal=TERM --kill-after=30s 35m docker run --rm \
   --name "appsecgate-${RUN_ID}" --read-only --cap-drop=ALL --tmpfs /tmp:size=100M \
@@ -64,6 +77,7 @@ timeout --signal=TERM --kill-after=30s 35m docker run --rm \
   -v "${DATA_DIR}:/home/appsecgate/.appsecgate-mcp:rw" \
   -v "${CACHE_DIR}/trivy-cache:/home/appsecgate/.cache/trivy:rw" \
   -v "${CACHE_DIR}/semgrep-cache:/home/appsecgate/.cache/semgrep:rw" \
+  "${DOCKER_RULES_ARGS[@]}" \
   moondoom/appsecgate-mcp:0.1.0 \
   agent --mode=ro --scan=full --policy="${POLICY:-warn}" --output-format=json \
   --project=/workspace --project-id="${APPSECGATE_PROJECT_ID:-pygoat-tp0001}" \

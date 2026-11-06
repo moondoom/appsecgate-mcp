@@ -1,4 +1,4 @@
-"""Общая точка входа режимов ``serve``, ``sync``, ``ci`` и ``agent``."""
+"""Общая точка входа режимов ``serve``, ``sync``, ``ci``, ``agent`` и ``rules``."""
 
 from __future__ import annotations
 
@@ -29,6 +29,10 @@ def main(argv: list[str] | None = None) -> None:
         from appsecgate_mcp.agent.cli import agent_main
 
         raise SystemExit(agent_main(args[1:]))
+    if command == "rules":
+        from appsecgate_mcp.rules.fetch_cli import rules_main
+
+        raise SystemExit(rules_main(args[1:]))
 
     from appsecgate_mcp.server import main as legacy_serve_main
 

@@ -662,6 +662,7 @@ services:
    - `commercial` — допускаются все бандлы, при этом соблюдаются условия их лицензий.
 5. **Атрибуция.** Сводка лицензий — `rules/THIRD_PARTY_NOTICES.md`. При изменении состава bundle файл обновляется вместе с `manifest.yaml`.
 6. **Отпечаток правил.** `ruleset_hash` учитывает `distribution_mode` и лицензии активных бандлов, поэтому смена режима инвалидирует кэш результатов.
+7. **Пользовательская загрузка.** Host-only `appsecgate-mcp rules` скачивает pinned внешние наборы в user overlay после `--accept-licenses`. Внешние правила не входят в репозиторий и образ. Профиль языков фильтрует файлы один раз при установке; revisions, archive hashes и дубликаты сохраняются в `rules/.external-rules.json`. Для restricted-бандлов пользователь явно задаёт `distribution_mode=commercial` и отвечает за условия лицензий. MCP serve/scan остаётся offline.
 
 ### Данные Trivy
 

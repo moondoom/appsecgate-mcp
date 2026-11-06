@@ -276,6 +276,36 @@ gates:
     diff_base_ref: origin/main        # база для `appsecgate ci`
 ```
 
+### Опционально: пользовательская загрузка правил Semgrep
+
+В образ входят только правила, которые AppSecGate вправе распространять.
+Дополнительные правила пользователь скачивает сам в data-dir — не в проект,
+образ или встроенный bundle:
+
+```bash
+appsecgate-mcp rules list
+appsecgate-mcp rules install \
+  --source semgrep --source trailofbits --profile agent300 --accept-licenses
+```
+
+Вместо профиля можно явно указать `--languages python,javascript,go`.
+Профиль `agent300` оставляет Python, JavaScript, TypeScript, Go, Java, Ruby,
+PHP и конфигурационные/IaC-правила, исключая остальные языки и тестовые
+фикстуры. Сеть использует только эта host-команда; MCP остаётся офлайн.
+Пересборка образа не нужна.
+
+Установите `APPSECGATE_RULES_DISTRIBUTION_MODE=commercial` для MCP-контейнера
+и смонтируйте `~/.appsecgate-mcp` хоста в `/home/appsecgate/.appsecgate-mcp`.
+Для named volume `appsecgate-data` выполните install в отдельном контейнере
+с сетью и тем же volume. Режим `commercial` означает ответственность
+пользователя за выбранные лицензии, а не коммерческую лицензию AppSecGate.
+Официальные правила Semgrep разрешены для внутреннего использования и не
+должны распространяться.
+
+Ревизии, хэши, состав и дубликаты записаны в `rules/.external-rules.json`.
+Удаление: `appsecgate-mcp rules remove --source semgrep`. Смена набора меняет
+результаты сканирования и `ruleset_hash`.
+
 ### Опционально: централизованный CI и синхронизация с master
 
 Локальное MCP-сканирование остаётся офлайн и warn-only. Для общих находок,

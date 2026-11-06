@@ -28,6 +28,10 @@ def main() -> None:
     freeze = json.loads((ROOT / "artifacts" / "stage2-freeze.json").read_text())
     prompt_path = ROOT.parents[1] / "mcp-server/src/appsecgate_mcp/agent/prompts/agent_system.md"
     prompt_hash = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+    rules_path = ROOT / "runtime" / "research-rules" / "rules" / ".external-rules.json"
+    if not rules_path.is_file():
+        raise SystemExit("research rules missing; run make experiment-semgrep-rules-prepare")
+    external_rules = json.loads(rules_path.read_text())
     image_id = subprocess.run(
         ["docker", "image", "inspect", "moondoom/appsecgate-mcp:0.1.0", "--format", "{{.Id}}"],
         check=True,
@@ -42,6 +46,7 @@ def main() -> None:
         "model": freeze["model"],
         "image": {"tag": "moondoom/appsecgate-mcp:0.1.0", "id": image_id},
         "prompt_sha256": prompt_hash,
+        "external_rules": external_rules,
         "parallelism": 2,
         "num_ctx": 32768,
         "max_iterations": 500,

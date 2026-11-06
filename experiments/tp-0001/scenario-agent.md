@@ -26,9 +26,11 @@ The knowledge cutoff excludes current-run and parallel-run verdicts. Repeats use
 
 ## Launch sequence
 
-After development is complete and the 300 repositories are present, generate the frozen configuration and start master:
+After development is complete and the 300 repositories are present, prepare the external rules once, generate the frozen configuration, and start master. The host-only downloader uses the `agent300` language profile; the same read-only rules directory is reused by every run. External rules and their licenses are not committed or added to the image, and no image rebuild is needed.
 
 ```bash
+make experiment-semgrep-rules-prepare
+make experiment-semgrep-rules-validate
 make experiment-run-config
 make experiment-agent300-master
 make experiment-master-knowledge
