@@ -35,6 +35,7 @@ class AgentController:
         self.verdicts: OrderedDict[str, Verdict] = OrderedDict()
         self.revisions: dict[str, dict[str, Any]] = {}
         self.finding_modes: dict[str, str] = {}
+        self.finding_snippets: dict[str, str] = {}
         self.action_log: list[dict[str, Any]] = []
         self.recent_signatures: list[str] = []
         self.actions_without_progress = 0
@@ -177,7 +178,6 @@ class AgentController:
                                     "start_line": {"type": "integer", "minimum": 1},
                                     "end_line": {"type": "integer", "minimum": 1},
                                     "read_event_id": {"type": "string"},
-                                    "quote_hash": {"type": "string"},
                                     "reasoning": {"type": "string"},
                                     "evidence": {
                                         "type": "array",
@@ -296,7 +296,11 @@ class AgentController:
             verdict = Verdict.model_validate(item)
             finding_id = verdict.finding_id
             if record:
-                verdict = validate_verdict(verdict, self.finding_modes.get(finding_id, "sast"))
+                verdict = validate_verdict(
+                    verdict,
+                    self.finding_modes.get(finding_id, "sast"),
+                    source_text=self.finding_snippets.get(finding_id),
+                )
             if finding_id not in self.pending:
                 if finding_id in self.verdicts and self.verdicts[finding_id] == verdict:
                     self.metrics["duplicate_verdicts"] += 1

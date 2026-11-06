@@ -93,16 +93,8 @@ async def triage_guided_sched(config: AgentConfig, controller: AgentController) 
                 payload=payload,
             )
 
-    current_group = None
-    group: list = []
-    for mode, lane_index, chunk, payload in [*prepared, (None, None, None, None)]:
-        group_key = (mode, lane_index)
-        if group_key != current_group and group:
-            await asyncio.gather(*group)
-            group = []
-        if chunk is not None:
-            group.append(_worker(chunk, payload))
-        current_group = group_key
+    if prepared:
+        await asyncio.gather(*(_worker(chunk, payload) for _, _, chunk, payload in prepared))
     result = controller.result()
     result.usage = {
         **usage,

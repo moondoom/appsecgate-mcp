@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 
 from appsecgate_mcp.agent.models import Verdict
 
@@ -22,7 +23,17 @@ def finding_mode(category: str | None) -> str:
     return {"secret": "secrets", "sca": "cve", "iac": "iac"}.get(category or "", "sast")
 
 
-def validate_verdict(verdict: Verdict, mode: str) -> Verdict:
+def _normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _quote_in_source(quote: str, source_text: str | None) -> bool:
+    if not source_text:
+        return True
+    return _normalize(quote) in _normalize(source_text)
+
+
+def validate_verdict(verdict: Verdict, mode: str, *, source_text: str | None = None) -> Verdict:
     if verdict.confidence_level is None and verdict.evidence_basis is None:
         return verdict
     if verdict.confidence_level in {"high", "medium"} and verdict.evidence_basis is None:
@@ -33,8 +44,11 @@ def validate_verdict(verdict: Verdict, mode: str) -> Verdict:
             "model_verdict": verdict.verdict,
         }
     )
+    if validated.evidence_quote.strip():
+        validated = validated.model_copy(
+            update={"quote_hash": hashlib.sha256(validated.evidence_quote.encode()).hexdigest()}
+        )
     if validated.confidence_level == "high":
-        expected_hash = hashlib.sha256(validated.evidence_quote.encode()).hexdigest()
         if validated.evidence_basis not in _HIGH_BASIS[mode]:
             validated = validated.model_copy(
                 update={
@@ -42,7 +56,9 @@ def validate_verdict(verdict: Verdict, mode: str) -> Verdict:
                     "downgrade_reason": "basis_not_high_capable",
                 }
             )
-        elif not validated.evidence_quote.strip() or validated.quote_hash != expected_hash:
+        elif not validated.evidence_quote.strip() or not _quote_in_source(
+            validated.evidence_quote, source_text
+        ):
             validated = validated.model_copy(
                 update={"confidence_level": "medium", "downgrade_reason": "quote_mismatch"}
             )

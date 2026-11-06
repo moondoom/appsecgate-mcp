@@ -114,6 +114,9 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
                 controller.finding_modes = {
                     item["finding_id"]: finding_mode(item.get("category")) for item in findings
                 }
+                controller.finding_snippets = {
+                    item["finding_id"]: item.get("snippet") or "" for item in findings
+                }
                 if not controller.finding_ids:
                     llm = controller.result()
                 elif config.agent_mode == "guided":
