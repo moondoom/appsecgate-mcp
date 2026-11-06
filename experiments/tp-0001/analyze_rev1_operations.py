@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from datetime import datetime
@@ -9,11 +10,15 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent
-OUTPUT = ROOT / "artifacts" / "rev1-operations.json"
+LABEL = os.environ.get("OPS_LABEL", "agent300review")
+OUTPUT = ROOT / "artifacts" / f"{LABEL}-operations.json"
 
 
 def _load(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def _events(run_id: str) -> list[dict[str, Any]]:
@@ -26,7 +31,7 @@ def _load_line(line: str) -> dict[str, Any]:
 
 
 def _bitcore() -> dict[str, Any]:
-    run_id = "agent300review-gemmaq3-p1-bitcore"
+    run_id = f"{LABEL}-gemmaq3-p1-bitcore"
     events = _events(run_id)
     timestamps = sorted(datetime.fromisoformat(event["at"]) for event in events)
     gaps = [(later - earlier).total_seconds() for earlier, later in zip(timestamps, timestamps[1:])]
@@ -62,7 +67,7 @@ def _bitcore() -> dict[str, Any]:
 
 
 def _aiwritex() -> dict[str, Any]:
-    report = _load(ROOT / "artifacts" / "agent300review-gemmaq3-p1-AIWriteX" / "report.json")
+    report = _load(ROOT / "artifacts" / f"{LABEL}-gemmaq3-p1-AIWriteX" / "report.json")
     missing_ids = report.get("inventory", {}).get("missing_ids", [])
     findings = {item["finding_id"]: item for item in report.get("findings", [])}
     return {
@@ -101,8 +106,10 @@ def _normalize_snippet(snippet: str) -> str:
 
 def _duplicates() -> dict[str, Any]:
     groups = []
-    for path in sorted((ROOT / "artifacts").glob("agent300review-gemmaq3-p1-*/report.json")):
+    for path in sorted((ROOT / "artifacts").glob(f"{LABEL}-gemmaq3-p1-*/report.json")):
         report = _load(path)
+        if not report:
+            continue
         by_id: dict[str, list[dict[str, Any]]] = {}
         for finding in report.get("findings", []):
             by_id.setdefault(finding["finding_id"], []).append(finding)
@@ -120,7 +127,7 @@ def _duplicates() -> dict[str, Any]:
                 kind = "same_scanner_variant"
             groups.append(
                 {
-                    "repository": path.parent.name.removeprefix("agent300review-gemmaq3-p1-"),
+                    "repository": path.parent.name.removeprefix(f"{LABEL}-gemmaq3-p1-"),
                     "finding_id": finding_id,
                     "kind": kind,
                     "rows": len(items),

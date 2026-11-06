@@ -252,11 +252,32 @@ experiment-reevaluation-stats: ## Собрать TTL/confidence/provenance ст�
 experiment-rev1-validation: ## Controlled Phase A/B/C: fresh, expired и legacy reuse
 	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 validate_rev1.py
 
+experiment-adr18-run: ## Прогнать ADR-0018 Mode A на 10 repos (label agent300adr18)
+	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 run_agent300.py --label agent300adr18
+
+experiment-fix1-run: ## Прогнать 10 repos с фиксом quote_hash/parallelism (label agent300fix1)
+	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 run_agent300.py --label agent300fix1
+
+experiment-adr18-stats: ## Собрать categorical статистику ADR-0018 Mode A
+	cd experiments/tp-0001 && python3 collect_adr18_stats.py
+
+experiment-fix1-stats: ## Собрать статистику фикс-серии против agent300adr18
+	cd experiments/tp-0001 && STATS_LABEL=agent300fix1 STATS_BASELINE=agent300adr18 python3 collect_adr18_stats.py
+
 experiment-rev1-operations: ## Разобрать bitcore, AIWriteX и duplicate fingerprints
 	cd experiments/tp-0001 && python3 analyze_rev1_operations.py
 
+experiment-adr18-operations: ## Разобрать bitcore/AIWriteX/dedup для серии agent300adr18
+	cd experiments/tp-0001 && OPS_LABEL=agent300adr18 python3 analyze_rev1_operations.py
+
 experiment-confidence-review: ## Подготовить 100 findings для ручной confidence calibration
 	cd experiments/tp-0001 && python3 prepare_confidence_review.py
+
+experiment-adr18-review: ## Слепой categorical review bundle для серии agent300adr18
+	cd experiments/tp-0001 && python3 prepare_adr18_review.py
+
+experiment-kv-probe: ## Экспресс-проба ollama: контекст × параллельность (PROBE_TAG=q4 для повтора)
+	cd experiments/tp-0001 && python3 kv_probe.py
 
 clean: ## Удалить локальные артефакты uv всех пакетов
 	cd $(SERVER_DIR) && rm -rf .venv .pytest_cache .ruff_cache

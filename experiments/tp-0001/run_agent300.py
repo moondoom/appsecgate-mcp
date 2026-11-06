@@ -26,18 +26,20 @@ def main() -> None:
     config = json.loads((ROOT / "artifacts" / "agent300-run-config.json").read_text())
     keys = json.loads((ROOT / "runtime" / "agent300-keys.json").read_text())
     projects = args.projects
-    review = args.label == "agent300review"
-    if projects is None and args.label in {"agent300repeat", "agent300review"}:
+    repeat_labels = {"agent300repeat", "agent300review", "agent300adr18", "agent300fix1"}
+    if projects is None and args.label in repeat_labels:
         projects = ",".join(config["repeat"])
     if projects is None:
         projects = ",".join(item["name"] for item in config["repositories"])
     knowledge_cutoff = config["master"]["knowledge_cutoff"]
-    if review:
+    if args.label == "agent300review":
         knowledge_cutoff = config["master"].get("review_knowledge_cutoff", knowledge_cutoff)
+    if args.label in {"agent300adr18", "agent300fix1"}:
+        knowledge_cutoff = ""
     if args.knowledge_cutoff is not None:
         knowledge_cutoff = args.knowledge_cutoff
     identity_label = args.identity_label or (
-        "agent300" if args.label in {"agent300repeat", "agent300review"} else args.label
+        "agent300" if args.label in repeat_labels else args.label
     )
     env = os.environ.copy()
     env.update(
