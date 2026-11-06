@@ -282,3 +282,16 @@ async def test_scan_output_carries_ruleset_hash(tmp_path):
     output = await server._build_scan_output(state, ScanResult())
 
     assert output["meta"]["ruleset_hash"] == "sha256:testhash"
+
+
+async def test_project_report_carries_ruleset_hash():
+    from appsecgate_mcp.rules.resolver import ResolvedRules
+    from appsecgate_mcp.server.output import _build_project_report
+
+    state = server.SessionState()
+    state.config = Config()
+    state.config.resolved_rules = ResolvedRules(ruleset_hash="sha256:testhash")
+
+    output = await _build_project_report(state, ScanResult())
+
+    assert output["meta"]["ruleset_hash"] == "sha256:testhash"

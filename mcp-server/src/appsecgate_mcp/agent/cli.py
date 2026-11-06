@@ -16,6 +16,14 @@ from appsecgate_mcp.agent.report import format_report
 from appsecgate_mcp.agent.runner import AgentError, run_agent
 
 
+def _duration_seconds(value: str) -> int:
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+    number, unit = (value[:-1], value[-1]) if value[-1:] in units else (value, "s")
+    if not number.isdigit():
+        raise argparse.ArgumentTypeError("duration must be seconds or an integer with s/m/h/d/w")
+    return int(number) * units[unit]
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="appsecgate-mcp agent")
     parser.add_argument("--task", default="Проверить безопасность проекта")
@@ -72,6 +80,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         dest="reuse_verdicts",
         default=os.environ.get("APPSECGATE_AGENT_REUSE_VERDICTS", "1") != "0",
+    )
+    parser.add_argument(
+        "--reuse-ttl",
+        type=_duration_seconds,
+        default=os.environ.get("APPSECGATE_AGENT_REUSE_TTL", "1w"),
     )
     parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument(
@@ -194,6 +207,7 @@ def agent_main(argv: list[str] | None = None) -> int:
         sched_parallel=args.sched_parallel,
         sched_lanes=[int(v) for v in args.sched_lanes.split(",")],
         reuse_verdicts=args.reuse_verdicts,
+        reuse_ttl_seconds=args.reuse_ttl,
         timeout=args.timeout,
         max_iterations=args.max_iterations,
         max_restarts=args.max_restarts,
@@ -202,7 +216,7 @@ def agent_main(argv: list[str] | None = None) -> int:
         max_context_chars=args.max_context_chars,
         master_url=args.master_url,
         master_api_key=args.api_key,
-        knowledge_cutoff=args.knowledge_cutoff,
+        knowledge_cutoff=args.knowledge_cutoff or None,
         no_master_knowledge=args.no_master_knowledge,
         no_sync=args.no_sync,
     )

@@ -49,6 +49,17 @@ def prometheus_range(query: str, start: float, end: float) -> dict:
         return json.load(response)
 
 
+def project_id_for(project: str, run_id: str) -> str:
+    override = os.environ.get("APPSECGATE_PROJECT_ID")
+    if override:
+        return override
+    label = os.environ.get("BENCH_LABEL", "bench")
+    identity_label = os.environ.get("BENCH_PROJECT_ID_LABEL", label)
+    identity_run_id = run_id.replace(f"{label}-", f"{identity_label}-", 1)
+    prefix = project if project != "pygoat" else "pygoat"
+    return f"{prefix}-tp0001-{identity_run_id}"
+
+
 def run_one(
     model: str, llm_model: str, parallelism: int, index: int, keys: dict, project: str = "pygoat"
 ) -> dict:
@@ -57,9 +68,7 @@ def run_one(
         run_id = f"{label}-{model}-p{parallelism}-{index:02d}"
     else:
         run_id = f"{label}-{model}-p{parallelism}-{project}"
-    project_id = os.environ.get("APPSECGATE_PROJECT_ID") or (
-        f"{project}-tp0001-{run_id}" if project != "pygoat" else f"pygoat-tp0001-{run_id}"
-    )
+    project_id = project_id_for(project, run_id)
     env = os.environ.copy()
     env.update(
         RUN_ID=run_id,
@@ -112,11 +121,7 @@ def run_one(
 
 def evaluate_run(run: dict) -> None:
     project = run.get("project", "pygoat")
-    project_id = os.environ.get("APPSECGATE_PROJECT_ID") or (
-        f"{project}-tp0001-{run['run_id']}"
-        if project != "pygoat"
-        else f"pygoat-tp0001-{run['run_id']}"
-    )
+    project_id = project_id_for(project, run["run_id"])
     key = run.pop("api_key")
     subprocess.run(
         [
@@ -180,11 +185,7 @@ def main() -> None:
             wall_sec = ended - started
             for run in runs:
                 project = run.get("project", "pygoat")
-                project_id = os.environ.get("APPSECGATE_PROJECT_ID") or (
-                    f"{project}-tp0001-{run['run_id']}"
-                    if project != "pygoat"
-                    else f"pygoat-tp0001-{run['run_id']}"
-                )
+                project_id = project_id_for(project, run["run_id"])
                 if run["exit"] == 0 and os.environ.get("NO_SYNC") != "1" and keys.get(project_id):
                     run["api_key"] = keys[project_id]
                     evaluate_run(run)

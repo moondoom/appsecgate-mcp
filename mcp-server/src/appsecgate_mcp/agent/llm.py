@@ -99,10 +99,10 @@ async def triage(config: AgentConfig, controller: AgentController) -> LlmResult:
     tools = controller.tool_schemas()
     llm_usage: dict[str, Any] = {}
     if config.reuse_verdicts:
-        from appsecgate_mcp.agent.guided import _reuse_prior_verdicts
+        from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
 
         stats: dict[str, int] = {}
-        await _reuse_prior_verdicts(config, controller, stats)
+        await reuse_prior_verdicts(config, controller, stats)
         llm_usage.update(stats)
         if not controller.pending:
             result = controller.result()

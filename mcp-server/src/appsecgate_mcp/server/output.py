@@ -102,6 +102,8 @@ async def _build_project_report(state: SessionState, result: ScanResult) -> dict
     else:
         suggested_action = "no findings require confirmation"
 
+    if state.config is not None and state.config.resolved_rules is not None:
+        result.meta.ruleset_hash = state.config.resolved_rules.ruleset_hash
     meta = result.meta.model_dump(mode="json")
     meta["branch"] = branch
     meta["commit"] = commit
@@ -139,7 +141,16 @@ async def _build_scan_output(state: SessionState, result: ScanResult) -> dict[st
         # Короткое имя правила в каждую находку сводки (T15); полный rule_id
         # остаётся в model_dump (rule_id).
         "findings": [
-            {**f.model_dump(mode="json"), "rule": f.short_rule_id()} for f in result.findings
+            {
+                **f.model_dump(mode="json"),
+                "rule": f.short_rule_id(),
+                **(
+                    state.config.resolved_rules.rule_provenance(f.scanner, f.rule_id)
+                    if state.config is not None and state.config.resolved_rules is not None
+                    else {"rule_hash": None, "rule_hash_status": "unavailable"}
+                ),
+            }
+            for f in result.findings
         ],
         "meta": meta,
     }

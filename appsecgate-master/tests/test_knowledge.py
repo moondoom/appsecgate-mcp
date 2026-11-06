@@ -17,9 +17,16 @@ def _triage(*, project="proj", source="model", status="unreviewed", at="2026-11-
         client_event_id=verdict_id,
         run_id="run-1",
         verdict="FALSE_POSITIVE",
+        confidence=85,
         verdict_source=source,
+        actor_id=f"{source}:test",
+        revision_reason="ttl_expired",
         review_status=status,
+        scanner="semgrep",
         rule_id="rule-1",
+        ruleset_hash="sha256:rules",
+        rule_hash="sha256:rule",
+        rule_hash_status="definition_sha256",
         package="pkg",
         ecosystem="npm",
         cve_id="CVE-2026-0001",
@@ -43,7 +50,8 @@ async def test_triage_views_enforce_project_knowledge_and_cutoff(master_db, even
 
     project_rows = await run_query(
         master_db,
-        "SELECT fp, verdict, verdict_source FROM v_triage_verdicts",
+        "SELECT fp, verdict, confidence, actor_id, revision_reason, ruleset_hash, rule_hash "
+        "FROM v_triage_verdicts",
         None,
         "proj",
         None,
@@ -57,6 +65,11 @@ async def test_triage_views_enforce_project_knowledge_and_cutoff(master_db, even
     )
 
     assert project_rows["row_count"] == 2
+    assert project_rows["rows"][0]["confidence"] == 85
+    assert project_rows["rows"][0]["actor_id"] == "model:test"
+    assert project_rows["rows"][0]["revision_reason"] == "ttl_expired"
+    assert project_rows["rows"][0]["ruleset_hash"] == "sha256:rules"
+    assert project_rows["rows"][0]["rule_hash"] == "sha256:rule"
     assert knowledge["row_count"] == 0
     later = await run_query(master_db, "SELECT verdict FROM v_triage_knowledge", None, "proj", None)
     assert later["row_count"] == 1

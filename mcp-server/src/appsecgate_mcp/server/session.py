@@ -193,7 +193,11 @@ class SessionState:
 
         await self._sync_trivy_db(config)
 
-        self.registry = ScannerRegistry.from_config(config, project_path=project)
+        self.registry = ScannerRegistry.from_config(
+            config,
+            project_path=project,
+            timeout=float(os.environ.get("APPSECGATE_SCANNER_TIMEOUT", "120")),
+        )
         logger.info(
             "session init scanners=%s categories=%s",
             self.registry.names(),

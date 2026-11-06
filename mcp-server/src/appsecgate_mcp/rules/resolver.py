@@ -21,6 +21,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from appsecgate_mcp.rules.hashes import compute_rule_hashes
 from appsecgate_mcp.rules.manifest import (
     BundleEntry,
     DistributionMode,
@@ -117,6 +118,7 @@ class ResolvedRules(BaseModel):
     version: str = "0.0.0"
     distribution_mode: DistributionMode = DistributionMode.MIT
     ruleset_hash: str = ""
+    rule_hashes: dict[str, str | None] = Field(default_factory=dict)
     bundles: list[ResolvedBundle] = Field(default_factory=list)
     # scanner -> список выключенных rule-id
     disable: dict[str, list[str]] = Field(default_factory=dict)
@@ -143,6 +145,21 @@ class ResolvedRules(BaseModel):
     def bundles_summary(self) -> list[dict[str, object]]:
         """Компактная сводка бандлов для meta (id + rules_count)."""
         return [{"id": b.id, "rules_count": b.rules_count} for b in self.bundles]
+
+    def rule_provenance(self, scanner: str, rule_id: str) -> dict[str, str | None]:
+        scanner = scanner.lower()
+        direct = self.rule_hashes.get(f"{scanner}:{rule_id}")
+        matches = {
+            digest
+            for key, digest in self.rule_hashes.items()
+            if key.startswith(f"{scanner}:")
+            and rule_id.endswith(f".{key.removeprefix(f'{scanner}:')}")
+        }
+        digest = direct or (matches.pop() if len(matches) == 1 else None)
+        return {
+            "rule_hash": digest,
+            "rule_hash_status": "definition_sha256" if digest else "unavailable",
+        }
 
 
 class RuleResolver:
@@ -227,6 +244,7 @@ class RuleResolver:
             version=version,
             distribution_mode=mode,
             ruleset_hash=ruleset_hash,
+            rule_hashes=compute_rule_hashes(bundles),
             bundles=bundles,
             disable=disable,
             replace=replace,

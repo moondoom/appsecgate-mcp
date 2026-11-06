@@ -359,3 +359,35 @@ def test_agent_real_mcp_child_empty_project(tmp_path, capsys):
         "check_gate",
         "sync",
     ]
+
+
+def test_agent_reads_reuse_ttl(monkeypatch, tmp_path):
+    captured = {}
+
+    async def fake_run(config):
+        captured["reuse_ttl_seconds"] = config.reuse_ttl_seconds
+        return _report(config)
+
+    monkeypatch.setattr("appsecgate_mcp.agent.cli.run_agent", fake_run)
+    monkeypatch.setenv("APPSECGATE_AGENT_REUSE_TTL", "1h")
+
+    assert agent_main(_args(tmp_path)) == 0
+    assert captured["reuse_ttl_seconds"] == 3600
+
+
+def test_scan_findings_include_unavailable_rule_provenance():
+    state = SessionState()
+    finding = Finding(
+        fingerprint="fp-1",
+        rule_id="CVE-2026-0001",
+        severity=Severity.HIGH,
+        file_path="requirements.txt",
+        scanner="trivy",
+        category=Category.SCA,
+    )
+    state.register(ScanResult(findings=[finding]))
+
+    output = _scan_findings_page(state, scope="file", cursor=0, limit=1)
+
+    assert output["findings"][0]["rule_hash"] is None
+    assert output["findings"][0]["rule_hash_status"] == "unavailable"

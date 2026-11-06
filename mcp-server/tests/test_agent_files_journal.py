@@ -63,16 +63,33 @@ def test_triage_journal_redacts_and_deduplicates(tmp_path):
         llm_url="http://llm.test/v1",
         llm_model="test-model",
     )
-    journal = TriageJournal(config)
+    journal = TriageJournal(
+        config,
+        scan_meta={"ruleset_hash": "sha256:rules"},
+        findings=[
+            {
+                "finding_id": "fp-1",
+                "scanner": "semgrep",
+                "rule_id": "rule-1",
+                "rule_hash": "sha256:rule",
+                "rule_hash_status": "definition_sha256",
+            }
+        ],
+    )
 
     async def run():
         controller = AgentController(_inventory_call, journal=journal.append)
         await controller.initialize("full")
+        controller.revisions["fp-1"] = {
+            "supersedes_verdict_id": "previous-verdict",
+            "revision_reason": "ttl_expired",
+        }
         arguments = {
             "verdicts": [
                 {
                     "finding_id": "fp-1",
                     "verdict": "TRUE_POSITIVE",
+                    "confidence": 92,
                     "explanation": "token AKIAIOSFODNN7EXAMPLE",
                     "evidence": [{"file": "a.py", "note": "AKIAIOSFODNN7EXAMPLE"}],
                 }
@@ -92,4 +109,11 @@ def test_triage_journal_redacts_and_deduplicates(tmp_path):
     assert event["event_type"] == "triage_verdicted"
     assert event["project_key"] == "p1"
     assert event["verdict_source"] == "model"
+    assert event["actor_id"] == "model:test-model"
+    assert event["confidence"] == 92
+    assert event["supersedes_verdict_id"] == "previous-verdict"
+    assert event["revision_reason"] == "ttl_expired"
+    assert event["ruleset_hash"] == "sha256:rules"
+    assert event["rule_hash"] == "sha256:rule"
+    assert event["rule_hash_status"] == "definition_sha256"
     assert "AKIAIOSFODNN7EXAMPLE" not in lines[0]

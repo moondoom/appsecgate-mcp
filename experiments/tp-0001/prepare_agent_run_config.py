@@ -26,7 +26,7 @@ REPEAT = (
 def main() -> None:
     manifest = json.loads((ROOT / "artifacts" / "agent300-manifest.json").read_text())
     freeze = json.loads((ROOT / "artifacts" / "stage2-freeze.json").read_text())
-    prompt_path = ROOT.parents[1] / "mcp-server/src/appsecgate_mcp/agent/prompts/agent_system.md"
+    prompt_path = ROOT.parents[1] / "mcp-server/src/appsecgate_mcp/agent/prompts/agent_guided.md"
     prompt_hash = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
     rules_path = ROOT / "runtime" / "research-rules" / "rules" / ".external-rules.json"
     if not rules_path.is_file():
@@ -42,12 +42,13 @@ def main() -> None:
     config = {
         "agent_version": "agent-rc-v1",
         "agent_mode": "guided-sched",
+        "reuse_ttl": "1h",
         "generated_at": knowledge_cutoff,
         "model": freeze["model"],
         "image": {"tag": "moondoom/appsecgate-mcp:0.1.0", "id": image_id},
         "prompt_sha256": prompt_hash,
         "external_rules": external_rules,
-        "parallelism": 2,
+        "parallelism": 1,
         "num_ctx": 32768,
         "max_iterations": 500,
         "max_restarts": 5,
@@ -58,6 +59,7 @@ def main() -> None:
             "url": "http://appsecgate-agent300-master:8000",
             "host_url": "http://127.0.0.1:8001",
             "knowledge_cutoff": knowledge_cutoff,
+            "review_knowledge_cutoff": "2026-11-06T06:44:03.327213+00:00",
         },
         "repositories": manifest,
         "repeat": list(REPEAT),

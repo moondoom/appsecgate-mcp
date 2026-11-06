@@ -96,7 +96,7 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
                     master_unavailable = True
                     master_error = f"{type(exc).__name__}: {exc}"[:300]
             try:
-                journal = TriageJournal(config)
+                journal = TriageJournal(config, scan_meta=scan.get("meta", {}))
                 controller = AgentController(
                     call,
                     journal=journal.append,
@@ -108,6 +108,8 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
                 except RuntimeError as exc:
                     raise AgentError(str(exc)) from exc
                 journal.project_id = controller.project_id
+                findings = await _all_findings(call, config.scan) if controller.finding_ids else []
+                journal.findings = {item["finding_id"]: item for item in findings}
                 if not controller.finding_ids:
                     llm = controller.result()
                 elif config.agent_mode == "guided":
@@ -121,7 +123,6 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
             finally:
                 if master_client is not None:
                     await master_client.__aexit__(None, None, None)
-            findings = await _all_findings(call, config.scan) if controller.finding_ids else []
             gate = await call("check_gate", {"scope": config.scan, "policy": config.policy})
 
     usage = llm.usage

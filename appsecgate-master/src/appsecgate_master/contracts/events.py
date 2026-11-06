@@ -107,7 +107,12 @@ class MasterEvent(BaseModel):
     supersedes_verdict_id: str | None = None
     run_id: str | None = None
     verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"] | None = None
+    confidence: int | None = Field(default=None, ge=0, le=100)
     verdict_source: Literal["model", "human"] | None = None
+    actor_id: str | None = None
+    revision_reason: (
+        Literal["initial", "ttl_expired", "legacy_confidence_missing", "manual"] | None
+    ) = None
     review_status: Literal["unreviewed", "confirmed", "rejected"] | None = None
     explanation: str | None = None
     evidence: list[dict[str, Any]] | None = None
@@ -116,6 +121,10 @@ class MasterEvent(BaseModel):
     model_digest: str | None = None
     prompt_sha256: str | None = None
     tool_hashes: dict[str, str] | None = None
+    scanner: str | None = None
+    ruleset_hash: str | None = None
+    rule_hash: str | None = None
+    rule_hash_status: Literal["definition_sha256", "unavailable"] | None = None
     package: str | None = None
     ecosystem: str | None = None
     cve_id: str | None = None

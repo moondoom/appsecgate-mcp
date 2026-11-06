@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AgentConfig(BaseModel):
@@ -42,6 +42,7 @@ class AgentConfig(BaseModel):
     no_master_knowledge: bool = False
     no_sync: bool = False
     reuse_verdicts: bool = True
+    reuse_ttl_seconds: int = Field(default=604800, ge=0)
 
     @property
     def prompt_path(self) -> Path:
@@ -64,8 +65,20 @@ class Verdict(BaseModel):
     finding_id: str
     verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"]
     explanation: str = ""
+    confidence: int | None = Field(default=None, ge=0, le=100)
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     patch: str | list[dict[str, Any]] | None = None
+    supersedes_verdict_id: str | None = Field(default=None, exclude=True)
+    revision_reason: Literal["initial", "ttl_expired", "legacy_confidence_missing", "manual"] = (
+        Field(default="initial", exclude=True)
+    )
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _normalize_confidence(cls, value: Any) -> int | None:
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100:
+            return value
+        return None
 
 
 class LlmResult(BaseModel):

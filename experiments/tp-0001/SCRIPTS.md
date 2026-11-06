@@ -141,7 +141,13 @@ After metadata changes, rerun collection and clustering to refresh dependent art
 
 `prepare_agent_corpus.py` builds `agent300-manifest.json`: the existing 100 development repositories plus 200 new held-out repositories. Git clones have a timeout and a codeload tarball fallback with a fixed commit SHA.
 
-`prepare_agent_run_config.py` writes the frozen model/image/prompt/budget configuration, repeat list, knowledge cutoff and test-only project keys.
+`prepare_agent_run_config.py` writes the frozen model/image/prompt/budget configuration, repeat list, knowledge cutoff and test-only project keys. The REV-1 experiment freezes `reuse_ttl=1h`; the normal agent default is `1w`.
+
+`make experiment-reevaluation-run` runs the ten development repositories as `agent300review` while retaining their `agent300` project identity for baseline verdict reuse. Its pinned review cutoff excludes aborted prototype attempts. `make experiment-reevaluation-stats` writes `artifacts/agent300review-reevaluation-stats.json` with coverage, reuse/revision reasons, confidence bands, baseline drift, and journal provenance metrics.
+
+`make experiment-rev1-validation` runs controlled Phase A/B/C on structlog and aitextgen with unique run labels, stable agent300 identity, and no knowledge cutoff. A1 uses TTL zero to establish a fresh baseline; A2 proves fresh reuse without LLM/events, B proves TTL supersedes links, and C proves an append-only legacy-confidence seed. `REV1_RUN_PREFIX` isolates repeated series and selects `artifacts/<prefix>-validation.json`; any failed gate stops the sequence.
+
+`make experiment-rev1-operations` writes `artifacts/rev1-operations.json` with bitcore timing/progress, AIWriteX missing findings, and duplicate fingerprint classification. `make experiment-confidence-review` prepares 100 findings (all 54 medium-confidence plus 46 high-confidence) in `artifacts/rev1-confidence-review.json` for human calibration; it does not assign ground truth automatically.
 
 `prepare_master_knowledge.py` imports human-confirmed development verdicts through `/v1/events`. `prepare_cve_snapshot.py` downloads a frozen OSV snapshot; `appsecgate_master.cve_ingest` imports it into master.
 

@@ -4,8 +4,11 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from appsecgate_mcp.agent.controller import AgentController
 from appsecgate_mcp.agent.guided import _batch_size, triage_guided
+from appsecgate_mcp.agent.guided_sched import triage_guided_sched
 from appsecgate_mcp.agent.models import AgentConfig
 
 
@@ -276,3 +279,39 @@ def test_guided_unparseable_single_finding_left_pending(monkeypatch, tmp_path):
     assert result.usage["failed_findings"] == 1
     assert result.usage["guided_incomplete"] == 1
     assert result.verdicts == []
+
+
+@pytest.mark.parametrize(
+    ("triage_fn", "mode"),
+    [(triage_guided, "guided"), (triage_guided_sched, "guided-sched")],
+)
+def test_guided_confidence_is_optional_and_normalized(monkeypatch, tmp_path, triage_fn, mode):
+    backend = _Backend(["fp-1", "fp-2", "fp-3"])
+    verdicts = [
+        {
+            "finding_id": "fp-1",
+            "verdict": "TRUE_POSITIVE",
+            "explanation": "direct evidence",
+            "confidence": 88,
+        },
+        {"finding_id": "fp-2", "verdict": "NEEDS_REVIEW", "explanation": "uncertain"},
+        {
+            "finding_id": "fp-3",
+            "verdict": "FALSE_POSITIVE",
+            "explanation": "fixture",
+            "confidence": 101,
+        },
+    ]
+    responses = iter([_response([_call("submit_verdicts", json.dumps({"verdicts": verdicts}))])])
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", lambda *args: next(responses))
+
+    async def run():
+        controller = AgentController(backend)
+        await controller.initialize("full")
+        return await triage_fn(_config(tmp_path, agent_mode=mode), controller)
+
+    result = asyncio.run(run())
+
+    assert result.usage["missing"] == 0
+    assert result.usage["failed_findings"] == 0
+    assert [item.confidence for item in result.verdicts] == [88, None, None]

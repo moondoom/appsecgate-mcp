@@ -32,6 +32,7 @@ class AgentController:
         self.finding_ids: list[str] = []
         self.pending: set[str] = set()
         self.verdicts: OrderedDict[str, Verdict] = OrderedDict()
+        self.revisions: dict[str, dict[str, Any]] = {}
         self.action_log: list[dict[str, Any]] = []
         self.recent_signatures: list[str] = []
         self.actions_without_progress = 0
@@ -164,6 +165,11 @@ class AgentController:
                                         ],
                                     },
                                     "explanation": {"type": "string"},
+                                    "confidence": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 100,
+                                    },
                                     "evidence": {
                                         "type": "array",
                                         "items": {"type": "object"},
@@ -206,7 +212,9 @@ class AgentController:
             )
         return tools
 
-    async def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def execute(
+        self, name: str, arguments: dict[str, Any], *, record: bool = True
+    ) -> dict[str, Any]:
         started = time.monotonic()
         self.metrics["tool_calls"] += 1
         try:
@@ -223,7 +231,7 @@ class AgentController:
                 }
                 result = await self.master_call("query_findings_db", arguments)
             elif name == "submit_verdicts":
-                result = await self._submit(arguments)
+                result = await self._submit(arguments, record=record)
             else:
                 raise ValueError(f"unknown tool: {name}")
         except (ValueError, TypeError, ValidationError) as exc:
@@ -269,7 +277,7 @@ class AgentController:
         result.pop("finding_ids", None)
         return result
 
-    async def _submit(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def _submit(self, arguments: dict[str, Any], *, record: bool = True) -> dict[str, Any]:
         raw = arguments.get("verdicts")
         if not isinstance(raw, list) or not raw:
             raise ValueError("verdicts must be a non-empty array")
@@ -284,7 +292,10 @@ class AgentController:
                     continue
                 errors[finding_id] = "unknown or already decided finding ID"
                 continue
-            if self.journal is not None:
+            revision = self.revisions.get(finding_id)
+            if revision is not None:
+                verdict = verdict.model_copy(update=revision)
+            if record and self.journal is not None:
                 verdict = await self.journal(verdict)
             self.verdicts[finding_id] = verdict
             self.pending.remove(finding_id)

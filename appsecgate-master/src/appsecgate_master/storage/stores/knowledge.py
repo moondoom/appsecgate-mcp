@@ -42,7 +42,14 @@ SELECT
     json_extract(payload, '$.model') AS model,
     json_extract(payload, '$.prompt_sha256') AS prompt_sha256,
     json_extract(payload, '$.created_at') AS created_at,
-    at
+    at,
+    json_extract(payload, '$.confidence') AS confidence,
+    json_extract(payload, '$.actor_id') AS actor_id,
+    json_extract(payload, '$.revision_reason') AS revision_reason,
+    json_extract(payload, '$.scanner') AS scanner,
+    json_extract(payload, '$.ruleset_hash') AS ruleset_hash,
+    json_extract(payload, '$.rule_hash') AS rule_hash,
+    json_extract(payload, '$.rule_hash_status') AS rule_hash_status
 FROM events WHERE event_type = 'triage_verdicted';
 CREATE VIEW IF NOT EXISTS v_triage_knowledge AS
 SELECT

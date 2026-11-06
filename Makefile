@@ -243,6 +243,21 @@ experiment-agent300-run: ## Запустить замороженный осно
 experiment-agent300-repeat: ## Повторить 10 development репозиториев для стабильности
 	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 run_agent300.py --label agent300repeat
 
+experiment-reevaluation-run: ## Прогнать REV-1 на 10 repos с baseline project identity
+	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 run_agent300.py --label agent300review
+
+experiment-reevaluation-stats: ## Собрать TTL/confidence/provenance статистику 10 review runs
+	cd experiments/tp-0001 && python3 collect_reevaluation_stats.py
+
+experiment-rev1-validation: ## Controlled Phase A/B/C: fresh, expired и legacy reuse
+	cd experiments/tp-0001 && RESEARCH_SEMGREP_RULES=1 python3 validate_rev1.py
+
+experiment-rev1-operations: ## Разобрать bitcore, AIWriteX и duplicate fingerprints
+	cd experiments/tp-0001 && python3 analyze_rev1_operations.py
+
+experiment-confidence-review: ## Подготовить 100 findings для ручной confidence calibration
+	cd experiments/tp-0001 && python3 prepare_confidence_review.py
+
 clean: ## Удалить локальные артефакты uv всех пакетов
 	cd $(SERVER_DIR) && rm -rf .venv .pytest_cache .ruff_cache
 	cd $(MASTER_DIR) && rm -rf .venv .pytest_cache .ruff_cache

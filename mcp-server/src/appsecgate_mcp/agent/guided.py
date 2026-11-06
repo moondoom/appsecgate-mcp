@@ -13,6 +13,7 @@ from appsecgate_mcp.agent.llm import (
     _request,
 )
 from appsecgate_mcp.agent.models import AgentConfig, LlmResult
+from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
 
 _MAX_SPLIT_DEPTH = 5
 _MAX_BATCH_ITERATIONS = 4
@@ -114,35 +115,6 @@ async def _manifest_contents(
                 "truncated": truncated,
             }
     return contents
-
-
-async def _reuse_prior_verdicts(
-    config: AgentConfig, controller: AgentController, stats: dict[str, int]
-) -> None:
-    if not (config.reuse_verdicts and config.master_url and not config.no_master_knowledge):
-        return
-    response = await controller.execute(
-        "master_query_findings_db",
-        {
-            "sql": "SELECT fp, verdict, explanation FROM v_triage_verdicts WHERE project_key = ?",
-            "params": [controller.project_id],
-        },
-    )
-    rows = response.get("rows") or response.get("result") or []
-    reused = [
-        {
-            "finding_id": row["fp"],
-            "verdict": row["verdict"],
-            "explanation": f"Reused prior verdict: {row.get('explanation') or ''}",
-        }
-        for row in rows
-        if row.get("fp") in controller.pending
-        and row.get("verdict") in {"TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"}
-    ]
-    if not reused:
-        return
-    result = await controller.execute("submit_verdicts", {"verdicts": reused})
-    stats["reused_verdicts"] = result.get("accepted", 0)
 
 
 async def _triage_chunk(
@@ -320,7 +292,7 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         cursor = page["next_cursor"]
     usage: dict[str, Any] = {}
     stats = {"batches": 0, "batch_retries": 0, "failed_findings": 0, "evidence_reads": 0}
-    await _reuse_prior_verdicts(config, controller, stats)
+    await reuse_prior_verdicts(config, controller, stats)
     batch_size = _batch_size(config)
     pending = [fid for fid in controller.finding_ids if fid in controller.pending]
     for chunk in _chunks(pending, batch_size):

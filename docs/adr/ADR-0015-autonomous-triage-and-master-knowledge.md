@@ -51,7 +51,9 @@ In `free` mode the model drives the full tool set described below.
 
 In `guided` mode the harness drives a deterministic loop: it pages the inventory, pre-fetches `get_fix_context_batch` and dependency manifests for each batch, and sends one self-contained request per batch. Batch size derives from the model output budget (`llm_max_tokens`), not from a specific model. Truncated or unparseable batches are split in half and retried; a finding that still fails stays explicitly pending (`guided_incomplete`, `failed_findings`) and is never silently converted into NEEDS_REVIEW. Content-JSON verdicts are accepted as a fallback for models without reliable tool calling.
 
-**Important (2026-11-05):** guided is still an agentic mode, not one-shot labeling. Within a batch the model may gather missing evidence through `read_project_file` and master knowledge tools before its single `submit_verdicts` call, bounded by `_MAX_BATCH_ITERATIONS = 4`. Verdicts are never revised after acceptance, so the journal stays append-only without supersedes. Absence of a package or pattern in a snippet is not evidence of absence: FALSE_POSITIVE on incomplete evidence is prohibited by the prompt.
+**Important (2026-11-05):** guided is still an agentic mode, not one-shot labeling. Within a batch the model may gather missing evidence through `read_project_file` and master knowledge tools before its single `submit_verdicts` call, bounded by `_MAX_BATCH_ITERATIONS = 4`. Verdicts are never revised after acceptance within a run. A later run may create an append-only revision with `supersedes_verdict_id`. Absence of a package or pattern in a snippet is not evidence of absence: FALSE_POSITIVE on incomplete evidence is prohibited by the prompt.
+
+**Reuse validation (2026-11-06):** controlled rev1v3 runs validated fresh reuse and append-only revisions; see ADR-0017. Numeric confidence is the legacy protocol. ADR-0018 proposes categorical evidence-based confidence for new events, per-mode prompt-hash invalidation, and master-owned severity escalation. Historical numeric events remain unchanged but are excluded from the new protocol.
 
 ## 4. Controller
 
@@ -82,7 +84,10 @@ The existing sync pipeline appends these records to the durable outbox and pushe
 The event contains:
 
 - `verdict_id`, optional `supersedes_verdict_id`, `fp`, and `run_id`;
-- `verdict`, `verdict_source=model|human`, and `review_status`;
+- `verdict`, optional integer `confidence`, `verdict_source=model|human`, and `review_status`;
+- `revision_reason` and optional `actor_id` for retrospective history;
+- scanner/rule IDs, overall `ruleset_hash`, and per-rule `rule_hash` with explicit
+  `definition_sha256|unavailable` status;
 - optional rule/package/ecosystem/CVE correlation keys;
 - redacted explanation and structured evidence;
 - agent/model/prompt/tool versions and timestamps.

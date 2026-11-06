@@ -9,11 +9,11 @@ from appsecgate_mcp.agent.guided import (
     _batch_size,
     _chunks,
     _manifest_contents,
-    _reuse_prior_verdicts,
     _triage_chunk,
 )
 from appsecgate_mcp.agent.llm import _project_context
 from appsecgate_mcp.agent.models import AgentConfig, LlmResult
+from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
 
 _EVIDENCE_TOOLS = {
     "submit_verdicts",
@@ -51,7 +51,7 @@ async def triage_guided_sched(config: AgentConfig, controller: AgentController) 
         "lane_escalations": 0,
         "lane_underestimated": 0,
     }
-    await _reuse_prior_verdicts(config, controller, stats)
+    await reuse_prior_verdicts(config, controller, stats)
     batch_size = _batch_size(config)
     pending = [fid for fid in controller.finding_ids if fid in controller.pending]
     prepared: list[tuple[int, list[str], dict[str, Any]]] = []

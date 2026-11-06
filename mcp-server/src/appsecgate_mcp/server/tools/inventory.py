@@ -10,6 +10,17 @@ from appsecgate_mcp.server.tools.common import ensure_session
 from appsecgate_mcp.server.tools.scan import _mark_shown
 
 
+def _finding_output(state: SessionState, item: Any) -> dict[str, Any]:
+    payload = {**item.model_dump(mode="json"), "finding_id": item.fingerprint}
+    resolved = state.config.resolved_rules if state.config is not None else None
+    provenance = (
+        resolved.rule_provenance(item.scanner, item.rule_id)
+        if resolved is not None
+        else {"rule_hash": None, "rule_hash_status": "unavailable"}
+    )
+    return {**payload, **provenance}
+
+
 def _scan_findings_page(
     state: SessionState, *, scope: str, cursor: int, limit: int
 ) -> dict[str, Any]:
@@ -28,9 +39,7 @@ def _scan_findings_page(
         "total": len(ordered),
         "finding_ids": finding_ids,
         "inventory_hash": inventory_hash,
-        "findings": [
-            {**item.model_dump(mode="json"), "finding_id": item.fingerprint} for item in page
-        ],
+        "findings": [_finding_output(state, item) for item in page],
         "cursor": cursor,
         "next_cursor": next_cursor if next_cursor < len(ordered) else None,
     }
