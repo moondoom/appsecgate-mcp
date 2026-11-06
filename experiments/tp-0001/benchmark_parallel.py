@@ -57,7 +57,9 @@ def run_one(
         run_id = f"{label}-{model}-p{parallelism}-{index:02d}"
     else:
         run_id = f"{label}-{model}-p{parallelism}-{project}"
-    project_id = f"{project}-tp0001-{run_id}" if project != "pygoat" else f"pygoat-tp0001-{run_id}"
+    project_id = os.environ.get("APPSECGATE_PROJECT_ID") or (
+        f"{project}-tp0001-{run_id}" if project != "pygoat" else f"pygoat-tp0001-{run_id}"
+    )
     env = os.environ.copy()
     env.update(
         RUN_ID=run_id,
@@ -69,12 +71,30 @@ def run_one(
         APPSECGATE_LLM_MODEL=llm_model,
         CACHE_DIR=str(ROOT / "runtime" / "data-gemma-docker-preflight-001"),
     )
+    artifact = ROOT / "artifacts" / run_id
+    report_path = artifact / "report.json"
+    if os.environ.get("BENCH_RESUME") == "1" and report_path.exists():
+        previous = json.loads(report_path.read_text() or "{}")
+        if previous.get("exit_reason") in {"report_generated", "gate_block"}:
+            return {
+                "run_id": run_id,
+                "project": project,
+                "exit": 0,
+                "exit_reason": previous["exit_reason"],
+                "duration_sec": previous.get("duration_sec", 0),
+                "wall_sec": 0,
+                "findings_total": previous.get("findings_total") or previous.get("total_findings"),
+                "protocol_retries": 0,
+                "total_tokens": previous.get("usage", {}).get("total_tokens"),
+                "f1": None,
+                "resumed": True,
+            }
     started = time.monotonic()
     completed = subprocess.run([str(ROOT / "invoke-docker.sh")], env=env, check=False)
     wall_sec = time.monotonic() - started
     artifact = ROOT / "artifacts" / run_id
     report_path = artifact / "report.json"
-    report = json.loads(report_path.read_text()) if report_path.exists() else {}
+    report = json.loads(report_path.read_text() or "{}") if report_path.exists() else {}
     eval_path = artifact / "eval.json"
     return {
         "run_id": run_id,
@@ -92,7 +112,7 @@ def run_one(
 
 def evaluate_run(run: dict) -> None:
     project = run.get("project", "pygoat")
-    project_id = (
+    project_id = os.environ.get("APPSECGATE_PROJECT_ID") or (
         f"{project}-tp0001-{run['run_id']}"
         if project != "pygoat"
         else f"pygoat-tp0001-{run['run_id']}"
@@ -105,7 +125,7 @@ def evaluate_run(run: dict) -> None:
             "--edge-db",
             str(ROOT / "runtime" / f"data-{run['run_id']}" / "shown_findings.db"),
             "--master-url",
-            "http://127.0.0.1:8000",
+            os.environ.get("APPSECGATE_MASTER_HOST_URL", "http://127.0.0.1:8000"),
             "--api-key",
             key,
             "--project-id",
@@ -160,7 +180,7 @@ def main() -> None:
             wall_sec = ended - started
             for run in runs:
                 project = run.get("project", "pygoat")
-                project_id = (
+                project_id = os.environ.get("APPSECGATE_PROJECT_ID") or (
                     f"{project}-tp0001-{run['run_id']}"
                     if project != "pygoat"
                     else f"pygoat-tp0001-{run['run_id']}"

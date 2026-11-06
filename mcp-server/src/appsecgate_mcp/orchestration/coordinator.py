@@ -125,14 +125,17 @@ class ScanCoordinator:
             meta.scanners_skipped,
         )
         raw_findings = await self._run_all(available, kept, mode, meta)
+        meta.scanner_raw = len(raw_findings)
 
         relative = self._relativize(raw_findings, meta)
+        meta.in_scope = len(relative)
         findings = [self._to_finding(rf) for rf in relative]
         findings = self.dedup.deduplicate(findings)
+        meta.dedup_level1 = len(findings)
         # Уровень 2: разные сканеры/правила на одну проблему (T1) — секрет
-        # с тем же значением или тот же фрагмент кода в том же окне строк
-        # показываем разработчику один раз. Схемы БД и тулы не меняются.
+        # с тем же значением или фрагмент кода в том же окне строк показываем один раз.
         findings = self.dedup.deduplicate_families(findings)
+        meta.dedup_level2 = len(findings)
         # К6: находки, отфильтрованные на этапах suppression в этом скане.
         suppressed_in_scan = 0
         _before = len(findings)
@@ -145,7 +148,9 @@ class ScanCoordinator:
             remote_store=self.remote_suppression_store,
         )
         suppressed_in_scan += _before - len(findings)
+        meta.suppressed = suppressed_in_scan
         findings = self.normalizer.process(findings)
+        meta.eligible = len(findings)
 
         reconcile: ReconcileReport | None = None
         if persist and self.shown_store is not None:

@@ -182,10 +182,12 @@ diagnostics: [docs/deploy-agents.md](docs/deploy-agents.md).
 
 ## Agent mode (coming in 0.1.8)
 
-The source tree already includes a read-only agent runner. It performs a complete
-triage loop: `scan_project`/`scan_diff` → fix-context collection → LLM verdicts,
-explanations, and patch suggestions → `check_gate` → report → optional master
-synchronization. It never modifies the project or applies patches.
+The read-only agent autonomously triages the complete current inventory instead of
+only the top 10 findings. It chooses scanner context, bounded file reads, historical
+human-confirmed verdicts, and CVE data through tools. A deterministic controller
+tracks pending IDs, detects loops, restarts from checkpoints, compacts context, and
+preserves a redacted verdict journal. Synchronization uses the existing edge outbox;
+master MCP is read-only. The agent never modifies the project or applies patches.
 
 The LLM runs outside the MCP server and is configured through an
 OpenAI-compatible endpoint; the server's no-LLM invariant is unchanged.
@@ -200,13 +202,15 @@ appsecgate-mcp agent \
 See the [TP-0001 experiment report](experiments/tp-0001/REPORT.md) for model
 benchmarks and aggregate results from 100 repositories.
 
-## MCP tools (15)
+## MCP tools (17)
 
 | Tool | What it does |
 |------|--------------|
 | `scan_file` | Scan a single file and return normalized findings. |
 | `scan_diff` | Scan staged + unstaged + untracked changes in the current git repository. |
 | `scan_project` | Scan the entire project (no arguments) — reconciliation report: counts + TOP-10 + requires_confirmation. |
+| `get_scan_findings` | Return a deterministic page of findings from the latest scan, including the full inventory hash. |
+| `read_project_file` | Read a bounded, redacted line range from a file inside the project. |
 | `check_gate` | Evaluate the latest scan under an advisory policy and return a GateSummary with a recommended action. |
 | `get_fix_context` | Return the ContextPack for a finding (finding + code window + rule doc). |
 | `get_fix_context_batch` | Return ContextPacks for multiple findings (limit 20). |

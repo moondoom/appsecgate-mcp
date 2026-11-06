@@ -4,6 +4,20 @@ set -euo pipefail
 MODEL="${1:?model label is required}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${ROOT}/../.." && pwd)"
+OVERRIDE_MASTER_API_KEYS="${APPSECGATE_MASTER_API_KEYS:-}"
+if [[ -f "${REPO_ROOT}/.env" ]]; then
+  set -a
+  source "${REPO_ROOT}/.env"
+  set +a
+fi
+if [[ -f "${ROOT}/runtime/master.env" ]]; then
+  set -a
+  source "${ROOT}/runtime/master.env"
+  set +a
+fi
+if [[ -n "${OVERRIDE_MASTER_API_KEYS}" ]]; then
+  export APPSECGATE_MASTER_API_KEYS="${OVERRIDE_MASTER_API_KEYS}"
+fi
 export APPSECGATE_LLM_URL="${APPSECGATE_LLM_URL:-http://host.docker.internal:4001/v1}"
 export APPSECGATE_LLM_MODEL="${APPSECGATE_LLM_MODEL:-mock-gate}"
 
@@ -25,12 +39,12 @@ post_event() {
   local project_id="$1" event="$2" key
   key="$(lookup_key "${project_id}")"
   python - "$project_id" "$key" "$event" <<'PY'
-import json, sys, urllib.request, uuid
+import json, os, sys, urllib.request, uuid
 project, key, event = sys.argv[1:]
 payload = json.loads(event)
 payload.update(project_key=project, client_event_id=str(uuid.uuid4()))
 request = urllib.request.Request(
-    "http://127.0.0.1:8000/v1/events",
+    os.environ.get("APPSECGATE_MASTER_HOST_URL", "http://127.0.0.1:8000") + "/v1/events",
     data=json.dumps({"events": [payload]}).encode(),
     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
 )
@@ -51,7 +65,7 @@ PY
 }
 
 for test in ${TESTS:-t01 t02 t03 t04 t05 t06 t07 t08}; do
-  project_id="pygoat-tp0001-${GATE_PREFIX:-gate05}-${MODEL}-${test}"
+  project_id="pygoat-tp0001-${GATE_KEY_PREFIX:-${GATE_PREFIX:-gate05}}-${MODEL}-${test}"
   case "${test}" in
     t01)
       post_event "${project_id}" '{"client_event_id":"00000000-0000-4000-8000-000000000011","event_type":"config_policy","at":"2026-11-02T00:00:00Z","policy":{"gates":{"ci":{"block_on":[],"warn_on":[]}}}}'
@@ -93,7 +107,7 @@ PY
       post_event "${project_id}" '{"client_event_id":"00000000-0000-4000-8000-000000000051","event_type":"config_policy","at":"2026-11-02T00:00:00Z","policy":{"gates":{"ci":{"block_on":[],"warn_on":[],"block_on_unresolved_local":false}}}}'
       APPSECGATE_MASTER_API_KEY="$(lookup_key "${project_id}")" "${REPO_ROOT}/mcp-server/.venv/bin/appsecgate-mcp" sync \
         --data-dir "${ROOT}/runtime/data-${GATE_PREFIX:-gate05}-${MODEL}-t05a" --project-id "${project_id}" \
-        --master-url http://127.0.0.1:8000
+        --master-url "${APPSECGATE_MASTER_HOST_URL:-http://127.0.0.1:8000}"
       RUN_ID="${GATE_PREFIX:-gate05}-${MODEL}-t05b" DATA_DIR="${ROOT}/runtime/data-${GATE_PREFIX:-gate05}-${MODEL}-t05a" \
         PROJECT="${ROOT}/repos/gate_project" APPSECGATE_PROJECT_ID="${project_id}" \
         APPSECGATE_MASTER_API_KEY="$(lookup_key "${project_id}")" "${ROOT}/invoke-docker.sh"
@@ -108,7 +122,7 @@ PY
       done < <(python -c 'import json; print("\n".join(x["finding_id"] for x in json.load(open("'"${ROOT}"'/artifacts/'"${GATE_PREFIX:-gate05}"'-'"${MODEL}"'-t06a/report.json"))["findings"]))')
       APPSECGATE_MASTER_API_KEY="$(lookup_key "${project_id}")" "${REPO_ROOT}/mcp-server/.venv/bin/appsecgate-mcp" sync \
         --data-dir "${ROOT}/runtime/data-${GATE_PREFIX:-gate05}-${MODEL}-t06a" --project-id "${project_id}" \
-        --master-url http://127.0.0.1:8000
+        --master-url "${APPSECGATE_MASTER_HOST_URL:-http://127.0.0.1:8000}"
       RUN_ID="${GATE_PREFIX:-gate05}-${MODEL}-t06b" DATA_DIR="${ROOT}/runtime/data-${GATE_PREFIX:-gate05}-${MODEL}-t06a" \
         PROJECT="${ROOT}/repos/gate_project" APPSECGATE_PROJECT_ID="${project_id}" \
         APPSECGATE_MASTER_API_KEY="$(lookup_key "${project_id}")" "${ROOT}/invoke-docker.sh"

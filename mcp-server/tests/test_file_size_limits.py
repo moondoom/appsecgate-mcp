@@ -4,7 +4,8 @@
 * Python (`.py`) — ≤ 400 строк **и** ≤ 20 КБ;
 * документация (`.md`/`.html`/`.txt`) — ≤ 500 строк **и** ≤ 40 КБ;
   исключения: `docs/product-vision.md` (исторический артефакт),
-  `docs/architecture.md` и ADR-0011/0012 (живые справочники) — до жёсткого потолка;
+  `docs/architecture.md` (живой справочник) и все `docs/adr/*.md`
+  (ADR-спецификации, дробить нельзя) — до жёсткого потолка;
 * `AGENTS.md` — ≤ 200 строк;
 * жёсткий потолок для всех текстовых файлов — ≤ 1500 строк **и** ≤ 60 КБ.
 
@@ -97,6 +98,9 @@ def test_docs_within_limits() -> None:
         for path in _tracked_text_files()
         if path.suffix in {".md", ".html", ".txt"}
         and path.relative_to(REPO_ROOT).as_posix() not in DOC_ALLOWLIST
+        # ADR — живые спецификации решений; дробить нельзя, действует только
+        # жёсткий потолок (1500 строк / 60 КБ).
+        and not path.relative_to(REPO_ROOT).as_posix().startswith("docs/adr/")
         for lines, size in [_lines_and_bytes(path)]
         if lines > DOC_MAX_LINES or size > DOC_MAX_BYTES
     ]

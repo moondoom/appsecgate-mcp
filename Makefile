@@ -140,6 +140,84 @@ docker-push: ## Залогиниться в Docker Hub и запушить об�
 	docker login
 	docker push $(TAG)
 
+SMOKE_KEYS = {"pygoat-tp0001-agent-dev-v1-gemmaq3-t01":"smoke-t01-key","pygoat-tp0001-agent-dev-v1-gemmaq3-t04":"smoke-t04-key","pygoat-tp0001-agent-dev-v1-gemmaq3-t07":"smoke-t07-key","agent-dev-knowledge":"agent-dev-knowledge-key"}
+
+experiment-master-up: ## Поднять изолированный master для agent smoke на порту 8001
+	docker rm -f appsecgate-agent-smoke-master >/dev/null 2>&1 || true
+	docker network inspect appsecgate-mcp_appsecgate >/dev/null 2>&1 || \
+		docker network create appsecgate-mcp_appsecgate
+	docker run --rm -d --name appsecgate-agent-smoke-master \
+		--network appsecgate-mcp_appsecgate \
+		-p 127.0.0.1:8001:8000 \
+		-e APPSECGATE_MASTER_API_KEYS='$(SMOKE_KEYS)' \
+		-e APPSECGATE_MASTER_DB=/tmp/agent-smoke-master.db \
+		$(MASTER_TAG)
+
+experiment-master-down: ## Остановить изолированный agent smoke master
+	docker stop appsecgate-agent-smoke-master >/dev/null 2>&1 || true
+
+experiment-mock-llm: ## Запустить deterministic OpenAI-compatible mock для agent smoke
+	cd experiments/tp-0001 && python3 mock_llm.py --port 4001
+
+experiment-gate-smoke: ## Прогнать autonomous agent T-01/T-04/T-07 через mock LLM
+	cd experiments/tp-0001 && APPSECGATE_MASTER_API_KEYS='$(SMOKE_KEYS)' \
+		APPSECGATE_MASTER_URL=http://appsecgate-agent-smoke-master:8000 \
+		APPSECGATE_MASTER_HOST_URL=http://127.0.0.1:8001 \
+		GATE_PREFIX=agent-dev-v1 GATE_KEY_PREFIX=agent-dev-v1 \
+		TESTS="t01 t04 t07" APPSECGATE_LLM_MODEL=mock-gate \
+		bash gate_tests/run_cycle.sh gemmaq3
+	cd experiments/tp-0001 && GATE_PREFIX=agent-dev-v1 TESTS="t01 t04 t07" \
+		python3 gate_tests/evaluate.py gemmaq3
+
+experiment-collect-smoke: ## Собрать funnel и review из smoke-отчётов
+	cd experiments/tp-0001 && python3 collect_agent_funnel.py --label agent-dev-v1 \
+		--pattern 'artifacts/agent-dev-v1-gemmaq3-*/report.json' \
+		--prefix agent-dev-v1-smoke
+
+experiment-master-knowledge: ## Загрузить human-confirmed development knowledge на smoke master
+	cd experiments/tp-0001 && python3 prepare_master_knowledge.py
+
+experiment-dev-run: ## Запустить настоящий gemmaq3 на DEV_PROJECTS (development corpus)
+	cd experiments/tp-0001 && APPSECGATE_MASTER_URL= APPSECGATE_MASTER_API_KEY= NO_SYNC=1 \
+		APPSECGATE_NO_MASTER_KNOWLEDGE=1 \
+		DOCKER_NETWORK=bridge BENCH_MODELS=$(or $(BENCH_MODELS),gemmaq3) BENCH_PARALLELISM=$(or $(PARALLELISM),1) \
+		BENCH_PROJECTS=$(or $(DEV_PROJECTS),aitextgen) \
+		BENCH_LABEL=$(or $(DEV_LABEL),agent-dev-v1) \
+		BENCH_OUTPUT=$(or $(DEV_LABEL),agent-dev-v1)-benchmark.json \
+		python3 benchmark_parallel.py
+
+experiment-dev-wait: ## Дождаться исходных development containers CodeWiki и zep
+	docker wait appsecgate-agent-dev-v2-gemmaq3-p2-CodeWiki \
+		appsecgate-agent-dev-v2-gemmaq3-p2-zep
+
+experiment-corpus-prepare: ## Подготовить 300 репозиториев и agent300-manifest.json
+	cd experiments/tp-0001 && python3 prepare_agent_corpus.py
+
+experiment-agent300-master: ## Поднять master со всеми project keys для 300
+	cd experiments/tp-0001 && python3 start_agent_master.py
+
+experiment-run-config: ## Сформировать frozen run config и project keys для 300
+	cd experiments/tp-0001 && python3 prepare_agent_run_config.py
+
+experiment-cve-prepare: ## Сформировать и импортировать замороженный OSV snapshot
+	cd experiments/tp-0001 && python3 prepare_cve_snapshot.py $(CVE_ARGS)
+	docker cp experiments/tp-0001/runtime/cve-input.json \
+		appsecgate-agent300-master:/tmp/cve-input.json
+	docker exec appsecgate-agent300-master \
+		python -m appsecgate_master.cve_ingest /tmp/cve-input.json
+
+experiment-readiness-check: ## Проверить готовность 300 без запуска основного корпуса
+	cd experiments/tp-0001 && python3 check_agent_readiness.py
+
+experiment-agent300-preflight: ## Запустить preflight 300 без sync для CVE manifest
+	cd experiments/tp-0001 && python3 run_agent300.py --label agent300-preflight --no-sync
+
+experiment-agent300-run: ## Запустить замороженный основной корпус 300
+	cd experiments/tp-0001 && python3 run_agent300.py --label agent300
+
+experiment-agent300-repeat: ## Повторить 10 development репозиториев для стабильности
+	cd experiments/tp-0001 && python3 run_agent300.py --label agent300repeat
+
 clean: ## Удалить локальные артефакты uv всех пакетов
 	cd $(SERVER_DIR) && rm -rf .venv .pytest_cache .ruff_cache
 	cd $(MASTER_DIR) && rm -rf .venv .pytest_cache .ruff_cache

@@ -22,8 +22,10 @@ def test_all_tools_registered():
         "scan_file",
         "scan_diff",
         "scan_project",
+        "get_scan_findings",
         "get_fix_context",
         "get_fix_context_batch",
+        "read_project_file",
         "verify_fix",
         "verify_fix_batch",
         "query_findings_db",
@@ -36,7 +38,7 @@ def test_all_tools_registered():
         "check_gate",
     }
     assert names == expected
-    assert len(tools) == 15
+    assert len(tools) == 17
 
 
 def test_extract_touched_files(tmp_path):

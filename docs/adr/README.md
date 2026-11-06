@@ -14,5 +14,7 @@
 | [ADR-0010](ADR-0010-rw-agent.md) | RW-agent | Proposed (Пауза) |
 | [ADR-0011](ADR-0011-scan-run-observability.md) | Scan run observability, passive counters, pattern promotion | Proposed |
 | [ADR-0012](ADR-0012-master-database-and-auth.md) | Master database and auth foundation | Proposed |
-| [ADR-0013](ADR-0013-master-mcp-interface.md) | Master MCP interface | Proposed (зависит от ADR-0012) |
+| [ADR-0013](ADR-0013-master-mcp-interface.md) | Master MCP interface | Accepted (MCP-M-1..7 implemented) |
 | [ADR-0014](ADR-0014-multi-mode-mcp-image.md) | Multi-mode MCP image (serve/sync/ci/agent ro+rw) | Proposed; изменяет G7 ADR-0004 |
+| [ADR-0015](ADR-0015-autonomous-triage-and-master-knowledge.md) | Autonomous triage agent and master knowledge | Accepted |
+| [ADR-0016](ADR-0016-llm-throughput-and-context-lanes.md) | LLM throughput, context lanes and dynamic parallelism | Proposed (замеры завершены; guided-sched не реализован) |

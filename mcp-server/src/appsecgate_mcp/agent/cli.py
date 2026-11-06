@@ -31,6 +31,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--mode", choices=["ro"], default="ro")
+    parser.add_argument(
+        "--agent-mode",
+        choices=["free", "guided", "guided-sched"],
+        default=os.environ.get("APPSECGATE_AGENT_MODE", "free"),
+    )
     parser.add_argument("--scan", choices=["full", "diff"], default="full")
     parser.add_argument("--policy", choices=["warn", "block"], default="warn")
     parser.add_argument("--output-format", choices=["markdown", "json"], default="markdown")
@@ -62,12 +67,55 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=int(os.environ.get("APPSECGATE_LLM_NUM_CTX", "32768")),
     )
+    parser.add_argument(
+        "--no-reuse-verdicts",
+        action="store_false",
+        dest="reuse_verdicts",
+        default=os.environ.get("APPSECGATE_AGENT_REUSE_VERDICTS", "1") != "0",
+    )
     parser.add_argument("--timeout", type=float, default=1800)
-    parser.add_argument("--max-iterations", type=int, default=50)
-    parser.add_argument("--max-tokens", type=int, default=500_000)
-    parser.add_argument("--max-context-chars", type=int, default=120_000)
+    parser.add_argument(
+        "--sched-parallel",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_AGENT_SCHED_PARALLEL", "2")),
+    )
+    parser.add_argument(
+        "--sched-lanes",
+        default=os.environ.get("APPSECGATE_AGENT_SCHED_LANES", "8192,16384,32768"),
+    )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_AGENT_MAX_ITERATIONS", "50")),
+    )
+    parser.add_argument(
+        "--max-restarts",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_AGENT_MAX_RESTARTS", "3")),
+    )
+    parser.add_argument(
+        "--max-compactions",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_AGENT_MAX_COMPACTIONS", "5")),
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_AGENT_MAX_TOKENS", "500000")),
+    )
+    parser.add_argument(
+        "--max-context-chars",
+        type=int,
+        default=int(os.environ.get("APPSECGATE_AGENT_MAX_CONTEXT_CHARS", "120000")),
+    )
     parser.add_argument("--master-url", default=os.environ.get("APPSECGATE_MASTER_URL"))
     parser.add_argument("--api-key", default=os.environ.get("APPSECGATE_MASTER_API_KEY"))
+    parser.add_argument("--knowledge-cutoff", default=os.environ.get("APPSECGATE_KNOWLEDGE_CUTOFF"))
+    parser.add_argument(
+        "--no-master-knowledge",
+        action="store_true",
+        default=os.environ.get("APPSECGATE_NO_MASTER_KNOWLEDGE") == "1",
+    )
     parser.add_argument("--no-sync", action="store_true")
     return parser
 
@@ -131,6 +179,7 @@ def agent_main(argv: list[str] | None = None) -> int:
         data_dir=Path(args.data_dir),
         run_id=args.run_id or uuid.uuid4().hex,
         mode=args.mode,
+        agent_mode=args.agent_mode,
         scan=args.scan,
         policy=args.policy,
         output_format=args.output_format,
@@ -142,12 +191,19 @@ def agent_main(argv: list[str] | None = None) -> int:
         llm_top_p=args.llm_top_p,
         llm_max_tokens=args.llm_max_tokens,
         llm_num_ctx=args.llm_num_ctx,
+        sched_parallel=args.sched_parallel,
+        sched_lanes=[int(v) for v in args.sched_lanes.split(",")],
+        reuse_verdicts=args.reuse_verdicts,
         timeout=args.timeout,
         max_iterations=args.max_iterations,
+        max_restarts=args.max_restarts,
+        max_compactions=args.max_compactions,
         max_tokens=args.max_tokens,
         max_context_chars=args.max_context_chars,
         master_url=args.master_url,
         master_api_key=args.api_key,
+        knowledge_cutoff=args.knowledge_cutoff,
+        no_master_knowledge=args.no_master_knowledge,
         no_sync=args.no_sync,
     )
     started = time.monotonic()

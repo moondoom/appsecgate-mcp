@@ -12,8 +12,8 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 ## Project Map
 - `mcp-server/src/` — код MCP-сервера (тулы, хуки, сканеры)
 - `appsecgate-master/src/` — центральный (master) сервер, Фаза 2 этап 2
-  (ADR-0004/ADR-0006): события/агрегат/аудит и REST API (`api/`); пакет
-  `appsecgate-master/`, зависимости — pydantic, FastAPI, uvicorn, psycopg.
+  (ADR-0004/ADR-0006): события/агрегат/аудит, REST API (`api/`) и read-only
+  MCP (`mcp/`); зависимости — pydantic, FastAPI, FastMCP, uvicorn, psycopg.
   MS-4 и PostgreSQL backend (DB-1…DB-9, ADR-0012) выполнены.
 - `appsecgate-agent/src/` — server-agent MVP (AG-5): детерминированный MCP
   stdio report mode без LLM; зависимости — mcp, pydantic.
@@ -24,14 +24,15 @@ Python 3.12+, FastMCP, Pydantic 2.7, SQLite
 - `mcp-server/src/appsecgate_mcp/server/` — MCP-тулы (`scan_file`, `scan_diff`, `scan_project`,
   `get_fix_context`, `get_fix_context_batch`, `verify_fix`, `verify_fix_batch`,
   `query_findings_db`, `export_snapshot`, `get_config`, `update_config`,
-  `submit_feedback`, `get_scan_history`, `suppress_finding`, `check_gate`; сессия — `session.py`,
+  `submit_feedback`, `get_scan_history`, `suppress_finding`, `check_gate`,
+  `get_scan_findings`, `read_project_file`; сессия — `session.py`,
   регистрация тулов — `tools/`, точка входа — `cli.py`). Публичный API реэкспортируется
   из `server.py` (модуль-фасад) — импорты вида `from appsecgate_mcp.server import mcp`
   остаются валидными.
 - `mcp-server/src/appsecgate_mcp/scanners/` — обёртки Semgrep, Gitleaks, TruffleHog, Trivy
 - `mcp-server/src/appsecgate_mcp/storage/` — SQLite-схема, views; store-классы в
   подмодулях `storage/stores/` (по классу на модуль)
-- `mcp-server/tests/` — 511 тестов, все должны быть зелёными
+- `mcp-server/tests/` — 535 тестов, все должны быть зелёными
 - `config/default.yaml` — дефолтная конфигурация
 - `docs/` — архитектура, ADR, открытые задачи, отчёты
 
@@ -98,11 +99,17 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 | `make docker-build` | сборка образа `moondoom/appsecgate-mcp:0.1.0` | после коммита |
 | `make docker-run` | запуск контейнера с проектом | для отладки |
 | `make docker-down` | остановка контейнера | после отладки |
+| `make experiment-master-up` / `experiment-master-down` | изолированный smoke master | перед/после agent smoke |
+| `make experiment-mock-llm` | deterministic mock для autonomous agent | предварительные прогоны |
+| `make experiment-gate-smoke` | живой T-01/T-04/T-07 agent smoke | после изменений агента |
+| `make experiment-dev-run` | настоящий Q3 на development corpus | итеративные dev-версии |
+| `make experiment-corpus-prepare` / `experiment-run-config` | 300 репозиториев и frozen config | до основного прогона |
+| `make experiment-agent300-preflight` / `experiment-agent300-run` | preflight / основной корпус 300 | только после заморозки |
 
 Каноническое имя образа: `moondoom/appsecgate-mcp:0.1.0` (задано в `Makefile`
 и `docker-compose.yml`). Ручной `docker build` с неправильным тегом запрещён.
 
-511 тестов mcp-server + 143 appsecgate-master + 8 appsecgate-agent должны быть зелёными.
+535 тестов mcp-server + 150 appsecgate-master + 8 appsecgate-agent должны быть зелёными.
 Если тест падает — остановиться, разобраться, НЕ «обновлять тест под код».
 
 ## File Size Limits
@@ -112,7 +119,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 | Категория | Лимит | Исключения |
 |-----------|-------|-----------|
 | Python (`.py`) | ≤ 400 строк **и** ≤ 20 КБ | — |
-| Документация (`.md`/`.html`/`.txt`) | ≤ 500 строк **и** ≤ 40 КБ | `docs/product-vision.md` (исторический артефакт), `docs/architecture.md` и ADR-0011/0012 (живые справочники) |
+| Документация (`.md`/`.html`/`.txt`) | ≤ 500 строк **и** ≤ 40 КБ | `docs/product-vision.md` (исторический артефакт), `docs/architecture.md` и `docs/adr/` (живые справочники и ADR-спецификации, дробить нельзя) |
 | `AGENTS.md` | ≤ 200 строк | — |
 | Жёсткий потолок (все текстовые файлы) | ≤ 1500 строк **и** ≤ 60 КБ | — |
 
@@ -148,7 +155,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 ## Definition of Done
 Задача завершена, когда:
 1. `make check` зелёный.
-2. Все 662 теста + новые (если добавлены) проходят.
+2. Все 693 теста + новые (если добавлены) проходят.
 3. Изменения соответствуют одному этапу роадмапа (`docs/open-tasks.md`).
 4. Не нарушен ни один инвариант.
 5. Нет новых production-зависимостей.
@@ -157,7 +164,7 @@ Dev-зависимости (`pytest`, `ruff`) — не трогать без п�
 
 ## Common tasks
 - **Добавить MCP-тул** → `mcp-server/src/appsecgate_mcp/server/tools/` (`@mcp.tool`),
-  тест, обновление README.md (раздел «MCP tools (15)»).
+  тест, обновление README.md (раздел «MCP tools (17)»).
 - **Добавить сканер** → `mcp-server/src/scanners/`, обёртка, тест с моком.
 - **Пофиксить тест** → сначала понять, ПОЧЕМУ упал. Если код прав —
   тест обновляется. Если тест прав — код фиксится. Не наоборот.

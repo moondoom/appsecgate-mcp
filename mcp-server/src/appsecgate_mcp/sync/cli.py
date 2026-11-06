@@ -23,6 +23,7 @@ from appsecgate_mcp.sync.export import ExportError, ExportResult, export_events
 from appsecgate_mcp.sync.outbox import Outbox
 from appsecgate_mcp.sync.pull import PullError, pull_master
 from appsecgate_mcp.sync.push import push_outbox
+from appsecgate_mcp.sync.triage import append_triage_events
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ def sync_main(argv: list[str] | None = None) -> int:
     except ExportError as exc:
         print(f"appsecgate sync: error: {exc}", file=sys.stderr)
         return 2
+    append_triage_events(exported, args.data_dir, args.project_id)
 
     if args.dry_run:
         return _print_export(exported, args.format)

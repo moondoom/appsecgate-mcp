@@ -18,38 +18,51 @@ PREFIX = __import__("os").environ.get("GATE_PREFIX", "gate01fix1")
 
 
 def evaluate(model: str) -> dict[str, bool]:
+    selected = set(__import__("os").environ.get("TESTS", "").split())
     results: dict[str, bool] = {}
-    report, exit_code = load(f"{PREFIX}-{model}-t01b")
-    results["T-01"] = (
-        exit_code == 0
-        and report["GateSummary"]["should_fail"]
-        and report["GateSummary"]["by_reason"].get("unresolved_local", 0) > 0
-    )
+
+    def enabled(test: str) -> bool:
+        return not selected or test in selected
+
+    if enabled("t01"):
+        report, exit_code = load(f"{PREFIX}-{model}-t01b")
+        results["T-01"] = (
+            exit_code == 0
+            and report["GateSummary"]["should_fail"]
+            and report["GateSummary"]["by_reason"].get("unresolved_local", 0) > 0
+        )
     for test, expectation in (("t02", "T-02"), ("t06", "T-06")):
+        if not enabled(test):
+            continue
         report, exit_code = load(f"{PREFIX}-{model}-{test}b")
         results[expectation] = (
             exit_code == 0 and not report["GateSummary"]["should_fail"] and not report["findings"]
         )
-    before, _ = load(f"{PREFIX}-{model}-t03a")
-    report, exit_code = load(f"{PREFIX}-{model}-t03b")
-    original_ids = {item["finding_id"] for item in before["findings"]}
-    remaining_ids = {item["finding_id"] for item in report["findings"]}
-    results["T-03"] = (
-        exit_code == 0
-        and not report["GateSummary"]["should_fail"]
-        and "adbf838f55ba7600" in original_ids - remaining_ids
-    )
-    report, exit_code = load(f"{PREFIX}-{model}-t04")
-    results["T-04"] = exit_code == 2 and report["exit_reason"] == "infrastructure_error"
-    report, exit_code = load(f"{PREFIX}-{model}-t05b")
-    results["T-05"] = exit_code == 0 and not report["GateSummary"]["should_fail"]
-    first, first_exit = load(f"{PREFIX}-{model}-t07")
-    second, second_exit = load(f"{PREFIX}-{model}-t07")
-    results["T-07"] = (
-        first_exit == second_exit == 0 and first["run_id"] == second["run_id"]
-    )
-    report, exit_code = load(f"{PREFIX}-{model}-t08")
-    results["T-08"] = exit_code == 0 and report["GateSummary"]["should_fail"]
+    if enabled("t03"):
+        before, _ = load(f"{PREFIX}-{model}-t03a")
+        report, exit_code = load(f"{PREFIX}-{model}-t03b")
+        original_ids = {item["finding_id"] for item in before["findings"]}
+        remaining_ids = {item["finding_id"] for item in report["findings"]}
+        results["T-03"] = (
+            exit_code == 0
+            and not report["GateSummary"]["should_fail"]
+            and "adbf838f55ba7600" in original_ids - remaining_ids
+        )
+    if enabled("t04"):
+        report, exit_code = load(f"{PREFIX}-{model}-t04")
+        results["T-04"] = exit_code == 2 and report["exit_reason"] == "infrastructure_error"
+    if enabled("t05"):
+        report, exit_code = load(f"{PREFIX}-{model}-t05b")
+        results["T-05"] = exit_code == 0 and not report["GateSummary"]["should_fail"]
+    if enabled("t07"):
+        first, first_exit = load(f"{PREFIX}-{model}-t07")
+        second, second_exit = load(f"{PREFIX}-{model}-t07")
+        results["T-07"] = (
+            first_exit == second_exit == 0 and first["run_id"] == second["run_id"]
+        )
+    if enabled("t08"):
+        report, exit_code = load(f"{PREFIX}-{model}-t08")
+        results["T-08"] = exit_code == 0 and report["GateSummary"]["should_fail"]
     return results
 
 

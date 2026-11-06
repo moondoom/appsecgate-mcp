@@ -4,7 +4,7 @@
 
 This public report contains **aggregate statistics only**. Repository names, vulnerable file paths and per-project findings are intentionally excluded. Detailed local artifacts remain outside git.
 
-The report covers **389 final true positives** from 100 successfully scanned repositories. The model produced 435 TRUE_POSITIVE and 70 NEEDS_REVIEW verdicts; only those 505 findings entered manual/automated triage. Final review also classified 116 findings as false positives.
+The report covers **389 final true positives** from 100 successfully scanned repositories. Of 574 deduplicated findings shown to the agent under the top-10-per-repository output limit, 564 received verdicts: 435 TRUE_POSITIVE, 70 NEEDS_REVIEW and 59 FALSE_POSITIVE; ten had no verdict. Only TP and NEEDS_REVIEW entered manual/automated triage — 505 findings. Final review classified 389 as TP and 116 as FP. The 59 model FP were not reviewed, so Stage 3 does not measure recall.
 
 | Category | Scanner | Final TP | Share |
 |---|---|---:|---:|
@@ -74,9 +74,9 @@ Available histories came from shallow clones, so values are **minimum observable
 
 | Vulnerability | Example package and version | First reachable introduction | Minimum age |
 |---|---|---|---:|
-| CVE-2026-90711 | `proxy-addr 2.0.7` → fixed 2.0.8 | 2026-09-12 | **51 days** |
-| CVE-2026-59873 | `tar 6.2.1` → fixed 7.5.19 | 2026-02-02 | **272 days** |
-| CVE-2026-75604 | `next 15.5.15` | 2026-10-23 | **10 days** |
+| CVE-2026-90711 | `proxy-addr 2.0.7` → fixed 2.0.8 | 2026-09-12 | **52 days** |
+| CVE-2026-59873 | `tar 6.2.1` → fixed 7.5.19 | 2026-02-02 | **274 days** |
+| CVE-2026-75604 | `next 15.5.15` | 2026-10-23 | **11 days** |
 | GHSA-2464-fhr4-w9xw | `Next.js 16.2.7` | Not found in reachable history | Unknown |
 | GHSA-2xp9-vwfh-vxw4 | `Next.js 15.5.15` | Not found in reachable history | Unknown |
 

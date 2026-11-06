@@ -146,6 +146,12 @@ async def test_scan_dedups_same_secret_across_scanners(default_config):
     coord = ScanCoordinator(default_config, registry)
     result = await coord.scan(["a.py"], mode="file")
     assert result.total == 1
+    assert result.meta.scanner_raw == 2
+    assert result.meta.in_scope == 2
+    assert result.meta.dedup_level1 == 2
+    assert result.meta.dedup_level2 == 1
+    assert result.meta.suppressed == 0
+    assert result.meta.eligible == 1
     # Больший severity (gitleaks=high, trufflehog=medium) побеждает.
     assert result.findings[0].scanner == "gitleaks"
 

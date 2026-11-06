@@ -45,8 +45,19 @@ timeout --signal=TERM --kill-after=30s 35m docker run --rm \
   -e APPSECGATE_LLM_TOP_P="${APPSECGATE_LLM_TOP_P:-1}" \
   -e APPSECGATE_LLM_MAX_TOKENS="${APPSECGATE_LLM_MAX_TOKENS:-2048}" \
   -e APPSECGATE_LLM_NUM_CTX="${APPSECGATE_LLM_NUM_CTX:-32768}" \
+  -e APPSECGATE_AGENT_MAX_ITERATIONS="${APPSECGATE_AGENT_MAX_ITERATIONS:-50}" \
+  -e APPSECGATE_AGENT_MAX_RESTARTS="${APPSECGATE_AGENT_MAX_RESTARTS:-3}" \
+  -e APPSECGATE_AGENT_MAX_COMPACTIONS="${APPSECGATE_AGENT_MAX_COMPACTIONS:-5}" \
+  -e APPSECGATE_AGENT_MAX_TOKENS="${APPSECGATE_AGENT_MAX_TOKENS:-500000}" \
+  -e APPSECGATE_AGENT_MAX_CONTEXT_CHARS="${APPSECGATE_AGENT_MAX_CONTEXT_CHARS:-120000}" \
+  -e APPSECGATE_AGENT_MODE="${APPSECGATE_AGENT_MODE:-free}" \
+  -e APPSECGATE_AGENT_SCHED_PARALLEL="${APPSECGATE_AGENT_SCHED_PARALLEL:-2}" \
+  -e APPSECGATE_AGENT_SCHED_LANES="${APPSECGATE_AGENT_SCHED_LANES:-8192,16384,32768}" \
+  -e APPSECGATE_AGENT_REUSE_VERDICTS="${APPSECGATE_AGENT_REUSE_VERDICTS:-1}" \
   -e APPSECGATE_MASTER_URL="${APPSECGATE_MASTER_URL:-http://appsecgate-master:8000}" \
   -e APPSECGATE_MASTER_API_KEY="${APPSECGATE_MASTER_API_KEY}" \
+  -e APPSECGATE_NO_MASTER_KNOWLEDGE="${APPSECGATE_NO_MASTER_KNOWLEDGE:-0}" \
+  -e APPSECGATE_KNOWLEDGE_CUTOFF="${APPSECGATE_KNOWLEDGE_CUTOFF:-}" \
   -e APPSECGATE_SYNC_OUTBOX=/home/appsecgate/.appsecgate-mcp/sync/outbox.ndjson \
   -e TRIVY_CACHE_DIR=/home/appsecgate/.cache/trivy \
   -v "${PROJECT}:/workspace:ro" \
@@ -61,5 +72,20 @@ timeout --signal=TERM --kill-after=30s 35m docker run --rm \
   >"${ARTIFACT_DIR}/report.json" 2>"${ARTIFACT_DIR}/agent.log"
 status=$?
 set -e
+if [[ ! -s "${ARTIFACT_DIR}/report.json" ]]; then
+  python - "${RUN_ID}" "${status}" "${APPSECGATE_LLM_MODEL}" "${ARTIFACT_DIR}/report.json" <<'PY'
+import json, sys
+run_id, status, model, path = sys.argv[1:]
+report = {
+    "run_id": run_id,
+    "mode": "ro",
+    "model": model,
+    "exit_reason": "timeout" if status == "124" else "infrastructure_error",
+    "error": f"agent container exited with status {status} before report generation",
+}
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(report, output, ensure_ascii=False)
+PY
+fi
 printf '%s\n' "${status}" >"${ARTIFACT_DIR}/exit_code"
 exit "${status}"

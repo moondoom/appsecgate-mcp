@@ -180,21 +180,22 @@ MCP-клиент, спавнящий `serve` как child, общающийся 
 **Как это работает в цикле:**
 
 ```
-1. Агент получает задачу: "Проверить безопасность проекта"
-2. Детерминированный контекст:
-   - scan_project → findings (из сканеров)
-   - get_config → политики проекта
-   - query_findings_db → агрегаты, история
-3. LLM-анализ:
-   - интерпретация findings в контексте проекта
-   - приоритизация (что критично, что false positive)
-   - генерация предложений по фиксам
-4. Проверка (детерминированная):
-   - verify_fix_batch → проверка, что фикс работает
-   - повторный scan → подтверждение
-5. Отчёт (LLM):
-   - Markdown/JSON с объяснениями
+1. Agent receives the task: triage every current finding.
+2. Deterministic inventory:
+   - scan_project / scan_diff → complete current findings, not top_findings
+   - get_scan_findings → deterministic pages and inventory hash
+3. Autonomous LLM analysis:
+   - get_fix_context and additional redacted file reads as needed
+   - master MCP: similar human-confirmed verdicts and CVE data
+   - incremental TP / FALSE_POSITIVE / NEEDS_REVIEW submissions
+4. Deterministic controller:
+   - pending-ID reminders, duplicate and coverage checks
+   - loop detection, checkpoint restart, context compaction and budgets
+5. Verdict journal → edge sync → master triage_verdicted events
+6. check_gate → Markdown/JSON report
 ```
+
+The one-shot fixed-context pipeline is replaced by this single autonomous agent; no legacy fixed/free switch is retained (ADR-0015).
 
 **Проектное описание (AGENTS.md, config.yaml):** детерминированная часть контекста. Агент читает `AGENTS.md` (правила проекта) и `config.yaml` (политики) — это **вход** для LLM, не заменяет его. AGENTS.md задаёт **рамки**, LLM действует **внутри рамок**. Это ровно то, что описано в статье: «AGENTS.md + правила, а дальше — на усмотрение модели».
 

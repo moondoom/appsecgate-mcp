@@ -110,6 +110,12 @@ class ScanMeta(BaseModel):
     ruleset_hash: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    scanner_raw: int = 0
+    in_scope: int = 0
+    dedup_level1: int = 0
+    dedup_level2: int = 0
+    suppressed: int = 0
+    eligible: int = 0
 
 
 class ReconcileReport(BaseModel):

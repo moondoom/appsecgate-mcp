@@ -297,6 +297,12 @@ async def test_counts_suppressed(tmp_path, monkeypatch):
     result = await coord.scan(["."], mode="project")
     assert result.reconcile.counts["suppressed"] == 2  # config + store фильтры (К6)
     assert result.total == 1  # выжил только clean.rule
+    assert result.meta.scanner_raw == 3
+    assert result.meta.in_scope == 3
+    assert result.meta.dedup_level1 == 3
+    assert result.meta.dedup_level2 == 3
+    assert result.meta.suppressed == 2
+    assert result.meta.eligible == 1
     db.close()
 
 

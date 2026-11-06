@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import json
+from types import SimpleNamespace
 
 from appsecgate_mcp.agent.cli import agent_main
+from appsecgate_mcp.agent.controller import AgentController
 from appsecgate_mcp.agent.llm import LlmError, triage
-from appsecgate_mcp.agent.models import AgentConfig, LlmResult, Verdict
+from appsecgate_mcp.agent.models import AgentConfig, Verdict
 from appsecgate_mcp.agent.runner import AgentError
+from appsecgate_mcp.models.finding import Category, Finding, ScanResult, Severity
+from appsecgate_mcp.server.session import SessionState
+from appsecgate_mcp.server.tools.inventory import _scan_findings_page
 
 
 def test_verdict_accepts_structured_patch():
@@ -132,83 +138,197 @@ def test_agent_sync_failure_is_exit_2(monkeypatch, tmp_path):
     assert agent_main(_args(tmp_path) + ["--master-url", "http://master.test"]) == 2
 
 
-def test_triage_batches_each_finding_and_sums_usage(monkeypatch, tmp_path):
-    config = _config(tmp_path)
+class _Message:
+    def __init__(self, payload, tool_calls):
+        self._payload = payload
+        self.tool_calls = tool_calls
 
-    def fake_request(_config, payload):
-        finding_id = payload["contexts"][0]["finding"]["fingerprint"]
-        return LlmResult(
-            verdicts=[Verdict(finding_id=finding_id, verdict="TRUE_POSITIVE")],
-            usage={"total_tokens": 10},
-        )
-
-    monkeypatch.setattr("appsecgate_mcp.agent.llm._request", fake_request)
-    contexts = [{"finding": {"fingerprint": value}} for value in ("fp-1", "fp-2")]
-
-    import asyncio
-
-    result = asyncio.run(triage(config, contexts))
-
-    assert [item.finding_id for item in result.verdicts] == ["fp-1", "fp-2"]
-    assert result.usage["total_tokens"] == 20
+    def model_dump(self, *, exclude_none=False):
+        return self._payload
 
 
-def test_triage_retries_invalid_verdict_id_once(monkeypatch, tmp_path):
-    config = _config(tmp_path)
+def _call(name, arguments, call_id="call-1"):
+    raw = {"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}}
+    return SimpleNamespace(
+        id=call_id,
+        function=SimpleNamespace(name=name, arguments=arguments),
+        _raw=raw,
+    )
+
+
+def _response(calls=(), *, tokens=10):
+    calls = list(calls)
+    payload = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [call._raw for call in calls],
+    }
+    message = _Message(payload, calls)
+    usage = SimpleNamespace(
+        model_dump=lambda mode: {
+            "prompt_tokens": tokens // 2,
+            "completion_tokens": tokens // 2,
+            "total_tokens": tokens,
+        }
+    )
+    return SimpleNamespace(choices=[SimpleNamespace(message=message)], usage=usage)
+
+
+async def _inventory_call(name, arguments):
+    assert name == "get_scan_findings"
+    return {
+        "status": "ok",
+        "finding_ids": ["fp-1", "fp-2"],
+        "inventory_hash": "hash-1",
+        "findings": [
+            {"finding_id": "fp-1", "rule_id": "rule-1"},
+            {"finding_id": "fp-2", "rule_id": "rule-2"},
+        ],
+        "next_cursor": None,
+        "total": 2,
+    }
+
+
+def test_triage_autonomous_tools_cover_inventory(monkeypatch, tmp_path):
     responses = iter(
         [
-            LlmResult(verdicts=[Verdict(finding_id="other", verdict="FALSE_POSITIVE")]),
-            LlmResult(
-                verdicts=[Verdict(finding_id="expected", verdict="TRUE_POSITIVE")],
-                usage={"total_tokens": 10},
+            _response([_call("get_finding_batch", "{}")]),
+            _response(
+                [
+                    _call(
+                        "submit_verdicts",
+                        json.dumps(
+                            {
+                                "verdicts": [
+                                    {
+                                        "finding_id": "fp-1",
+                                        "verdict": "TRUE_POSITIVE",
+                                        "explanation": "confirmed",
+                                    },
+                                    {
+                                        "finding_id": "fp-2",
+                                        "verdict": "FALSE_POSITIVE",
+                                        "explanation": "example only",
+                                    },
+                                ]
+                            }
+                        ),
+                        "call-2",
+                    )
+                ],
+                tokens=20,
             ),
+            _response(),
         ]
     )
     monkeypatch.setattr("appsecgate_mcp.agent.llm._request", lambda *args: next(responses))
-    contexts = [{"finding": {"fingerprint": "expected"}}]
 
-    import asyncio
+    async def run():
+        controller = AgentController(_inventory_call)
+        await controller.initialize("full")
+        return await triage(_config(tmp_path), controller)
 
-    result = asyncio.run(triage(config, contexts))
+    result = asyncio.run(run())
 
-    assert result.verdicts[0].finding_id == "expected"
-    assert result.usage["protocol_retries"] == 1
-    assert result.usage["total_tokens"] == 10
+    assert [item.finding_id for item in result.verdicts] == ["fp-1", "fp-2"]
+    assert result.usage["assigned"] == 2
+    assert result.usage["missing"] == 0
+    assert result.usage["total_tokens"] == 40
+    assert result.usage["iterations"] == 3
 
 
-def test_triage_fuzzy_remaps_verdict_id(monkeypatch, tmp_path):
-    config = _config(tmp_path)
-    result = LlmResult(
-        verdicts=[Verdict(finding_id=" Expected ", verdict="TRUE_POSITIVE")],
-        usage={"total_tokens": 7},
+def test_triage_reminds_about_pending_ids(monkeypatch, tmp_path):
+    responses = iter(
+        [
+            _response(),
+            _response(
+                [
+                    _call(
+                        "submit_verdicts",
+                        json.dumps(
+                            {
+                                "verdicts": [
+                                    {
+                                        "finding_id": "fp-1",
+                                        "verdict": "NEEDS_REVIEW",
+                                        "explanation": "uncertain",
+                                    },
+                                    {
+                                        "finding_id": "fp-2",
+                                        "verdict": "NEEDS_REVIEW",
+                                        "explanation": "uncertain",
+                                    },
+                                ]
+                            }
+                        ),
+                    )
+                ]
+            ),
+            _response(),
+        ]
     )
-    monkeypatch.setattr("appsecgate_mcp.agent.llm._request", lambda *args: result)
-    contexts = [{"finding": {"fingerprint": "expected"}}]
+    captured = []
 
-    import asyncio
+    def fake_request(config, messages, tools):
+        captured.extend(messages)
+        return next(responses)
 
-    result = asyncio.run(triage(config, contexts))
+    monkeypatch.setattr("appsecgate_mcp.agent.llm._request", fake_request)
 
-    assert result.verdicts[0].finding_id == "expected"
-    assert result.verdicts[0].verdict == "TRUE_POSITIVE"
-    assert result.usage.get("protocol_failures", 0) == 0
+    async def run():
+        controller = AgentController(_inventory_call)
+        await controller.initialize("full")
+        return await triage(_config(tmp_path), controller)
+
+    result = asyncio.run(run())
+
+    assert result.usage["missing"] == 0
+    assert any(
+        isinstance(item.get("content"), str) and '"pending_total": 2' in item["content"]
+        for item in captured
+    )
 
 
-def test_triage_persistent_mismatch_yields_needs_review(monkeypatch, tmp_path):
-    config = _config(tmp_path)
-    result = LlmResult(verdicts=[Verdict(finding_id="other", verdict="FALSE_POSITIVE")])
-    monkeypatch.setattr("appsecgate_mcp.agent.llm._request", lambda *args: result)
-    contexts = [{"finding": {"fingerprint": "expected"}}]
+def test_triage_iteration_limit_leaves_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr("appsecgate_mcp.agent.llm._request", lambda *args: _response())
 
-    import asyncio
+    async def run():
+        controller = AgentController(_inventory_call)
+        await controller.initialize("full")
+        return await triage(_config(tmp_path, max_iterations=1), controller)
 
-    result = asyncio.run(triage(config, contexts))
+    result = asyncio.run(run())
 
-    assert [item.finding_id for item in result.verdicts] == ["expected"]
-    assert result.verdicts[0].verdict == "NEEDS_REVIEW"
-    assert "protocol failure" in result.verdicts[0].explanation
-    assert result.usage["protocol_retries"] == 1
-    assert result.usage["protocol_failures"] == 1
+    assert result.verdicts == []
+    assert result.usage["missing"] == 2
+    assert result.usage["iteration_limit_reached"] == 1
+
+
+def test_scan_findings_pages_contain_full_inventory():
+    state = SessionState()
+    result = ScanResult(
+        findings=[
+            Finding(
+                fingerprint=f"fp-{index:03d}",
+                rule_id="rule",
+                severity=Severity.HIGH,
+                file_path="a.py",
+                scanner="semgrep",
+                category=Category.SAST,
+            )
+            for index in range(120)
+        ]
+    )
+    state.register(result)
+
+    first = _scan_findings_page(state, scope="file", cursor=0, limit=50)
+    second = _scan_findings_page(state, scope="file", cursor=50, limit=50)
+    third = _scan_findings_page(state, scope="file", cursor=100, limit=50)
+
+    assert len(first["finding_ids"]) == 120
+    assert [len(page["findings"]) for page in (first, second, third)] == [50, 50, 20]
+    assert first["inventory_hash"] == third["inventory_hash"]
+    assert third["next_cursor"] is None
 
 
 def test_agent_mcp_failure_is_exit_2(monkeypatch, tmp_path, capsys):
@@ -227,9 +347,15 @@ def test_agent_real_mcp_child_empty_project(tmp_path, capsys):
     assert agent_main(_args(tmp_path)) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["findings"] == []
+    assert report["inventory"] == {
+        "total": 0,
+        "hash": report["inventory"]["hash"],
+        "missing_ids": [],
+    }
     assert report["GateSummary"]["should_fail"] is False
     assert [item["tool"] for item in report["action_log"]] == [
         "scan_project",
+        "get_scan_findings",
         "check_gate",
         "sync",
     ]

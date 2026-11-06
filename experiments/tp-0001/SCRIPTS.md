@@ -4,6 +4,18 @@ Run commands from `experiments/tp-0001/` unless stated otherwise. Scripts use on
 
 ## Experiment drivers
 
+### Autonomous agent smoke
+
+From the repository root, start the deterministic mock and run the live T-01/T-04/T-07 checks in separate terminals:
+
+```bash
+make experiment-master-up
+make experiment-mock-llm
+make experiment-gate-smoke
+```
+
+The gate uses an isolated master on port 8001 with three explicitly test-only project keys and the new `agent-dev-v1` namespace; the primary master and historical artifacts are not affected. Explicit smoke keys take precedence over root/runtime env files. Stop it with `make experiment-master-down` after the run.
+
 ### `benchmark_parallel.py`
 
 Runs one or more models against repeated `pygoat` runs or an explicit repository list, collects wall time, throughput, p50/p95, protocol retries, token usage, master checks and Prometheus metrics.
@@ -123,7 +135,29 @@ python3 fetch_contributors.py
 
 After metadata changes, rerun collection and clustering to refresh dependent artifacts.
 
+## Autonomous corpus preparation
+
+`prepare_agent_corpus.py` builds `agent300-manifest.json`: the existing 100 development repositories plus 200 new held-out repositories. Git clones have a timeout and a codeload tarball fallback with a fixed commit SHA.
+
+`prepare_agent_run_config.py` writes the frozen model/image/prompt/budget configuration, repeat list, knowledge cutoff and test-only project keys.
+
+`prepare_master_knowledge.py` imports human-confirmed development verdicts through `/v1/events`. `prepare_cve_snapshot.py` downloads a frozen OSV snapshot; `appsecgate_master.cve_ingest` imports it into master.
+
+Use the Make targets from `scenario-agent.md` instead of invoking these scripts directly. The main launchers are `experiment-agent300-preflight`, `experiment-agent300-run`, and `experiment-agent300-repeat`; they do not run until explicitly selected.
+
 ## Collection, triage and reporting
+
+### `collect_agent_funnel.py`
+
+Collects the autonomous `asgfree` runs without reading counts from log text. It validates eligible/assigned and verdict coverage, includes TP, FP, NEEDS_REVIEW and missing findings, and writes `<prefix>-funnel.json` plus `<prefix>-review.json`.
+
+```bash
+python3 collect_agent_funnel.py --label asgfree300 --model gemmaq3 --parallelism 4
+```
+
+The review file contains every assigned finding. Existing human verdicts, reviewer, timestamps, notes and adjudication fields are preserved when the file is regenerated. The script refuses reports without structured `scan_meta` and reports with an inventory/coverage mismatch.
+
+The older `vibe100` scripts below document the diagnostic top-10 pilot and must not be used for the new corpus.
 
 ### `collect_tp_review.py`
 

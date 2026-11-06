@@ -140,12 +140,18 @@ async def suppress_finding(finding_id: str, reason: str, expires_at: str) -> Non
 
 #### Внешние режимы запуска (фактическое состояние)
 
-Кроме MCP `serve`, пакет предоставляет host-режимы `sync` и `ci`. `sync` —
-единственный сетевой edge-процесс синхронизации; `ci` — детерминированный
-classic hard-gate без LLM, сканирует diff и возвращает `0/1/2`. Встроенной
-команды `agent` пока нет. Отдельный пакет `appsecgate-agent` реализует только
-report MVP: MCP stdio `scan_project`/`scan_diff` → `check_gate` → Markdown/NDJSON,
-без LLM, триажа и записи в master. Advisory `check_gate` не заменяет enforced `ci`.
+In addition to MCP `serve`, the package provides `sync`, `ci`, and `agent` modes.
+`sync` is the only edge synchronization process; `ci` is the deterministic classic
+hard-gate without an LLM. `appsecgate-mcp agent --mode=ro` is the autonomous
+read-only triage agent (ADR-0015): it processes the complete current inventory
+and is supervised by a deterministic controller for pending IDs, loops,
+checkpoint restarts, and context compaction. The scan always completes before
+the LLM starts. `--agent-mode=free` (default) lets the model drive file and
+master-knowledge tools; `--agent-mode=guided` runs a deterministic batch loop
+with pre-fetched contexts and bounded evidence reads (`read_project_file`,
+master knowledge) before a single `submit_verdicts` per finding.
+The separate `appsecgate-agent` package still implements only the deterministic
+report MVP without an LLM. Advisory `check_gate` does not replace enforced `ci`.
 
 ### 3.2. Orchestration Layer
 
