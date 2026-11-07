@@ -24,6 +24,7 @@ class AgentConfig(BaseModel):
     llm_model: str
     llm_api_key: str = "local"
     llm_timeout: float = 120
+    llm_failure_timeout: float = 600
     llm_temperature: float = 0
     llm_top_p: float = 1
     llm_max_tokens: int = 2048
@@ -111,6 +112,10 @@ class Verdict(BaseModel):
     model_confidence_level: Literal["high", "medium", "low", "speculative"] | None = None
     model_verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"] | None = None
     downgrade_reason: str | None = None
+    failure_reason: (
+        Literal["context_overflow", "timeout", "llm_error", "budget_exhausted"] | None
+    ) = None
+    failure_detail: str | None = None
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     patch: str | list[dict[str, Any]] | None = None
     supersedes_verdict_id: str | None = Field(default=None, exclude=True)

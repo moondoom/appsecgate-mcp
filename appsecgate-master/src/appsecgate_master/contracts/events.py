@@ -112,6 +112,10 @@ class MasterEvent(BaseModel):
     model_confidence_level: Literal["high", "medium", "low", "speculative"] | None = None
     model_verdict: Literal["TRUE_POSITIVE", "FALSE_POSITIVE", "NEEDS_REVIEW"] | None = None
     downgrade_reason: str | None = None
+    failure_reason: (
+        Literal["context_overflow", "timeout", "llm_error", "budget_exhausted"] | None
+    ) = None
+    failure_detail: str | None = None
     evidence_basis: (
         Literal[
             "direct_snippet",

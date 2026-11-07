@@ -56,6 +56,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=float(os.environ.get("APPSECGATE_LLM_TIMEOUT", "120")),
     )
     parser.add_argument(
+        "--llm-failure-timeout",
+        type=float,
+        default=float(os.environ.get("APPSECGATE_LLM_FAILURE_TIMEOUT_S", "600")),
+    )
+    parser.add_argument(
         "--llm-temperature",
         type=float,
         default=float(os.environ.get("APPSECGATE_LLM_TEMPERATURE", "0")),
@@ -205,6 +210,7 @@ def agent_main(argv: list[str] | None = None) -> int:
         llm_model=args.llm_model,
         llm_api_key=args.llm_api_key,
         llm_timeout=args.llm_timeout,
+        llm_failure_timeout=args.llm_failure_timeout,
         llm_temperature=args.llm_temperature,
         llm_top_p=args.llm_top_p,
         llm_max_tokens=args.llm_max_tokens,

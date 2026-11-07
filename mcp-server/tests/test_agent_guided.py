@@ -251,9 +251,11 @@ def test_guided_evidence_loop_limit_fails_open(monkeypatch, tmp_path):
 
     result = asyncio.run(run())
 
-    assert result.usage["missing"] == 1
-    assert result.usage["failed_findings"] == 1
-    assert result.usage["evidence_reads"] == 4
+    assert result.usage["missing"] == 0
+    assert result.usage["failed_findings"] == 0
+    assert result.usage["model_failed_llm_error"] == 1
+    assert result.usage["evidence_reads"] == 24
+    assert result.verdicts[0].failure_reason == "llm_error"
 
 
 def test_guided_partial_omission_retries_single_finding(monkeypatch, tmp_path):
@@ -267,16 +269,19 @@ def test_guided_partial_omission_retries_single_finding(monkeypatch, tmp_path):
     assert len(result.verdicts) == 2
 
 
-def test_guided_unparseable_single_finding_left_pending(monkeypatch, tmp_path):
+def test_guided_unparseable_single_finding_becomes_terminal_model_failure(monkeypatch, tmp_path):
     backend = _Backend(["fp-1"])
-    responses = iter([_response(content="garbage", finish_reason="stop")])
-    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", lambda *args: next(responses))
-    result = _run(tmp_path, backend, responses)
+    monkeypatch.setattr(
+        "appsecgate_mcp.agent.guided._request",
+        lambda *args: _response(content="garbage", finish_reason="stop"),
+    )
+    result = _run(tmp_path, backend, iter(()))
 
-    assert result.usage["missing"] == 1
-    assert result.usage["failed_findings"] == 1
-    assert result.usage["guided_incomplete"] == 1
-    assert result.verdicts == []
+    assert result.usage["missing"] == 0
+    assert result.usage["failed_findings"] == 0
+    assert result.usage["model_failed_llm_error"] == 1
+    assert result.verdicts[0].verdict == "NEEDS_REVIEW"
+    assert result.verdicts[0].failure_reason == "llm_error"
 
 
 def test_guided_confidence_is_optional_and_validated(monkeypatch, tmp_path):

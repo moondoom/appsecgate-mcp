@@ -5,8 +5,10 @@ import json
 from typing import Any
 
 from appsecgate_mcp.agent.controller import AgentController
+from appsecgate_mcp.agent.guided_failures import mark_model_failed
 from appsecgate_mcp.agent.llm import (
     LlmError,
+    LlmTimeoutError,
     _add_usage,
     _message,
     _project_context,
@@ -146,15 +148,16 @@ def _telemetry_lane(config: AgentConfig, payload: dict[str, Any]) -> int:
 async def _triage_chunk(
     config: AgentConfig,
     controller: AgentController,
-    system: str,
     tools: list[dict[str, Any]],
     project_context: dict[str, str],
     chunk: list[str],
     findings: dict[str, dict[str, Any]],
     usage: dict[str, Any],
-    stats: dict[str, int],
+    stats: dict[str, Any],
     depth: int,
     payload: dict[str, Any] | None = None,
+    failure_reason: str | None = None,
+    failure_detail: str | None = None,
 ) -> None:
     chunk = [fid for fid in chunk if fid in controller.pending]
     if not chunk:
@@ -174,11 +177,20 @@ async def _triage_chunk(
     for _ in range(_MAX_BATCH_ITERATIONS):
         try:
             response = await asyncio.to_thread(
-                _request, config, messages, tools, config.llm_num_ctx
+                _request,
+                config,
+                messages,
+                tools,
+                config.llm_num_ctx,
             )
+        except LlmTimeoutError as exc:
+            stats["timed_out_calls"] += 1
+            failure_reason = "timeout"
+            failure_detail = str(exc)[:500]
+            response = None
         except LlmError as exc:
-            if "token repeat limit reached" not in str(exc):
-                raise
+            failure_reason = "llm_error"
+            failure_detail = str(exc)[:500]
             response = None
         if response is None:
             break
@@ -224,14 +236,15 @@ async def _triage_chunk(
         return
     if truncated or arguments is None or accepted == 0:
         stats["batch_retries"] += 1
-    if depth >= _MAX_SPLIT_DEPTH or (len(remaining) == 1 and accepted == 0):
-        stats["failed_findings"] += len(remaining)
+    if depth >= _MAX_SPLIT_DEPTH:
+        reason = failure_reason or "llm_error"
+        detail = failure_detail or "invalid or truncated LLM response after retries"
+        await mark_model_failed(controller, stats, remaining, reason=reason, detail=detail)
         return
     if len(remaining) == 1:
         await _triage_chunk(
             config,
             controller,
-            system,
             tools,
             project_context,
             remaining,
@@ -239,6 +252,8 @@ async def _triage_chunk(
             usage,
             stats,
             depth + 1,
+            failure_reason=failure_reason,
+            failure_detail=failure_detail,
         )
         return
     middle = len(remaining) // 2
@@ -246,7 +261,6 @@ async def _triage_chunk(
         await _triage_chunk(
             config,
             controller,
-            system,
             tools,
             project_context,
             part,
@@ -254,6 +268,8 @@ async def _triage_chunk(
             usage,
             stats,
             depth + 1,
+            failure_reason=failure_reason,
+            failure_detail=failure_detail,
         )
 
 
@@ -288,7 +304,6 @@ async def _prepare_batches(
 
 async def triage_guided(config: AgentConfig, controller: AgentController) -> LlmResult:
     project_context = _project_context(config)
-    system = config.guided_prompt_path.read_text(encoding="utf-8")
     tools = [
         tool for tool in controller.tool_schemas() if tool["function"]["name"] in _EVIDENCE_TOOLS
     ]
@@ -310,6 +325,12 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         "batches": 0,
         "batch_retries": 0,
         "failed_findings": 0,
+        "model_failed_findings": 0,
+        "model_failed_context_overflow": 0,
+        "model_failed_timeout": 0,
+        "model_failed_llm_error": 0,
+        "model_failed_budget_exhausted": 0,
+        "timed_out_calls": 0,
         "evidence_reads": 0,
     }
     await reuse_prior_verdicts(config, controller, stats)
@@ -322,7 +343,6 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
             await _triage_chunk(
                 config,
                 controller,
-                system,
                 tools,
                 project_context,
                 chunk,

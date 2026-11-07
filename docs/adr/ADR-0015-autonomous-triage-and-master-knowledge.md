@@ -45,7 +45,7 @@ Every eligible finding must finish in one of these states: accepted model verdic
 
 ## 4. Controller
 
-The agent supports two loop modes selected by `agent_mode` (`--agent-mode`, default `free`). The scan always runs before the LLM starts; neither mode exposes scan tools to the model.
+The agent supports two loop modes selected by `agent_mode` (`--agent-mode`, default `guided`). The scan always runs before the LLM starts; neither mode exposes scan tools to the model.
 
 In `free` mode the model drives the full tool set described below.
 
@@ -55,7 +55,7 @@ In `guided` mode the harness drives a deterministic loop: it pages the inventory
 
 **Reuse validation (2026-11-06):** controlled rev1v3 runs validated fresh reuse and append-only revisions; see ADR-0017. Numeric confidence is the legacy protocol. ADR-0018 proposes categorical evidence-based confidence for new events, per-mode prompt-hash invalidation, and master-owned severity escalation. Historical numeric events remain unchanged but are excluded from the new protocol.
 
-**Guided-redesign addendum (2026-11-07, pending acceptance):** after the retry/split policy is exhausted, context overflow and call timeout will no longer leave a finding indefinitely pending. They produce terminal `NEEDS_REVIEW` with `failure_reason=context_overflow|timeout` and `failure_detail`, distinguishing model-judged review from model failure. Such terminal events count toward coverage but not `failed_findings`; missing findings and unhandled infrastructure failures remain pending/failed. This is a deliberate change to the paragraph above, not a silent relaxation of “missing findings are not converted into NEEDS_REVIEW”: only a measured model failure after retries qualifies. Acceptance uses a provisional 600 s call timeout; a smaller value requires calibration at the actual four-slot operating point. LLM call failures must become batch-fatal before this terminal verdict is emitted (GD-9). Implementation and gates: ADR-0019; timeout/overflow evidence: ADR-0016 §12 and §14.
+**Guided-redesign addendum (2026-11-07, implemented; adoption pending acceptance):** after the retry/split policy is exhausted, context overflow, call timeout, post-retry LLM call errors, and per-finding budget exhaustion no longer leave a finding indefinitely pending. They produce terminal `NEEDS_REVIEW` with `failure_reason=context_overflow|timeout|llm_error|budget_exhausted` and `failure_detail`, distinguishing model-judged review from model failure. Such terminal events count toward coverage but not `failed_findings`; missing findings and unhandled infrastructure failures remain pending/failed. This is a deliberate change to the paragraph above, not a silent relaxation of “missing findings are not converted into NEEDS_REVIEW”: only a measured model failure after retries qualifies. Acceptance uses a provisional 600 s call timeout; a smaller value requires calibration at the actual four-slot operating point. LLM call failures are batch-fatal before the terminal verdict is emitted (GD-9). Implementation and gates: ADR-0019; timeout/overflow evidence: ADR-0016 §12 and §14.
 
 ## 4. Controller
 

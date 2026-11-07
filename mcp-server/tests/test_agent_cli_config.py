@@ -11,6 +11,7 @@ def test_agent_reads_guided_execution_parameters(monkeypatch, tmp_path):
             agent_mode=config.agent_mode,
             internal_parallel=config.internal_parallel,
             batch_sort=config.batch_sort,
+            llm_failure_timeout=config.llm_failure_timeout,
         )
         return {
             "run_id": config.run_id,
@@ -29,6 +30,7 @@ def test_agent_reads_guided_execution_parameters(monkeypatch, tmp_path):
     monkeypatch.setattr("appsecgate_mcp.agent.cli.run_agent", fake_run)
     monkeypatch.setenv("APPSECGATE_AGENT_INTERNAL_PARALLEL", "2")
     monkeypatch.setenv("APPSECGATE_AGENT_BATCH_SORT", "none")
+    monkeypatch.setenv("APPSECGATE_LLM_FAILURE_TIMEOUT_S", "600")
 
     result = agent_main(
         [
@@ -51,6 +53,7 @@ def test_agent_reads_guided_execution_parameters(monkeypatch, tmp_path):
         "agent_mode": "guided",
         "internal_parallel": 2,
         "batch_sort": "none",
+        "llm_failure_timeout": 600,
     }
 
 

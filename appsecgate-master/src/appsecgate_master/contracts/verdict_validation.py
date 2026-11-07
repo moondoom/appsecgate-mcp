@@ -17,6 +17,10 @@ _FP_BASIS = {
 
 
 def edge_validation_error(event: MasterEvent) -> str | None:
+    if event.failure_reason is not None and (
+        event.verdict != "NEEDS_REVIEW" or not event.failure_detail
+    ):
+        return "invalid_model_failure"
     if event.confidence_level is None and event.evidence_basis is None:
         return None
     mode = event.prompt_mode or "sast"

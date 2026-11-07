@@ -16,6 +16,10 @@ class LlmProtocolError(LlmError):
     pass
 
 
+class LlmTimeoutError(LlmError):
+    pass
+
+
 def _load_openai():
     try:
         from openai import OpenAI
@@ -39,10 +43,13 @@ def _request(
     tools: list[dict[str, Any]],
     num_ctx: int | None = None,
 ) -> Any:
+    request_timeout = (
+        config.llm_failure_timeout if config.agent_mode == "guided" else config.llm_timeout
+    )
     client = _load_openai()(
         base_url=config.llm_url,
         api_key=config.llm_api_key,
-        timeout=config.llm_timeout,
+        timeout=request_timeout,
         max_retries=0,
     )
     try:
@@ -57,6 +64,9 @@ def _request(
             max_tokens=config.llm_max_tokens,
         )
     except Exception as exc:
+        marker = f"{type(exc).__name__} {exc}".lower()
+        if "timeout" in marker or "timed out" in marker:
+            raise LlmTimeoutError(f"LLM request timed out: {exc}") from exc
         raise LlmError(f"LLM request failed: {exc}") from exc
 
 

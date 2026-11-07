@@ -44,6 +44,7 @@ class TriageJournal:
                 "reasoning": redact_text(verdict.reasoning),
                 "evidence_quote": redact_text(verdict.evidence_quote),
                 "evidence": _safe(verdict.evidence),
+                "failure_detail": redact_text(verdict.failure_detail or ""),
                 "patch": None,
             }
         )
@@ -80,6 +81,8 @@ class TriageJournal:
             "model_confidence_level": sanitized.model_confidence_level,
             "model_verdict": sanitized.model_verdict,
             "downgrade_reason": sanitized.downgrade_reason,
+            "failure_reason": sanitized.failure_reason,
+            "failure_detail": sanitized.failure_detail,
             "verdict_source": "model",
             "actor_id": f"model:{self.config.llm_model}",
             "review_status": "unreviewed",

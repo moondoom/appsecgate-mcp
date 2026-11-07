@@ -54,6 +54,8 @@ SELECT
     json_extract(payload, '$.model_confidence_level') AS model_confidence_level,
     json_extract(payload, '$.model_verdict') AS model_verdict,
     json_extract(payload, '$.downgrade_reason') AS downgrade_reason,
+    json_extract(payload, '$.failure_reason') AS failure_reason,
+    json_extract(payload, '$.failure_detail') AS failure_detail,
     json_extract(payload, '$.evidence_basis') AS evidence_basis,
     json_extract(payload, '$.evidence_quote') AS evidence_quote,
     json_extract(payload, '$.source_file') AS source_file,

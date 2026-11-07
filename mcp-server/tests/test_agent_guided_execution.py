@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from appsecgate_mcp.agent.controller import AgentController
 from appsecgate_mcp.agent.guided import triage_guided
+from appsecgate_mcp.agent.llm import LlmTimeoutError
 from appsecgate_mcp.agent.models import AgentConfig
 
 
@@ -171,3 +172,24 @@ def test_guided_internal_parallel_overlaps_batches(monkeypatch, tmp_path):
     assert result.usage["missing"] == 0
     assert result.usage["internal_parallel"] == 2
     assert entered == 2
+
+
+def test_guided_timeout_is_batch_fatal_and_terminal_after_retries(monkeypatch, tmp_path):
+    calls = 0
+
+    def fake_request(config, messages, tools, num_ctx=None):
+        nonlocal calls
+        calls += 1
+        assert config.llm_failure_timeout == 600
+        raise LlmTimeoutError("request timed out")
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    result = asyncio.run(_run(tmp_path, _Backend(["fp-1", "fp-2"])))
+
+    assert calls > 1
+    assert result.usage["missing"] == 0
+    assert result.usage["failed_findings"] == 0
+    assert result.usage["model_failed_findings"] == 2
+    assert result.usage["model_failed_timeout"] == 2
+    assert result.usage["timed_out_calls"] == calls
+    assert {item.failure_reason for item in result.verdicts} == {"timeout"}

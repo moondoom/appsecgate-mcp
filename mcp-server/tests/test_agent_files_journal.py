@@ -125,3 +125,41 @@ def test_triage_journal_redacts_and_deduplicates(tmp_path):
     assert event["rule_hash"] == "sha256:rule"
     assert event["rule_hash_status"] == "definition_sha256"
     assert "AKIAIOSFODNN7EXAMPLE" not in lines[0]
+
+
+def test_triage_journal_records_terminal_model_failure(tmp_path):
+    config = AgentConfig(
+        project=tmp_path,
+        project_id="p1",
+        data_dir=tmp_path / "data",
+        run_id="run-1",
+        llm_url="http://llm.test/v1",
+        llm_model="test-model",
+    )
+    journal = TriageJournal(config, findings=[{"finding_id": "fp-1"}])
+
+    async def run():
+        controller = AgentController(_inventory_call, journal=journal.append)
+        await controller.initialize("full")
+        return await controller.execute(
+            "submit_verdicts",
+            {
+                "verdicts": [
+                    {
+                        "finding_id": "fp-1",
+                        "verdict": "NEEDS_REVIEW",
+                        "explanation": "model timeout",
+                        "failure_reason": "timeout",
+                        "failure_detail": "elapsed_ms=600000 > timeout_ms=600000",
+                    }
+                ]
+            },
+        )
+
+    result = asyncio.run(run())
+    event = json.loads((tmp_path / "data" / "triage_verdicts.ndjson").read_text())
+
+    assert result["accepted"] == 1
+    assert event["verdict"] == "NEEDS_REVIEW"
+    assert event["failure_reason"] == "timeout"
+    assert event["failure_detail"] == "elapsed_ms=600000 > timeout_ms=600000"

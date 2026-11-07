@@ -34,6 +34,10 @@ def _quote_in_source(quote: str, source_text: str | None) -> bool:
 
 
 def validate_verdict(verdict: Verdict, mode: str, *, source_text: str | None = None) -> Verdict:
+    if verdict.failure_reason is not None and (
+        verdict.verdict != "NEEDS_REVIEW" or not verdict.failure_detail
+    ):
+        raise ValueError("failure_reason requires NEEDS_REVIEW and failure_detail")
     if verdict.confidence_level is None and verdict.evidence_basis is None:
         return verdict
     if verdict.confidence_level in {"high", "medium"} and verdict.evidence_basis is None:

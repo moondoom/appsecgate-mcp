@@ -146,3 +146,58 @@ async def test_master_rejects_invalid_edge_high_confidence(events_store):
 
     assert outcomes[0].outcome == "rejected:edge_validator"
     assert await events_store.count() == 0
+
+
+async def test_terminal_model_failure_is_accepted_and_projected(master_db, events_store):
+    verdict_id = uid()
+    event = make_event(
+        "triage_verdicted",
+        project_key="proj",
+        verdict_id=verdict_id,
+        client_event_id=verdict_id,
+        run_id="run-timeout",
+        verdict="NEEDS_REVIEW",
+        verdict_source="model",
+        review_status="unreviewed",
+        failure_reason="timeout",
+        failure_detail="elapsed_ms=600000 > timeout_ms=600000",
+        prompt_mode="sast",
+    )
+
+    outcomes = await events_store.ingest([event])
+    rows = await run_query(
+        master_db,
+        "SELECT verdict, failure_reason, failure_detail FROM v_triage_verdicts",
+        None,
+        "proj",
+        None,
+    )
+
+    assert outcomes[0].outcome == "accepted"
+    assert rows["rows"] == [
+        {
+            "verdict": "NEEDS_REVIEW",
+            "failure_reason": "timeout",
+            "failure_detail": "elapsed_ms=600000 > timeout_ms=600000",
+        }
+    ]
+
+
+async def test_master_rejects_failure_reason_on_judged_verdict(events_store):
+    verdict_id = uid()
+    event = make_event(
+        "triage_verdicted",
+        verdict_id=verdict_id,
+        client_event_id=verdict_id,
+        run_id="run-invalid-failure",
+        verdict="TRUE_POSITIVE",
+        verdict_source="model",
+        review_status="unreviewed",
+        failure_reason="timeout",
+        failure_detail="not a model failure",
+    )
+
+    outcomes = await events_store.ingest([event])
+
+    assert outcomes[0].outcome == "rejected:edge_validator"
+    assert await events_store.count() == 0
