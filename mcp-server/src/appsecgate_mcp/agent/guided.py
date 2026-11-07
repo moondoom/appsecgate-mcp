@@ -42,6 +42,16 @@ def _batch_size(config: AgentConfig) -> int:
     return max(1, min(20, (config.llm_max_tokens // 2) // 120))
 
 
+def _batch_size_for_mode(config: AgentConfig, mode: str) -> int:
+    return max(1, config.mode_batch_sizes.get(mode) or _batch_size(config))
+
+
+def _request_budget(config: AgentConfig, chunk_size: int) -> int:
+    if not config.adaptive_max_tokens:
+        return config.llm_max_tokens
+    return min(config.adaptive_max_tokens_cap, chunk_size * 150 + 256)
+
+
 def _chunks(items: list[str], size: int) -> list[list[str]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
@@ -116,7 +126,8 @@ async def _triage_chunk(
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)},
     ]
     prompt_estimate = _estimate_request_tokens(messages, tools)
-    reserve = config.llm_max_tokens + _OUTPUT_SAFETY_MARGIN
+    request_budget = _request_budget(config, len(chunk))
+    reserve = request_budget + _OUTPUT_SAFETY_MARGIN
     if prompt_estimate + reserve > config.llm_num_ctx:
         detail = (
             f"est_prompt_tokens={prompt_estimate} + reserve={reserve} "
@@ -148,7 +159,7 @@ async def _triage_chunk(
         started = time.monotonic()
         call_usage: dict[str, Any] | None = None
         try:
-            response = await asyncio.to_thread(_request, config, messages, tools)
+            response = await asyncio.to_thread(_request, config, messages, tools, request_budget)
         except LlmTimeoutError as exc:
             stats["timed_out_calls"] += 1
             failure_reason = "timeout"
@@ -270,7 +281,7 @@ async def _prepare_batches(
             mode = controller.finding_modes.get(finding_id, "sast")
             by_mode.setdefault(mode, []).append(finding_id)
         for mode in sorted(by_mode):
-            grouped.extend(_chunks(by_mode[mode], batch_size))
+            grouped.extend(_chunks(by_mode[mode], _batch_size_for_mode(config, mode)))
     prepared = []
     for chunk in grouped:
         payload = await _build_payload(controller, project_context, chunk, findings)
@@ -349,6 +360,8 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         "batch_sort": config.batch_sort,
         "internal_parallel": config.internal_parallel,
         "failure_timeout_s": config.llm_failure_timeout,
+        "mode_batch_sizes": config.mode_batch_sizes,
+        "adaptive_max_tokens": int(config.adaptive_max_tokens),
         "iterations": stats["batches"],
     }
     if controller.pending:

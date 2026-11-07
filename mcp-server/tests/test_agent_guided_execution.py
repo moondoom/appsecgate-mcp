@@ -107,7 +107,7 @@ def test_guided_groups_prompts_by_mode_and_telemetry_lane(monkeypatch, tmp_path)
     backend = _Backend(["fp-sast", "fp-cve", "fp-iac"])
     seen = []
 
-    def fake_request(config, messages, tools):
+    def fake_request(config, messages, tools, max_tokens=None):
         payload = json.loads(messages[1]["content"])
         seen.append(
             (
@@ -252,7 +252,7 @@ def test_guided_preflight_overflow_splits_batch(monkeypatch, tmp_path):
 
 
 def test_guided_writes_per_call_journal(monkeypatch, tmp_path):
-    def fake_request(config, messages, tools):
+    def fake_request(config, messages, tools, max_tokens=None):
         finding_id = json.loads(messages[1]["content"])["findings"][0]["finding_id"]
         return _response([_submit(finding_id)])
 
@@ -276,3 +276,53 @@ def test_guided_writes_per_call_journal(monkeypatch, tmp_path):
         assert record["start_ts"] <= record["end_ts"]
     assert result.usage["cache_metrics_unavailable"] == 1
     assert result.usage["failure_timeout_s"] == 600
+
+
+def test_guided_per_mode_batch_sizes_and_adaptive_budget(monkeypatch, tmp_path):
+    requests = []
+
+    def fake_request(config, messages, tools, max_tokens=None):
+        payload = json.loads(messages[1]["content"])
+        requests.append(([item["finding_id"] for item in payload["findings"]], max_tokens))
+        return _response([_submit(*[item["finding_id"] for item in payload["findings"]])])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    modes = {f"fp-cve-{i}": "cve" for i in range(5)} | {f"fp-sast-{i}": "sast" for i in range(3)}
+    backend = _Backend(list(modes))
+    result = asyncio.run(
+        _run(
+            tmp_path,
+            backend,
+            modes=modes,
+            mode_batch_sizes={"cve": 4},
+            adaptive_max_tokens=True,
+            llm_max_tokens=2048,
+        )
+    )
+
+    batches = [ids for ids, _ in requests]
+    cve_batches = [b for b in batches if b[0].startswith("fp-cve")]
+    sast_batches = [b for b in batches if b[0].startswith("fp-sast")]
+    assert [len(b) for b in cve_batches] == [4, 1]
+    assert [len(b) for b in sast_batches] == [3]
+    for ids, budget in requests:
+        assert budget == min(4096, len(ids) * 150 + 256)
+    assert result.usage["mode_batch_sizes"] == {"cve": 4}
+    assert result.usage["adaptive_max_tokens"] == 1
+
+
+def test_guided_default_knobs_preserve_fixed_batching(monkeypatch, tmp_path):
+    budgets = []
+
+    def fake_request(config, messages, tools, max_tokens=None):
+        budgets.append(max_tokens)
+        payload = json.loads(messages[1]["content"])
+        return _response([_submit(*[item["finding_id"] for item in payload["findings"]])])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    backend = _Backend(["fp-1", "fp-2", "fp-3"])
+    result = asyncio.run(_run(tmp_path, backend, llm_max_tokens=200))
+
+    assert all(budget == 200 for budget in budgets)
+    assert result.usage["mode_batch_sizes"] == {}
+    assert result.usage["adaptive_max_tokens"] == 0

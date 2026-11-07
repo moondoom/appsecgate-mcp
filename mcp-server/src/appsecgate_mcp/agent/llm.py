@@ -41,6 +41,7 @@ def _request(
     config: AgentConfig,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
+    max_tokens: int | None = None,
 ) -> Any:
     request_timeout = (
         config.llm_failure_timeout if config.agent_mode == "guided" else config.llm_timeout
@@ -60,7 +61,7 @@ def _request(
             extra_body={"think": False, "num_ctx": config.llm_num_ctx},
             temperature=config.llm_temperature,
             top_p=config.llm_top_p,
-            max_tokens=config.llm_max_tokens,
+            max_tokens=max_tokens or config.llm_max_tokens,
         )
     except Exception as exc:
         marker = f"{type(exc).__name__} {exc}".lower()

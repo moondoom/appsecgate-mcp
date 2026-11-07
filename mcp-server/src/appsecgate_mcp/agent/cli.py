@@ -107,6 +107,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("APPSECGATE_AGENT_BATCH_SORT", "mode_major"),
     )
     parser.add_argument(
+        "--mode-batch-sizes",
+        type=json.loads,
+        default=json.loads(os.environ.get("APPSECGATE_MODE_BATCH_SIZES") or "{}"),
+        help='per-mode batch size overrides, JSON: {"cve": 16}',
+    )
+    parser.add_argument(
+        "--adaptive-max-tokens",
+        action="store_true",
+        default=os.environ.get("APPSECGATE_ADAPTIVE_MAX_TOKENS") == "1",
+    )
+    parser.add_argument(
         "--max-iterations",
         type=int,
         default=int(os.environ.get("APPSECGATE_AGENT_MAX_ITERATIONS", "50")),
@@ -217,6 +228,8 @@ def agent_main(argv: list[str] | None = None) -> int:
         llm_num_ctx=args.llm_num_ctx,
         internal_parallel=args.internal_parallel,
         batch_sort=args.batch_sort,
+        mode_batch_sizes=args.mode_batch_sizes,
+        adaptive_max_tokens=args.adaptive_max_tokens,
         reuse_verdicts=args.reuse_verdicts,
         reuse_ttl_seconds=args.reuse_ttl,
         timeout=args.timeout,

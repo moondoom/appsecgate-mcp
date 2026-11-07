@@ -31,6 +31,9 @@ class AgentConfig(BaseModel):
     llm_num_ctx: int = 32768
     internal_parallel: int = Field(default=2, ge=1)
     batch_sort: Literal["mode_major", "none"] = "mode_major"
+    mode_batch_sizes: dict[str, int] = Field(default_factory=dict)
+    adaptive_max_tokens: bool = False
+    adaptive_max_tokens_cap: int = 4096
     timeout: float = 1800
     max_iterations: int = 50
     max_restarts: int = 3
