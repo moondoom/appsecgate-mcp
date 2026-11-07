@@ -48,6 +48,7 @@ class AgentConfig(BaseModel):
     no_sync: bool = False
     reuse_verdicts: bool = True
     reuse_ttl_seconds: int = Field(default=604800, ge=0)
+    force_reevaluate: bool = False
     ruleset_hash: str | None = None
 
     @property

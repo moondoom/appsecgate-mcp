@@ -111,6 +111,8 @@ def test_reuse_selects_latest_and_marks_stale_revisions(tmp_path):
         "reevaluated_legacy_confidence_missing": 1,
         "reevaluated_prompt_updated": 0,
         "reevaluated_ruleset_updated": 0,
+        "reevaluated_manual": 0,
+        "force_reevaluate": 0,
         "human_verdicts_protected": 0,
         "reuse_ttl_seconds": 3600,
         "reuse_saved_tokens": None,
@@ -297,3 +299,37 @@ def test_latest_human_verdict_is_protected_from_model_reuse_and_revision(tmp_pat
         item for item in controller.action_log if item["tool"] == "reuse_prior_verdicts"
     ]
     assert reuse_actions[0]["status"] == "protected"
+
+
+def test_force_reevaluate_turns_fresh_reuse_into_manual_revision(tmp_path):
+    fresh_at = "2026-11-06T11:59:00Z"
+    rows = [
+        _row("fp-1", "fresh", fresh_at, "high"),
+        _row("fp-2", "expired", "2026-11-06T10:00:00Z", "high"),
+    ]
+    for row in rows:
+        row["prompt_sha256"] = _config(tmp_path).prompt_sha256_for_mode("sast")
+
+    async def master_call(name, arguments):
+        return {"status": "ok", "rows": rows}
+
+    async def run():
+        controller = AgentController(_inventory, master_call=master_call)
+        await controller.initialize("full")
+        stats = {}
+        await reuse_prior_verdicts(
+            _config(tmp_path, force_reevaluate=True), controller, stats, now=_NOW
+        )
+        return controller, stats
+
+    controller, stats = asyncio.run(run())
+
+    assert stats["reused_verdicts"] == 0
+    assert stats["force_reevaluate"] == 1
+    assert stats["reevaluated_manual"] == 1
+    assert stats["reevaluated_ttl_expired"] == 1
+    assert controller.revisions["fp-1"] == {
+        "supersedes_verdict_id": "fresh",
+        "revision_reason": "manual",
+    }
+    assert controller.revisions["fp-2"]["revision_reason"] == "ttl_expired"

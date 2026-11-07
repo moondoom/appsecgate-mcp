@@ -89,6 +89,8 @@ async def reuse_prior_verdicts(
         reevaluated_legacy_confidence_missing=0,
         reevaluated_prompt_updated=0,
         reevaluated_ruleset_updated=0,
+        reevaluated_manual=0,
+        force_reevaluate=int(config.force_reevaluate),
         human_verdicts_protected=0,
         reuse_ttl_seconds=config.reuse_ttl_seconds,
         reuse_saved_tokens=None,
@@ -132,7 +134,7 @@ async def reuse_prior_verdicts(
             and age is not None
             and 0 <= age < config.reuse_ttl_seconds
         )
-        if fresh:
+        if fresh and not config.force_reevaluate:
             reused_item = {
                 "finding_id": finding_id,
                 "verdict": row["verdict"],
@@ -166,6 +168,9 @@ async def reuse_prior_verdicts(
             reason = "prompt_updated"
         elif confidence_level not in _LEVELS:
             reason = "legacy_confidence_missing"
+        elif age is not None and 0 <= age < config.reuse_ttl_seconds:
+            # force_reevaluate flipped an otherwise-fresh verdict to re-judgment
+            reason = "manual"
         else:
             reason = "ttl_expired"
         stats["reevaluated_verdicts"] += 1

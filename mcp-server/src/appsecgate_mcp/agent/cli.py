@@ -87,6 +87,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("APPSECGATE_AGENT_REUSE_VERDICTS", "1") != "0",
     )
     parser.add_argument(
+        "--force-reevaluate",
+        action="store_true",
+        default=os.environ.get("APPSECGATE_FORCE_REEVALUATE", "0") == "1",
+        help="Re-judge every reuse candidate, keeping supersedes lineage (REV-1)",
+    )
+    parser.add_argument(
         "--reuse-ttl",
         type=_duration_seconds,
         default=os.environ.get("APPSECGATE_AGENT_REUSE_TTL", "1w"),
@@ -237,6 +243,7 @@ def agent_main(argv: list[str] | None = None) -> int:
         adaptive_max_tokens=args.adaptive_max_tokens,
         mode_b=args.mode_b,
         reuse_verdicts=args.reuse_verdicts,
+        force_reevaluate=args.force_reevaluate,
         reuse_ttl_seconds=args.reuse_ttl,
         timeout=args.timeout,
         max_iterations=args.max_iterations,
