@@ -119,7 +119,7 @@ def test_guided_completes_inventory_without_free_tools(monkeypatch, tmp_path):
         return next(responses)
 
     monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
-    result = _run(tmp_path, backend, responses)
+    result = _run(tmp_path, backend, responses, mode_b=True)
 
     assert result.usage["missing"] == 0
     assert result.usage["agent_mode"] == "guided"

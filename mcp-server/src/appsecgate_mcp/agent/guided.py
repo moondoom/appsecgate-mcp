@@ -30,12 +30,15 @@ _LANE_TELEMETRY_BUCKETS = (8192, 16384)
 # tokenization is deferred to GD-16.
 _CHARS_PER_TOKEN = 3
 _OUTPUT_SAFETY_MARGIN = 256
-_EVIDENCE_TOOLS = {
-    "submit_verdicts",
-    "read_project_file",
-    "master_describe_schema",
-    "master_query_findings_db",
-}
+# GD-13 (ADR-0019 Part 7): master tools removed from guided after measuring
+# ~0 calls across 40 runs; read_project_file is gated by APPSECGATE_MODE_B.
+_EVIDENCE_TOOLS = {"submit_verdicts"}
+_MODE_B_TOOLS = {"read_project_file"}
+
+
+def _guided_tools(config: AgentConfig, controller: AgentController) -> list[dict[str, Any]]:
+    allowed = _EVIDENCE_TOOLS | (_MODE_B_TOOLS if config.mode_b else set())
+    return [tool for tool in controller.tool_schemas() if tool["function"]["name"] in allowed]
 
 
 def _batch_size(config: AgentConfig) -> int:
@@ -295,9 +298,7 @@ async def _prepare_batches(
 
 async def triage_guided(config: AgentConfig, controller: AgentController) -> LlmResult:
     project_context = _project_context(config)
-    tools = [
-        tool for tool in controller.tool_schemas() if tool["function"]["name"] in _EVIDENCE_TOOLS
-    ]
+    tools = _guided_tools(config, controller)
     findings: dict[str, dict[str, Any]] = {}
     cursor = 0
     while True:

@@ -326,3 +326,20 @@ def test_guided_default_knobs_preserve_fixed_batching(monkeypatch, tmp_path):
     assert all(budget == 200 for budget in budgets)
     assert result.usage["mode_batch_sizes"] == {}
     assert result.usage["adaptive_max_tokens"] == 0
+
+
+def test_guided_tool_list_gating(monkeypatch, tmp_path):
+    seen_tools = []
+
+    def fake_request(config, messages, tools, max_tokens=None):
+        seen_tools.append(sorted(t["function"]["name"] for t in tools))
+        payload = json.loads(messages[1]["content"])
+        return _response([_submit(*[item["finding_id"] for item in payload["findings"]])])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    asyncio.run(_run(tmp_path, _Backend(["fp-1"])))
+    assert seen_tools[0] == ["submit_verdicts"]
+
+    seen_tools.clear()
+    asyncio.run(_run(tmp_path, _Backend(["fp-1"]), mode_b=True))
+    assert seen_tools[0] == ["read_project_file", "submit_verdicts"]

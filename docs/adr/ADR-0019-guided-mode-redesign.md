@@ -766,6 +766,23 @@ reliably. Free mode retains all master tools.
 
 ### 7.2 Data-gated actions
 
+**Executed 2026-11-07 (GD-13).** `artifacts/master-tools-usage.json`: across 40
+guided runs (agent300fix1, agent300adr18, agent300review, accb/accb2/accd/acce)
+master tools were called **0 times**; model evidence usage is
+`read_project_file` (6232 calls) plus harness-side `get_fix_context_batch`.
+No verdict depends on master calls. Therefore:
+
+- `master_describe_schema` and `master_query_findings_db` are removed from the
+  guided tool list (free mode unchanged);
+- `read_project_file` is gated behind `APPSECGATE_MODE_B=1` (default off);
+- the guided prompt no longer instructs master-knowledge reads and describes
+  `read_project_file` as optional.
+
+Disclosure: the GD-6/GD-7 runs executed before this change had
+`read_project_file` model-visible (equivalent to Mode B on); the frozen
+corpus config runs with Mode B off, so a corpus smoke must confirm NR rates
+do not inflate without file reads.
+
 Before removal, analyze fix1, agent300review and rev1v3 logs for master-call
 frequency, iterations/tokens spent and verdict differences. Artifact:
 `artifacts/master-tools-usage.json`.

@@ -34,6 +34,7 @@ class AgentConfig(BaseModel):
     mode_batch_sizes: dict[str, int] = Field(default_factory=dict)
     adaptive_max_tokens: bool = False
     adaptive_max_tokens_cap: int = 4096
+    mode_b: bool = False
     timeout: float = 1800
     max_iterations: int = 50
     max_restarts: int = 3

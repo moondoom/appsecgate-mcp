@@ -118,6 +118,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("APPSECGATE_ADAPTIVE_MAX_TOKENS") == "1",
     )
     parser.add_argument(
+        "--mode-b",
+        action="store_true",
+        default=os.environ.get("APPSECGATE_MODE_B") == "1",
+    )
+    parser.add_argument(
         "--max-iterations",
         type=int,
         default=int(os.environ.get("APPSECGATE_AGENT_MAX_ITERATIONS", "50")),
@@ -230,6 +235,7 @@ def agent_main(argv: list[str] | None = None) -> int:
         batch_sort=args.batch_sort,
         mode_batch_sizes=args.mode_batch_sizes,
         adaptive_max_tokens=args.adaptive_max_tokens,
+        mode_b=args.mode_b,
         reuse_verdicts=args.reuse_verdicts,
         reuse_ttl_seconds=args.reuse_ttl,
         timeout=args.timeout,
