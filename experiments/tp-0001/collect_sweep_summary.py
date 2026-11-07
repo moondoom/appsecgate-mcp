@@ -44,8 +44,10 @@ ARMS: dict[str, dict[str, Any]] = {
 
 GPU_METRICS = ("gpu_utilization", "gpu_memory_used", "gpu_temperature", "gpu_power")
 CLOCK_QUERIES = {
-    "sm_clock_min_hz": "min_over_time(DCGM_FI_DEV_SM_CLOCK[1h])",
-    "mem_clock_min_hz": "min_over_time(DCGM_FI_DEV_MEM_CLOCK[1h])",
+    "sm_clock_min_hz": "nvidia_smi_clocks_current_sm_clock_hz",
+    "mem_clock_min_hz": "nvidia_smi_clocks_current_memory_clock_hz",
+    "thermal_slowdown_events": "nvidia_smi_clocks_event_reasons_hw_thermal_slowdown",
+    "sw_power_cap_share": "nvidia_smi_clocks_event_reasons_sw_power_cap",
 }
 
 
@@ -125,19 +127,29 @@ def _gpu_stats(prometheus: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _prom_query(query: str) -> float | None:
-    params = urllib.parse.urlencode({"query": query})
+def _prom_range_stats(query: str, window: tuple[float, float] | None) -> dict[str, Any] | None:
+    """Min/max/mean of a metric over an arm's bench window (clock analysis)."""
+    if not window or not all(window):
+        return None
+    params = urllib.parse.urlencode(
+        {"query": query, "start": window[0], "end": window[1], "step": 15}
+    )
     try:
-        with urllib.request.urlopen(f"{PROMETHEUS}/api/v1/query?{params}", timeout=15) as resp:
+        with urllib.request.urlopen(f"{PROMETHEUS}/api/v1/query_range?{params}", timeout=15) as resp:
             result = json.load(resp).get("data", {}).get("result", [])
     except OSError:
         return None
     if not result:
         return None
-    try:
-        return float(result[0]["value"][1])
-    except (KeyError, ValueError, IndexError):
+    values = [float(v) for _, v in result[0].get("values", [])]
+    if not values:
         return None
+    return {
+        "min": min(values),
+        "max": max(values),
+        "mean": round(statistics.fmean(values), 3),
+        "samples": len(values),
+    }
 
 
 def _percentile(sorted_values: list[float], q: float) -> float:
@@ -277,10 +289,15 @@ def main() -> None:
         }
 
     # Extra 2: sustained-load clock minima over the E_sustained window.
-    clock_stats = {name: _prom_query(query) for name, query in CLOCK_QUERIES.items()}
+    swe_window = None
+    swe_arm = arms.get("E_sustained")
+    if swe_arm and swe_arm["_raw"]:
+        swe_window = swe_arm["_raw"][0].get("bench_window")
+    clock_stats = {name: _prom_range_stats(query, swe_window) for name, query in CLOCK_QUERIES.items()}
     extras["sustained_load_clocks"] = {
+        "window_s": round(swe_window[1] - swe_window[0]) if swe_window and all(swe_window) else None,
         "values": clock_stats,
-        "note": "None means the DCGM clock metric is not exported; use gpu-per-arm.json power/temp instead",
+        "note": "nvidia_smi counters over the arm window; None means the metric is not exported",
     }
 
     # Extra 3: final timeout calibration over all internal>=2 call data.

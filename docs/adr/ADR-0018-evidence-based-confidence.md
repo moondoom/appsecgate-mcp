@@ -117,6 +117,54 @@ Edge-supplied `escalation_*` fields are rejected and audited. Master can validat
 all synced field relationships. Content-level quote validation remains an edge
 responsibility unless the referenced read evidence is also available to master.
 
+### 3.3. Addendum (2026-11-07): secrets redaction-vs-matching policy
+
+**Status: proposed, pending owner review (not yet merged into the decision).**
+
+The open question from the smoke findings: `evidence_quote` verification
+("quote appears in source") conflicts with secret redaction — if the quote
+contains the raw secret, the journal would store it (forbidden: redaction
+happens before any write), and the edge's stored snippet is already redacted,
+so a raw quote can never match.
+
+**Decision: redacted-in, redacted-matched.** The model never sees raw
+secrets: scanner snippets are redacted before the DB write (invariant #4),
+and every evidence tool (`get_fix_context*`, `read_project_file`) reads from
+that redacted store. Therefore:
+
+1. The secrets prompt instructs the model to quote the finding text
+   **verbatim as shown**, redaction placeholders (`[REDACTED]`…)
+   included. A quote that reconstructs or guesses the raw secret is a
+   protocol violation.
+2. The edge validator matches the quote against the same redacted source
+   the model saw (whitespace-normalized substring, as implemented). No
+   special secrets path is needed: the comparison set and the model's input
+   set are identical by construction.
+3. `quote_hash` is computed by the edge over the exact quote string as
+   submitted (which is the redacted form). Single hash; no dual raw/redacted
+   hashes.
+
+Rejected alternatives:
+
+- **Raw-check-before-redaction** — requires raw secret material to survive
+  past the scanner adapter so the validator can see it; violates the
+  redaction-before-write invariant and makes the LLM payload a secret
+  carrier. Rejected absolutely.
+- **Dual hashes (raw + redacted)** — the model cannot produce the raw form
+  (it never sees it), so a raw hash would only re-introduce the ADR-0018
+  smoke defect class: asking the model for a value it cannot derive. A hash
+  of the redacted quote is exactly what §3.1 already stores.
+
+Consequence for evidence quality: for secrets, `evidence_quote` proves the
+model located the finding's context, not the credential itself. Confirming
+credential *material* is out of scope for offline evidence (§4.2: `high`
+confirms exposure, not validity).
+
+`quote_hash` is computed over the exact quote string as submitted by the
+model, which is the redacted form. §3.1's "pre-redaction" wording is
+superseded by this addendum for all verdicts going forward. Historical
+events retain their stored hash unchanged; no migration is performed.
+
 ## 4. Evidence basis by mode
 
 ### 4.1. SAST (Semgrep)

@@ -686,7 +686,7 @@ Raw aggregates: `artifacts/guided-tuning-summary.json`.
 |---|---|---|
 | G1 speedup D vs B (atopile) | 1.363 | pass, but G1b already rejected D |
 | G2 per-repo winners | heavy: E everywhere (714/508/251 s vs D 1370/1156/524); small: no signal | per-class: E for all measured classes |
-| G3 D1 vs D2 sorting | wall delta 36.7 % (D2 868 s vs D 1370 s), cache counters unavailable → wall-only rule | delta ≫ 3 % → **sorting (mode_major) kept**; direction (unsorted faster) is a cross-session confound — accd ran in the acceptance window, swd2 in the sweep window; no conclusion on prefix-cache efficiency |
+| G3 D1 vs D2 sorting | wall delta 36.7 % (D2 868 s vs D 1370 s), cache counters unavailable → wall-only rule | **provisional**: sorting retained pending a same-session ablation (`artifacts/sort-ablation-same-session.json`). The cross-session delta (accd in the acceptance window, swd2 in the sweep window) is not a valid basis for a keep/remove decision; the provisional default is `mode_major`, removal if a same-session rerun shows > 15 % wall in favor of `none` |
 | G4 winner P99 vs A | E 0.74× (atopile), 0.70× (costrict) | pass |
 | G5 drift winner vs B | CodeWiki 0/85; structlog vacuous (0 findings) | pass |
 
@@ -698,11 +698,16 @@ output-derived batch size, no adaptive max_tokens.
 
 ### 14.5 Sustained load (swe: costrict + zep + CodeWiki back-to-back at 4×1)
 
-GPU util avg 0.71 (max 1.0), temperature max 64 °C, no clock-floor
-evidence — DCGM clock counters are not exported on this stand (Prometheus
-has nvidia_smi util/mem/temp/power only), so the clock-minimum criterion is
-answered by proxy: stable power draw and no thermal rise over ~40 min.
-§7.C closed for the 16 GB / 4-slot configuration. Model failures across the
+**Verified** (`artifacts/sustained-load-clock.json`, nvidia_smi clock counters
+over the full 1610 s window): under load (util > 50 %) SM clock held
+2.625–2.70 GHz against a 3.105 GHz max boost (normal sustained clock, not
+throttling), memory clock at its 9.0 GHz max; **zero thermal or HW-slowdown
+events**; `sw_power_cap` active during 14 % of active samples (mild,
+expected under sustained load). Idle dips (SM 2.1 GHz, mem 405 MHz) occur
+only between repositories. Temperature max 64 °C. §7.C is **closed with
+measured clock minima** for the 16 GB / 4-slot configuration; ADR-0019
+§1.4.1's "no clock minima → invalid" requirement is satisfied retroactively
+from Prometheus range data, no rerun needed. Model failures across the
 whole sweep: 4 `llm_error` terminal verdicts (B, swe, V×2); zero
 `context_overflow`, zero `timeout`.
 
