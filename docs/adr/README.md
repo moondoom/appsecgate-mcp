@@ -21,7 +21,7 @@
 | [ADR-0017](ADR-0017-ttl-verdict-reevaluation-experiment.md) | TTL verdict reuse and re-evaluation experiment | Proposed |
 | [ADR-0018](ADR-0018-evidence-based-confidence.md) | Evidence-based confidence and master-owned escalation | Proposed |
 | [ADR-0019](ADR-0019-guided-mode-redesign.md) | Guided mode redesign and operating-point acceptance | Proposed (acceptance required) |
-| [ADR-0020](ADR-0020-guided-full-experiment-and-statistics.md) | Guided mode full experiment and statistics (Parts 3–10 of the ADR-0019 plan) | Proposed |
+| [ADR-0020](ADR-0020-guided-full-experiment-and-statistics.md) | Guided mode full experiment and statistics (Parts 3–10 of the ADR-0019 plan) | Реализовано (GD-1..GD-17); замеры GD-7/GD-8 в работе; pending review |
 
 ## Publication policy
 
