@@ -47,7 +47,7 @@ if [[ "${RESEARCH_SEMGREP_RULES:-0}" == "1" ]]; then
 fi
 
 set +e
-timeout --signal=TERM --kill-after=30s 35m docker run --rm \
+timeout --signal=TERM --kill-after=30s "${APPSECGATE_RUN_WALL_TIMEOUT:-130m}" docker run --rm \
   --name "appsecgate-${RUN_ID}" --read-only --cap-drop=ALL --tmpfs /tmp:size=100M \
   --network "${DOCKER_NETWORK:-appsecgate-mcp_appsecgate}" \
   --add-host=host.docker.internal:host-gateway \
@@ -60,6 +60,7 @@ timeout --signal=TERM --kill-after=30s 35m docker run --rm \
   -e APPSECGATE_LLM_TOP_P="${APPSECGATE_LLM_TOP_P:-1}" \
   -e APPSECGATE_LLM_MAX_TOKENS="${APPSECGATE_LLM_MAX_TOKENS:-2048}" \
   -e APPSECGATE_LLM_NUM_CTX="${APPSECGATE_LLM_NUM_CTX:-32768}" \
+  -e APPSECGATE_AGENT_TIMEOUT="${APPSECGATE_AGENT_TIMEOUT:-7200}" \
   -e APPSECGATE_AGENT_MAX_ITERATIONS="${APPSECGATE_AGENT_MAX_ITERATIONS:-50}" \
   -e APPSECGATE_AGENT_MAX_RESTARTS="${APPSECGATE_AGENT_MAX_RESTARTS:-3}" \
   -e APPSECGATE_AGENT_MAX_COMPACTIONS="${APPSECGATE_AGENT_MAX_COMPACTIONS:-5}" \
@@ -85,7 +86,7 @@ timeout --signal=TERM --kill-after=30s 35m docker run --rm \
   agent --mode=ro --scan=full --policy="${POLICY:-warn}" --output-format=json \
   --project=/workspace --project-id="${APPSECGATE_PROJECT_ID:-pygoat-tp0001}" \
   --data-dir=/home/appsecgate/.appsecgate-mcp --run-id="${RUN_ID}" \
-  --timeout=1800 --llm-timeout=300 ${NO_SYNC:+--no-sync} \
+  --timeout="${APPSECGATE_AGENT_TIMEOUT:-7200}" --llm-timeout="${APPSECGATE_LLM_TIMEOUT:-600}" ${NO_SYNC:+--no-sync} \
   >"${ARTIFACT_DIR}/report.json" 2>"${ARTIFACT_DIR}/agent.log"
 status=$?
 set -e

@@ -86,7 +86,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=_duration_seconds,
         default=os.environ.get("APPSECGATE_AGENT_REUSE_TTL", "1w"),
     )
-    parser.add_argument("--timeout", type=float, default=1800)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=float(os.environ.get("APPSECGATE_AGENT_TIMEOUT", "1800")),
+    )
     parser.add_argument(
         "--sched-parallel",
         type=int,
