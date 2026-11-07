@@ -6,6 +6,7 @@ from typing import Any
 
 from appsecgate_mcp.agent.controller import AgentController
 from appsecgate_mcp.agent.guided_failures import mark_model_failed
+from appsecgate_mcp.agent.guided_payload import _build_payload
 from appsecgate_mcp.agent.llm import (
     LlmError,
     LlmTimeoutError,
@@ -20,6 +21,10 @@ from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
 _MAX_SPLIT_DEPTH = 5
 _MAX_BATCH_ITERATIONS = 4
 _LANE_TELEMETRY_BUCKETS = (8192, 16384)
+# Weighted-average estimator (chars/token) per owner decision; exact model
+# tokenization is deferred to GD-16.
+_CHARS_PER_TOKEN = 3
+_OUTPUT_SAFETY_MARGIN = 256
 _EVIDENCE_TOOLS = {
     "submit_verdicts",
     "read_project_file",
@@ -61,84 +66,14 @@ def _verdict_arguments(message: Any) -> dict[str, Any] | None:
     return value if isinstance(value, dict) and "verdicts" in value else None
 
 
-_MANIFEST_EXACT = {
-    "go.mod",
-    "go.sum",
-    "package.json",
-    "package-lock.json",
-    "pom.xml",
-    "pyproject.toml",
-    "poetry.lock",
-    "Pipfile",
-    "Pipfile.lock",
-    "yarn.lock",
-    "pnpm-lock.yaml",
-    "Cargo.toml",
-    "Cargo.lock",
-    "Gemfile",
-    "Gemfile.lock",
-    "composer.json",
-    "build.gradle",
-    "build.gradle.kts",
-}
-
-
-def _manifest_paths(chunk: list[str], findings: dict[str, dict[str, Any]]) -> list[str]:
-    paths = set()
-    for fid in chunk:
-        finding = findings.get(fid) or {}
-        path = finding.get("file_path") or ""
-        name = path.rsplit("/", 1)[-1]
-        if name.startswith("requirements") or name in _MANIFEST_EXACT:
-            paths.add(path)
-    return sorted(paths)[:4]
-
-
-async def _manifest_contents(
-    controller: AgentController, chunk: list[str], findings: dict[str, dict[str, Any]]
-) -> dict[str, Any]:
-    contents: dict[str, Any] = {}
-    for path in _manifest_paths(chunk, findings):
-        lines: list[str] = []
-        truncated = False
-        for start in (1, 201):
-            result = await controller.call(
-                "read_project_file",
-                {"path": path, "start_line": start, "end_line": start + 199},
-            )
-            if result.get("status") != "ok":
-                break
-            lines.extend(f"{item['line']}: {item['text']}" for item in result["lines"])
-            truncated = result["truncated"]
-            if not truncated:
-                break
-        if lines:
-            contents[path] = {
-                "content": "\n".join(lines)[:20_000],
-                "truncated": truncated,
-            }
-    return contents
-
-
-async def _build_payload(
-    controller: AgentController,
-    project_context: dict[str, str],
-    chunk: list[str],
-    findings: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    contexts = await controller.call("get_fix_context_batch", {"finding_ids": chunk})
-    manifests = await _manifest_contents(controller, chunk, findings)
-    return {
-        "task": "Submit one verdict for every provided finding ID.",
-        "project_context": project_context,
-        "findings": [findings[fid] for fid in chunk if fid in findings],
-        "contexts": contexts,
-        "manifest_files": manifests,
-    }
+def _estimate_request_tokens(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> int:
+    chars = len(json.dumps(messages, ensure_ascii=False, default=str))
+    chars += len(json.dumps(tools, ensure_ascii=False, default=str))
+    return -(-chars // _CHARS_PER_TOKEN)
 
 
 def _telemetry_lane(config: AgentConfig, payload: dict[str, Any]) -> int:
-    estimate = len(json.dumps(payload, ensure_ascii=False, default=str)) // 3
+    estimate = _estimate_request_tokens([{"role": "user", "content": payload}], [])
     for lane in (*_LANE_TELEMETRY_BUCKETS, config.llm_num_ctx):
         if estimate <= lane:
             return lane
@@ -172,6 +107,31 @@ async def _triage_chunk(
         {"role": "system", "content": config.system_prompt_for_modes(modes)},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)},
     ]
+    prompt_estimate = _estimate_request_tokens(messages, tools)
+    reserve = config.llm_max_tokens + _OUTPUT_SAFETY_MARGIN
+    if prompt_estimate + reserve > config.llm_num_ctx:
+        detail = (
+            f"est_prompt_tokens={prompt_estimate} + reserve={reserve} "
+            f"> num_ctx={config.llm_num_ctx}"
+        )
+        if len(chunk) > 1 and depth < _MAX_SPLIT_DEPTH:
+            stats["batch_retries"] += 1
+            middle = len(chunk) // 2
+            for part in (chunk[:middle], chunk[middle:]):
+                await _triage_chunk(
+                    config,
+                    controller,
+                    tools,
+                    project_context,
+                    part,
+                    findings,
+                    usage,
+                    stats,
+                    depth + 1,
+                )
+            return
+        await mark_model_failed(controller, stats, chunk, reason="context_overflow", detail=detail)
+        return
     arguments = None
     truncated = False
     for _ in range(_MAX_BATCH_ITERATIONS):

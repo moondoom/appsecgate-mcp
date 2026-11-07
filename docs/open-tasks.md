@@ -162,7 +162,7 @@ ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 |---|---|---|---|
 | GD-1 | Fold `guided_sched` into one `guided`; remove classifier/lane switching/lane affinity, retain lane counters as telemetry | done | ADR-0016 §8 remains proposed until GD-6 |
 | GD-2 | Add terminal `NEEDS_REVIEW(model_failed)` with `failure_reason=context_overflow|timeout|llm_error` and `failure_detail` after retries; update journal queries/tests | done | ADR-0015 §4 addendum; coverage excludes these from `failed_findings` |
-| GD-3 | Pre-send exact-model tokenization including tools/template and `llm_max_tokens + output_safety_margin`; route overflow without LLM | open | tokenizer source/version must be chosen; no new production dependency without owner approval |
+| GD-3 | Pre-send token check with `llm_max_tokens + output_safety_margin`; pre-flight split, terminal `context_overflow` without LLM call | done | implemented with weighted-average chars/token estimator (owner decision 2026-11-07); exact tokenizer deferred to GD-16 |
 | GD-4 | Add `internal_parallel`, `batch_sort=mode_major|none` with explicit `(mode,lane,fingerprint)` ordering; launcher fail-fast on `internal × external > 4` | done | external process count belongs to launcher, not agent |
 | GD-5 | Per-call journal telemetry + Prometheus GPU/clock/VRAM/RAM windows; explicit cache counters or `cache_metrics_unavailable` | open | verify metric names and 1 s scrape before measured runs; never infer cache hits from `prompt_eval_count` |
 | GD-6 | Acceptance ACC-B (1×2) and ACC-D (2×2) on atopile/costrict/CodeWiki plus ACC-E (4×1, current production) on atopile; reuse OFF, timeout 600 s | open, gates GD-1…GD-5,GD-9 | D must beat B by ≥1.15 and not regress vs E on wall/P99; parity D vs B; overflow ≤5%; timeout ≤1%; 90 min cap |
@@ -175,6 +175,7 @@ ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 | GD-13 | Measure guided master-tool usage; if ≈0 and no verdict depends on it, remove `master_describe_schema`/`master_query_findings_db`; gate `read_project_file` behind `APPSECGATE_MODE_B=1` | open, data-gated | `artifacts/master-tools-usage.json`; ADR-0015 §3/§7 and ADR-0018 §8 updates on execution |
 | GD-14 | Checkpoint/resume per accepted batch; adaptive run timeout; inventory page/cache improvements | open, P1 | required before corpus if timeout still loses completed work |
 | GD-15 | Measured P1 batching/reuse/robustness: per-mode batch size and TTL, capacity-aware packing, one transient transport retry, adaptive `max_tokens`, split-depth 3 vs 5, sync retry, `budget_partial`, distinct sync/MCP errors | open, P1 | no adoption without parity, overflow and wall measurements |
+| GD-16 | Exact-model tokenizer for pre-send accounting (source/version pinned, incl. tools/template); replace the GD-3 estimator | open, separate stream | owner rejected a model-dependent production dependency for GD-3; estimator is interim; acceptance G6a reads as estimator-based until GD-16 |
 
 ## Прочие направления
 

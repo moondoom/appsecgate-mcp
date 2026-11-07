@@ -193,3 +193,55 @@ def test_guided_timeout_is_batch_fatal_and_terminal_after_retries(monkeypatch, t
     assert result.usage["model_failed_timeout"] == 2
     assert result.usage["timed_out_calls"] == calls
     assert {item.failure_reason for item in result.verdicts} == {"timeout"}
+
+
+def test_guided_preflight_overflow_is_terminal_without_llm_call(monkeypatch, tmp_path):
+    calls = 0
+
+    def fake_request(config, messages, tools, num_ctx=None):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("LLM must not be called on pre-send overflow")
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    result = asyncio.run(_run(tmp_path, _Backend(["fp-1"]), llm_num_ctx=100, llm_max_tokens=10))
+
+    assert calls == 0
+    assert result.usage["failed_findings"] == 0
+    assert result.usage["model_failed_findings"] == 1
+    assert result.usage["model_failed_context_overflow"] == 1
+    (verdict,) = result.verdicts
+    assert verdict.verdict == "NEEDS_REVIEW"
+    assert verdict.failure_reason == "context_overflow"
+    assert "num_ctx=100" in (verdict.failure_detail or "")
+
+
+def test_guided_preflight_overflow_splits_batch(monkeypatch, tmp_path):
+    seen = []
+
+    def fake_request(config, messages, tools, num_ctx=None):
+        finding_id = json.loads(messages[1]["content"])["findings"][0]["finding_id"]
+        seen.append(finding_id)
+        return _response([_submit(finding_id)])
+
+    def fake_estimate(messages, tools):
+        if len(messages) < 2:
+            return 0
+        payload = json.loads(messages[1]["content"])
+        return 1000 * len(payload["findings"])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._estimate_request_tokens", fake_estimate)
+    result = asyncio.run(
+        _run(
+            tmp_path,
+            _Backend(["fp-1", "fp-2"]),
+            llm_num_ctx=1800,
+            llm_max_tokens=480,
+        )
+    )
+
+    assert sorted(seen) == ["fp-1", "fp-2"]
+    assert result.usage["missing"] == 0
+    assert result.usage["model_failed_findings"] == 0
+    assert result.usage["batch_retries"] >= 1
