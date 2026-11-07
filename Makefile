@@ -291,6 +291,9 @@ experiment-sweep-summary: ## GD-7 sweep analysis: гейты G1-G5 + gpu-per-arm
 experiment-cve-signals: ## GD-12: deterministic CVE signals vs verdicts (measurement only)
 	cd experiments/tp-0001 && python3 measure_cve_signals.py
 
+experiment-gate-escalation: ## SEV-1: офлайн-пересчёт gate с effective_severity (MAPPING='{"secret":"critical"}' LABEL=accb)
+	cd experiments/tp-0001 && python3 recompute_gate_escalation.py --mapping '$(MAPPING)' --label '$(LABEL)'
+
 clean: ## Удалить локальные артефакты uv всех пакетов
 	cd $(SERVER_DIR) && rm -rf .venv .pytest_cache .ruff_cache
 	cd $(MASTER_DIR) && rm -rf .venv .pytest_cache .ruff_cache

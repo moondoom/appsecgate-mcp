@@ -307,7 +307,12 @@ deployment evidence. Решения не перезаписывают исход
 1. Ручная выборочная валидация TP-вердиктов на secret-эвристиках (vibetunnel
    drift 9/86, gitleaks generic даёт TP на плейсхолдерах) — иначе critical-шум.
 2. Офлайн-пересчёт gate-решений корпуса 300 по готовым report.json (вердикты
-   уже есть, миграция данных не нужна).
+   уже есть, миграция данных не нужна). **Инструмент готов 2026-11-07:**
+   `make experiment-gate-escalation MAPPING='{...}' LABEL=<prefix>` →
+   `artifacts/severity-escalation-impact.json` (монотонная дельта: эскалация
+   только добавляет блоки). На существующих 1352 runs: mapping
+   `secret→critical` эскалировал 289 TP, но **0 newly blocked** — все
+   эскалированные TP уже на block-severity. Итоговый замер — после корпуса 300.
 3. Оценка влияния на долю gate_block в корпусе.
 
 ## Ссылки на закрытые задачи
