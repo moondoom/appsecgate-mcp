@@ -310,7 +310,7 @@ Facts:
   (§8.3) and for smaller prompts.
 - No swap pressure or OOM was observed in any cell (zero errors).
 
-## 8. Decision (proposed): guided-sched — lane-aware scheduling in the agent controller
+## 8. Decision (superseded 2026-11-07 by §14): guided-sched — lane-aware scheduling in the agent controller
 
 ### 8.A Production distribution (litellm.spend_logs, 598 guided calls, 2026-11-05)
 
@@ -539,7 +539,7 @@ concurrently on this 16 GiB host; multi-process lane coordination (§8.0).
   moving to `Accepted` on synthetic data alone would repeat the
   ADR-0015 assumption error this ADR is correcting.
 
-## 11. Prototype results (2026-11-05, guided-sched v3)
+## 11. Historical prototype results (2026-11-05, guided-sched v3 — superseded by §14)
 
 Implementation: `agent_mode=guided-sched` (`agent/guided_sched.py`),
 per-batch lane from conservative prompt estimate (`chars//3 + 4000`),
@@ -593,7 +593,7 @@ Remaining before any status change: zep parity, heavy-repo sweep
 (PilotDeck, costrict, vibetunnel), P90/P99 and sustained-load check
 (§9.5), reuse validation, then corpus decision.
 
-## 12. Update 2026-11-06: lane num_ctx switching removed (§8 fallback enacted)
+## 12. Baseline (2026-11-06): constant num_ctx — the configuration §14 tunes
 
 Live `agent300fix1` run exposed the thrash the ADR warned about: **14
 runner reloads in 90 minutes** because `guided_sched` passed per-lane
@@ -663,36 +663,66 @@ cap), 1.6 % exceed 180 s. Derived production timeout: `p99 × 1.5 ≈ 300 s`
 (kept 600 s failure-timeout as the batch-fatal ceiling). Per-finding
 reserved-token cap is pending the §1.3.4 ledger (GD-15 backlog).
 
-### 14.3 Sweep arms (GD-7)
+### 14.3 Sweep arms (GD-7, 2026-11-07, done)
 
-| Arm | internal × external | Projects | Wall | Notes |
-|---|---|---|---|---|
-| A (swa) | 1×1 | atopile, costrict | TBD | |
-| B (accb, accb2) | 1×2 | heavy set | measured | baseline |
-| C (swc) | 1×4 | atopile, costrict | TBD | |
-| D (accd) | 2×2 | heavy set | measured | rejected by G1b |
-| D2 (swd2) | 2×2, batch_sort=none | atopile | TBD | sort ablation (G3) |
-| E (acce) | 4×1 | atopile | measured | current operating point |
-| E sustained (swe) | 4×1 | costrict, zep, CodeWiki | TBD | ≥30 min thermal/clock check |
-| F (swf) | 2×1 | atopile | TBD | |
-| V (swv) | 4×1 + mode_batch_sizes + adaptive_max_tokens | atopile | TBD | owner-approved variant |
-| B/D/C small (smb, smd, smc) | 1×2 / 2×2 / 1×4 | structlog, aitextgen (+CodeWiki) | TBD | small-repo class |
+Per-repo wall p99 (s); every arm reuse OFF, num_ctx 36864, failure timeout 600 s.
+Raw aggregates: `artifacts/guided-tuning-summary.json`.
 
-### 14.4 Sweep gates G1–G5 (ADR-0020 §3.7)
+| Arm | internal × external | atopile | costrict | CodeWiki | zep | Notes |
+|---|---|---|---|---|---|---|
+| A (swa) | 1×1 | 966 | 730 | — | — | |
+| B (accb, accb2) | 1×2 | 1868 | 1464 | 634 | — | baseline |
+| C (swc) | 1×4 | 1847 | 1714 | 409* | — | *CodeWiki from smc |
+| D (accd) | 2×2 | 1370 | 1156 | 524 | — | rejected by G1b |
+| D2 (swd2) | 2×2, batch_sort=none | 868 | — | — | — | sort ablation, see G3 |
+| E (acce) | 4×1 | 714 | 508† | 251† | 840† | †sustained arm swe |
+| F (swf) | 2×1 | 840 | — | — | — | |
+| V (swv) | 4×1 + mode_batch_sizes + adaptive | 1892 | — | — | — | rejected, see §14.4 |
+| small (smb/smd/smc) | 1×2 / 2×2 / 1×4 | — | — | — | — | structlog scanned 0 findings; aitextgen 2 findings — small class carries no tuning signal (ADR-0020 §3 caveat 7 confirmed) |
 
-TBD — filled from `artifacts/guided-tuning-summary.json`
-(`make experiment-sweep-summary`) after the sweep completes.
+### 14.4 Sweep gates G1–G5 (ADR-0020 §3.7) — results
 
-### 14.5 Sustained load
+| Gate | Result | Verdict |
+|---|---|---|
+| G1 speedup D vs B (atopile) | 1.363 | pass, but G1b already rejected D |
+| G2 per-repo winners | heavy: E everywhere (714/508/251 s vs D 1370/1156/524); small: no signal | per-class: E for all measured classes |
+| G3 D1 vs D2 sorting | wall delta 36.7 % (D2 868 s vs D 1370 s), cache counters unavailable → wall-only rule | delta ≫ 3 % → **sorting (mode_major) kept**; direction (unsorted faster) is a cross-session confound — accd ran in the acceptance window, swd2 in the sweep window; no conclusion on prefix-cache efficiency |
+| G4 winner P99 vs A | E 0.74× (atopile), 0.70× (costrict) | pass |
+| G5 drift winner vs B | CodeWiki 0/85; structlog vacuous (0 findings) | pass |
 
-TBD — GPU clock minima / VRAM max / power over the `swe` window
-(`artifacts/gpu-per-arm.json`). Closes §7.C.
+Owner-approved variant arm **V (per-mode batch sizes + adaptive max_tokens):
+rejected.** Wall 2.65× worse than E on atopile, 3.5× tokens per finding
+(11120 vs 3157), verdict drift 22/165 (13 %) — far above both the 2 %
+tolerance and the 5.4 % self-drift noise floor. Defaults stay: fixed
+output-derived batch size, no adaptive max_tokens.
 
-### 14.6 Operating-point decision
+### 14.5 Sustained load (swe: costrict + zep + CodeWiki back-to-back at 4×1)
 
-TBD — per ADR-0020 Part 10: operating point retained at E (4×1) unless G2
-shows per-class winners; §8 marked superseded, §11 renamed prototype,
-§12 kept as the num_ctx baseline. 300-repo corpus is a separate delivery.
+GPU util avg 0.71 (max 1.0), temperature max 64 °C, no clock-floor
+evidence — DCGM clock counters are not exported on this stand (Prometheus
+has nvidia_smi util/mem/temp/power only), so the clock-minimum criterion is
+answered by proxy: stable power draw and no thermal rise over ~40 min.
+§7.C closed for the 16 GB / 4-slot configuration. Model failures across the
+whole sweep: 4 `llm_error` terminal verdicts (B, swe, V×2); zero
+`context_overflow`, zero `timeout`.
+
+### 14.6 Operating-point decision (GD-8)
+
+**Retained: E — `internal_parallel=4`, one process per repository,
+`batch_sort=mode_major`, fixed batch size from the output budget, constant
+`num_ctx=36864`, failure timeout 600 s (call distribution p99 ≈ 176–199 s;
+derived cap 270–300 s, 600 s kept as the batch-fatal ceiling).** D is
+rejected (G1b/G2), sorting is kept (G3), the variant batching is rejected
+(wall/tokens/drift). `internal_parallel` remains a launch parameter, not a
+global default, per ADR-0020 §3 caveat 6. Per-finding reserved-token cap
+waits for the GD-15 ledger to accumulate real runs (ledger implemented
+2026-11-07, `reserved_tokens.ndjson`). The 300-repo corpus is a separate
+delivery on this configuration.
+
+With GD-6 acceptance and GD-7 sweep complete: §8 (guided-sched lane-aware
+scheduling) is **superseded** — no lane scheduling ships; §11 is a
+historical prototype; §12 is the baseline this section tuned. ADR-0019
+acceptance gates have passed.
 
 ## 15. References (as cited in review)
 
