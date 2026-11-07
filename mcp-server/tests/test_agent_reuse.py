@@ -8,6 +8,7 @@ from appsecgate_mcp.agent.models import AgentConfig
 from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
 
 _NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+_RULESET = "sha256:rules"
 
 
 def _config(tmp_path, **overrides):
@@ -18,13 +19,14 @@ def _config(tmp_path, **overrides):
         "llm_model": "test-model",
         "master_url": "http://master.test",
         "reuse_ttl_seconds": 3600,
+        "ruleset_hash": _RULESET,
     }
     values.update(overrides)
     return AgentConfig(**values)
 
 
-def _row(fp, verdict_id, at, level, verdict="TRUE_POSITIVE"):
-    return {
+def _row(fp, verdict_id, at, level, verdict="TRUE_POSITIVE", **overrides):
+    row = {
         "fp": fp,
         "verdict_id": verdict_id,
         "verdict": verdict,
@@ -34,9 +36,13 @@ def _row(fp, verdict_id, at, level, verdict="TRUE_POSITIVE"):
         "evidence_quote": "quote" if level else "",
         "quote_hash": "hash" if level else None,
         "prompt_sha256": "prompt",
+        "ruleset_hash": _RULESET,
+        "verdict_source": "model",
         "created_at": at,
         "at": at,
     }
+    row.update(overrides)
+    return row
 
 
 async def _inventory(name, arguments):
@@ -104,7 +110,16 @@ def test_reuse_selects_latest_and_marks_stale_revisions(tmp_path):
         "reevaluated_ttl_expired": 3,
         "reevaluated_legacy_confidence_missing": 1,
         "reevaluated_prompt_updated": 0,
+        "reevaluated_ruleset_updated": 0,
+        "human_verdicts_protected": 0,
         "reuse_ttl_seconds": 3600,
+        "reuse_saved_tokens": None,
+        "reuse_saved_tokens_known": False,
+        "reuse_reasons": {
+            "fresh_matching_context": 1,
+            "ttl_expired": 3,
+            "legacy_confidence_missing": 1,
+        },
     }
     assert controller.revisions["fp-2"] == {
         "supersedes_verdict_id": "expired",
@@ -114,6 +129,10 @@ def test_reuse_selects_latest_and_marks_stale_revisions(tmp_path):
     assert len(journaled) == 1
     assert journaled[0].supersedes_verdict_id == "expired"
     assert journaled[0].revision_reason == "ttl_expired"
+    reuse_actions = [
+        item for item in controller.action_log if item["tool"] == "reuse_prior_verdicts"
+    ]
+    assert all(item["reuse_saved_tokens"] is None for item in reuse_actions)
 
 
 def test_zero_ttl_reevaluates_even_fresh_confident_verdict(tmp_path):
@@ -183,3 +202,98 @@ def test_prompt_hash_change_forces_prompt_updated_revision(tmp_path):
         "supersedes_verdict_id": "old-prompt",
         "revision_reason": "prompt_updated",
     }
+
+
+def test_ruleset_change_forces_reevaluation_without_reuse(tmp_path):
+    async def master_call(name, arguments):
+        return {
+            "status": "ok",
+            "rows": [
+                _row("fp-1", "old-rules", "2026-11-06T11:59:00Z", "high")
+                | {
+                    "prompt_sha256": _config(tmp_path).prompt_sha256_for_mode("sast"),
+                    "ruleset_hash": "sha256:old-rules",
+                }
+            ],
+        }
+
+    async def run():
+        controller = AgentController(_inventory, master_call=master_call)
+        await controller.initialize("full")
+        stats = {}
+        await reuse_prior_verdicts(_config(tmp_path), controller, stats, now=_NOW)
+        return controller, stats
+
+    controller, stats = asyncio.run(run())
+
+    assert stats["reused_verdicts"] == 0
+    assert stats["reevaluated_ruleset_updated"] == 1
+    assert stats["reuse_reasons"] == {"ruleset_updated": 1}
+    assert controller.revisions["fp-1"] == {
+        "supersedes_verdict_id": "old-rules",
+        "revision_reason": "ruleset_updated",
+    }
+
+
+def test_missing_effective_ruleset_hash_disables_reuse(tmp_path):
+    async def master_call(name, arguments):
+        return {
+            "status": "ok",
+            "rows": [
+                _row("fp-1", "unknown-rules", "2026-11-06T11:59:00Z", "high")
+                | {"prompt_sha256": _config(tmp_path).prompt_sha256_for_mode("sast")}
+            ],
+        }
+
+    async def run():
+        controller = AgentController(_inventory, master_call=master_call)
+        await controller.initialize("full")
+        stats = {}
+        await reuse_prior_verdicts(
+            _config(tmp_path, ruleset_hash=None), controller, stats, now=_NOW
+        )
+        return controller, stats
+
+    controller, stats = asyncio.run(run())
+
+    assert stats["reused_verdicts"] == 0
+    assert stats["reevaluated_ruleset_updated"] == 1
+    assert controller.revisions["fp-1"]["revision_reason"] == "ruleset_updated"
+
+
+def test_latest_human_verdict_is_protected_from_model_reuse_and_revision(tmp_path):
+    async def master_call(name, arguments):
+        return {
+            "status": "ok",
+            "rows": [
+                _row(
+                    "fp-1",
+                    "human-verdict",
+                    "2026-11-06T11:59:00Z",
+                    "high",
+                    verdict_source="human",
+                )
+                | {"prompt_sha256": _config(tmp_path).prompt_sha256_for_mode("sast")}
+            ],
+        }
+
+    async def run():
+        controller = AgentController(_inventory, master_call=master_call)
+        await controller.initialize("full")
+        stats = {}
+        await reuse_prior_verdicts(_config(tmp_path), controller, stats, now=_NOW)
+        return controller, stats
+
+    controller, stats = asyncio.run(run())
+
+    assert "fp-1" not in controller.pending
+    assert "fp-1" not in controller.verdicts
+    assert "fp-1" not in controller.revisions
+    assert stats["reuse_candidates"] == 1
+    assert stats["reused_verdicts"] == 0
+    assert stats["human_verdicts_protected"] == 1
+    assert stats["reuse_reasons"] == {"human_verdict": 1}
+    reuse_actions = [
+        item for item in controller.action_log if item["tool"] == "reuse_prior_verdicts"
+    ]
+    assert reuse_actions[0]["status"] == "protected"

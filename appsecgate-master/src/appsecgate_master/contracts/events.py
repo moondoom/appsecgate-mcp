@@ -146,7 +146,14 @@ class MasterEvent(BaseModel):
     verdict_source: Literal["model", "human"] | None = None
     actor_id: str | None = None
     revision_reason: (
-        Literal["initial", "ttl_expired", "legacy_confidence_missing", "manual", "prompt_updated"]
+        Literal[
+            "initial",
+            "ttl_expired",
+            "legacy_confidence_missing",
+            "manual",
+            "prompt_updated",
+            "ruleset_updated",
+        ]
         | None
     ) = None
     review_status: Literal["unreviewed", "confirmed", "rejected"] | None = None

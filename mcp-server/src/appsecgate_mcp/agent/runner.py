@@ -85,6 +85,7 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
             scan = await call(scan_name, {})
             if scan.get("error"):
                 raise AgentError(f"{scan_name}: {scan['error']}")
+            config.ruleset_hash = scan.get("meta", {}).get("ruleset_hash")
             master_client = None
             master_error = ""
             master_unavailable = False

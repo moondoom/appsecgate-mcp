@@ -43,6 +43,7 @@ class AgentConfig(BaseModel):
     no_sync: bool = False
     reuse_verdicts: bool = True
     reuse_ttl_seconds: int = Field(default=604800, ge=0)
+    ruleset_hash: str | None = None
 
     @property
     def prompt_path(self) -> Path:
@@ -114,7 +115,12 @@ class Verdict(BaseModel):
     patch: str | list[dict[str, Any]] | None = None
     supersedes_verdict_id: str | None = Field(default=None, exclude=True)
     revision_reason: Literal[
-        "initial", "ttl_expired", "legacy_confidence_missing", "manual", "prompt_updated"
+        "initial",
+        "ttl_expired",
+        "legacy_confidence_missing",
+        "manual",
+        "prompt_updated",
+        "ruleset_updated",
     ] = Field(default="initial", exclude=True)
 
 

@@ -12,7 +12,8 @@ _LEVELS = {"high", "medium", "low", "speculative"}
 _QUERY = """
 SELECT fp, verdict_id, verdict, explanation, confidence_level, evidence_basis,
        evidence_quote, source_file, start_line, end_line, read_event_id, quote_hash,
-       reasoning, prompt_mode, prompt_sha256, created_at, at
+       reasoning, prompt_mode, prompt_sha256, ruleset_hash, verdict_source,
+       created_at, at
 FROM v_triage_verdicts WHERE project_key = ?
 """.strip()
 
@@ -50,10 +51,31 @@ def _latest_rows(rows: list[dict[str, Any]], pending: set[str]) -> dict[str, dic
     return latest
 
 
+def _record_decision(
+    controller: AgentController,
+    stats: dict[str, Any],
+    finding_id: str,
+    *,
+    decision: str,
+    reason: str,
+) -> None:
+    reasons = stats.setdefault("reuse_reasons", {})
+    reasons[reason] = reasons.get(reason, 0) + 1
+    controller.action_log.append(
+        {
+            "tool": "reuse_prior_verdicts",
+            "status": decision,
+            "finding_id": finding_id,
+            "reuse_reason": reason,
+            "reuse_saved_tokens": None,
+        }
+    )
+
+
 async def reuse_prior_verdicts(
     config: AgentConfig,
     controller: AgentController,
-    stats: dict[str, int],
+    stats: dict[str, Any],
     *,
     now: datetime | None = None,
 ) -> None:
@@ -66,7 +88,11 @@ async def reuse_prior_verdicts(
         reevaluated_ttl_expired=0,
         reevaluated_legacy_confidence_missing=0,
         reevaluated_prompt_updated=0,
+        reevaluated_ruleset_updated=0,
+        human_verdicts_protected=0,
         reuse_ttl_seconds=config.reuse_ttl_seconds,
+        reuse_saved_tokens=None,
+        reuse_saved_tokens_known=False,
     )
     response = await controller.execute(
         "master_query_findings_db", {"sql": _QUERY, "params": [controller.project_id]}
@@ -80,13 +106,28 @@ async def reuse_prior_verdicts(
         if row is None:
             continue
         stats["reuse_candidates"] += 1
+        if row.get("verdict_source") == "human":
+            stats["human_verdicts_protected"] += 1
+            controller.pending.discard(finding_id)
+            _record_decision(
+                controller,
+                stats,
+                finding_id,
+                decision="protected",
+                reason="human_verdict",
+            )
+            continue
         confidence_level = row.get("confidence_level")
         timestamp = _timestamp(row)
         age = (current - timestamp).total_seconds() if timestamp is not None else None
         mode = controller.finding_modes.get(finding_id, "sast")
         prompt_matches = row.get("prompt_sha256") == config.prompt_sha256_for_mode(mode)
+        ruleset_matches = bool(config.ruleset_hash) and row.get("ruleset_hash") == (
+            config.ruleset_hash
+        )
         fresh = (
-            confidence_level in _LEVELS
+            ruleset_matches
+            and confidence_level in _LEVELS
             and prompt_matches
             and age is not None
             and 0 <= age < config.reuse_ttl_seconds
@@ -111,11 +152,20 @@ async def reuse_prior_verdicts(
                 if row.get(key) is not None:
                     reused_item[key] = row[key]
             reused.append(reused_item)
+            _record_decision(
+                controller,
+                stats,
+                finding_id,
+                decision="reused",
+                reason="fresh_matching_context",
+            )
             continue
-        if confidence_level not in _LEVELS:
-            reason = "legacy_confidence_missing"
+        if not ruleset_matches:
+            reason = "ruleset_updated"
         elif not prompt_matches:
             reason = "prompt_updated"
+        elif confidence_level not in _LEVELS:
+            reason = "legacy_confidence_missing"
         else:
             reason = "ttl_expired"
         stats["reevaluated_verdicts"] += 1
@@ -124,6 +174,13 @@ async def reuse_prior_verdicts(
             "supersedes_verdict_id": str(row.get("verdict_id") or "") or None,
             "revision_reason": reason,
         }
+        _record_decision(
+            controller,
+            stats,
+            finding_id,
+            decision="reevaluate",
+            reason=reason,
+        )
     if not reused:
         return
     result = await controller.execute("submit_verdicts", {"verdicts": reused}, record=False)
