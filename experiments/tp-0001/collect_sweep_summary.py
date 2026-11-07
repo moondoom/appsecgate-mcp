@@ -302,8 +302,29 @@ def main() -> None:
             "p999_ms": _percentile(d_calls, 0.999),
             "above_s": {str(t): round(sum(1 for v in d_calls if v > t * 1000) / len(d_calls), 4) for t in (90, 120, 180)},
             "derived_timeout_s": int(((p99 * 1.5) / 1000 + 29) // 30 * 30),
-            "per_finding_cap": "pending reserved-token ledger (ADR-0020 §1.3.4, GD-15 backlog)",
         }
+
+    reserved_values: list[int] = []
+    for ledger in ROOT.glob("runtime/data-*/reserved_tokens.ndjson"):
+        for row in _load_lines(ledger):
+            value = row.get("reserved_tokens")
+            if isinstance(value, int):
+                reserved_values.append(value)
+    if reserved_values:
+        reserved_values.sort()
+        p95 = _percentile(reserved_values, 0.95)
+        extras.setdefault("timeout_calibration", {})["per_finding_cap"] = {
+            "findings": len(reserved_values),
+            "p95": p95,
+            "p99": _percentile(reserved_values, 0.99),
+            "max": reserved_values[-1],
+            "derived_cap": int(p95 * 1.5),
+            "note": "reserved-token charges only (ADR-0020 §3.5 step 4); ledger starts with GD-15 runs",
+        }
+    elif "timeout_calibration" in extras:
+        extras["timeout_calibration"]["per_finding_cap"] = (
+            "pending reserved-token ledger (ADR-0020 §1.3.4, GD-15 backlog)"
+        )
 
     # gpu-per-arm.json
     gpu_per_arm = {}
