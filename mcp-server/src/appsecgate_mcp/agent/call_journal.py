@@ -5,8 +5,8 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from appsecgate_mcp.agent.journal import _safe
 from appsecgate_mcp.agent.models import AgentConfig
+from appsecgate_mcp.normalization.redactor import redact_text
 
 _CACHE_COUNTER_KEYS = ("cache_read_tokens", "prompt_cache_hit_tokens")
 
@@ -60,9 +60,8 @@ class CallJournal:
             "reused": False,
             "revision_reason": None,
             "failure_reason": failure_reason,
-            "failure_detail": failure_detail,
+            "failure_detail": redact_text(failure_detail) if failure_detail else None,
         }
-        record = _safe(record)
         with self.path.open("a", encoding="utf-8") as output:
             output.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
         return record
