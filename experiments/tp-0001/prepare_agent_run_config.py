@@ -42,16 +42,18 @@ def main() -> None:
     config = {
         "agent_version": "agent-rc-v1",
         "agent_mode": "guided",
-        "internal_parallel": 2,
+        # GD-6 acceptance retained arm E (internal=4, external=1); ADR-0019 §2.7.
+        "internal_parallel": 4,
         "batch_sort": "mode_major",
         "reuse_ttl": "1h",
+        "llm_failure_timeout_s": 600,
         "generated_at": knowledge_cutoff,
         "model": freeze["model"],
         "image": {"tag": "moondoom/appsecgate-mcp:0.1.0", "id": image_id},
         "prompt_sha256": prompt_hash,
         "external_rules": external_rules,
         "parallelism": 1,
-        "num_ctx": 32768,
+        "num_ctx": 36864,
         "max_iterations": 500,
         "max_restarts": 5,
         "max_compactions": 10,
@@ -77,13 +79,19 @@ def main() -> None:
     )
 
     keys = {"agent-dev-knowledge": "agent-dev-knowledge-key"}
+    keys_path = ROOT / "runtime" / "agent300-keys.json"
+    if keys_path.is_file():
+        try:
+            keys.update(json.loads(keys_path.read_text()))
+        except json.JSONDecodeError:
+            pass
     for label in LABELS:
         for item in manifest:
             run_id = f"{label}-gemmaq3-p{config['parallelism']}-{item['name']}"
-            keys[f"{item['name']}-tp0001-{run_id}"] = f"agent300-{label}-{item['name']}-key"
-    (ROOT / "runtime" / "agent300-keys.json").write_text(
-        json.dumps(keys, indent=2, ensure_ascii=False) + "\n"
-    )
+            keys.setdefault(
+                f"{item['name']}-tp0001-{run_id}", f"agent300-{label}-{item['name']}-key"
+            )
+    keys_path.write_text(json.dumps(keys, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({"repositories": len(manifest), "repeat": len(REPEAT), "keys": len(keys)}))
 
 

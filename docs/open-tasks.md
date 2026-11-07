@@ -176,6 +176,7 @@ ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 | GD-14 | Checkpoint/resume per accepted batch; adaptive run timeout; inventory page/cache improvements | open, P1 | required before corpus if timeout still loses completed work |
 | GD-15 | Measured P1 batching/reuse/robustness: per-mode batch size and TTL, capacity-aware packing, one transient transport retry, adaptive `max_tokens`, split-depth 3 vs 5, sync retry, `budget_partial`, distinct sync/MCP errors | open, P1 | no adoption without parity, overflow and wall measurements |
 | GD-16 | Exact-model tokenizer for pre-send accounting (source/version pinned, incl. tools/template); replace the GD-3 estimator | open, separate stream | owner rejected a model-dependent production dependency for GD-3; estimator is interim; acceptance G6a reads as estimator-based until GD-16 |
+| GD-17 | Corpus-300 run-config updated to retained point E (internal=4, num_ctx=36864, failure timeout 600 s); `prepare_agent_run_config.py` merges existing keys instead of overwriting | done (script) | corpus session must rerun `make experiment-cve-prepare` + `experiment-run-config` after the final image rebuild: readiness requires `knowledge_cutoff <= cve.fetched_at` and matching image id |
 
 ## Прочие направления
 
