@@ -629,8 +629,11 @@ that slower calls are genuine failures. Acceptance separately gates
 `context_overflow ≤5%` and `timeout ≤1%`; only the former answers whether
 32k is sufficient. Wall-speed gates use `speedup = wall(baseline arm) /
 wall(candidate arm)`, and verdict parity compares arms with identical batch
-composition and prompt hashes. Cache-hit analysis requires explicit cache
-counters, never `(prompt_tokens − prompt_eval_count) / prompt_tokens`.
+composition and prompt hashes. Acceptance includes current-production E
+(4×1) on atopile; D (2×2) is adopted only if it does not regress against E
+on wall/P99, not merely because it beats B. Cache-hit analysis requires
+explicit cache counters, never `(prompt_tokens − prompt_eval_count) /
+prompt_tokens`.
 
 ## 15. References (as cited in review)
 

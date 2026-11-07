@@ -68,11 +68,11 @@ There is **one** batched agent mode: `guided`. Scheduler mode is gone. The knobs
 
 **Sorting semantics:**
 
-- `mode_major`: all batches of one mode (sast / secret / sca / iac) are contiguous; within a mode, deterministic order by fingerprint for reproducibility. Shared prefix = system + guided template + per-mode preamble (ADR-0018 §6), so mode-major maximizes prefix-cache hits.
+- `mode_major`: key is `(mode, lane, fingerprint)`. All batches of one mode (sast / secret / sca / iac) are contiguous, lane is telemetry-only ordering within the mode, and fingerprint makes the order explicit and reproducible. This matches and tightens the current `(mode, lane)` production ordering. Shared prefix = system + guided template + per-mode preamble (ADR-0018 §6), so mode-major maximizes prefix-cache hits.
 - `none`: natural inventory order.
-- Sorting by prompt length is **not** implemented — with fixed `num_ctx` it does not pack slots and would scramble mode waves.
+- Sorting by prompt length outside `mode_major` is **not** implemented — with fixed `num_ctx` it does not pack slots and would scramble mode waves.
 
-**Parameter surface:** the only way to change concurrency is the pair `(internal_parallel, external_p)` on the line `internal × external ≤ 4`. Experiment arms use (1,1), (1,2), (1,4), (2,1), (2,2), (4,1). Other satisfying points, such as (1,3) and (3,1), are valid configurations even though they are not required arms; only a product above 4 is a configuration error.
+**Parameter surface:** the only way to change concurrency is the pair `(internal_parallel, external_p)` on the line `internal × external ≤ 4`. Experiment arms use (1,1), (1,2), (1,4), (2,1), (2,2), (4,1). Other satisfying points, such as (1,3) and (3,1), are valid configurations even though they are not required arms; only a product above 4 is a configuration error. Current fix1 production is **(4,1) = arm E**, not the proposed default (2,2). Moving from E to D is an explicit reduction of internal parallelism and is allowed only if the acceptance comparison shows no wall/tail regression.
 
 ### 1.3 Journal schema changes (additive)
 
@@ -97,7 +97,7 @@ After measuring calls at the actual operating point (Part 3.5), the production v
 timeout = p99 × 1.5, rounded up to the next 30 s
 ```
 
-The derived value replaces 600 s only after verifying that calls above it are genuine failures, not legitimate long completions. Timeout and context-overflow gates are reported separately: a timeout failure does not prove that the context is too small.
+The derived value replaces 600 s only after verifying that calls above it are genuine failures, not legitimate long completions. Timeout and context-overflow gates are reported separately: a timeout failure does not prove that the context is too small. Calibration also limits blast radius: under current behavior a 600 s timeout aborts the whole repository run, so one stuck call can waste ten minutes and the entire run.
 
 #### 1.3.3 Overflow detection
 
@@ -107,9 +107,9 @@ The agent **tokenizes the complete outbound request before send** with the exact
 prompt_tokens + llm_max_tokens + output_safety_margin <= num_ctx
 ```
 
-A request that does not fit is routed to `NEEDS_REVIEW(context_overflow)` **without an LLM call** — cheaper and avoids silent truncation (ADR-0016 §12). A response reporting actual prompt overflow or a truncation flag is treated identically. The tokenizer implementation and its model/version must be recorded; character-based estimates such as `len(json)//3` are telemetry only and cannot authorize sending. No new production dependency is allowed without an explicit owner decision.
+A request that does not fit is routed to `NEEDS_REVIEW(context_overflow)` **without an LLM call** — cheaper and avoids silent truncation (ADR-0016 §12). A response reporting actual prompt overflow or a truncation flag is treated identically. The tokenizer implementation and its model/version must be recorded; character-based estimates such as `len(json)//3` are telemetry only and cannot authorize sending. No new production dependency is allowed without an explicit owner decision. Exact tokenization (GD-3) is mandatory **before acceptance**; there is no timeout-only variant of G6a.
 
-**Split-retry is preserved.** Truncated or unparseable batches are still split and retried per ADR-0015 §4. `NEEDS_REVIEW(model_failed)` is the terminal state after retries are exhausted, not the first response to failure.
+**Split-retry is preserved.** Truncated or unparseable batches are still split and retried per ADR-0015 §4. `NEEDS_REVIEW(model_failed)` is the terminal state after retries are exhausted, not the first response to failure. This requires an explicit error-boundary change: LLM timeout and other call-level `LlmError` become **batch-fatal**, not run-fatal. Unhandled infrastructure errors remain run-fatal. The batch token budget records only usage actually returned by the provider; a timed-out call with no usage response is not assigned invented tokens and is counted separately as `timed_out_calls`. Thus the budget remains a provider-reported usage limit, not an estimate of GPU time.
 
 ### 1.4 Telemetry via Prometheus
 
@@ -198,25 +198,26 @@ Decide whether `guided` with tuning parameters is acceptable for the corpus. Thi
 - No knowledge cutoff.
 - Prometheus scrape interval verified per §1.4.1 (1 s or explicitly documented).
 
-### 2.4 Arms (2, to fit ~1 hour)
+### 2.4 Arms (B/D full set, E reference on atopile)
 
 | Arm | internal | external | Purpose |
 |---|---|---|---|
 | **ACC-B** | 1 | 2 | frozen-equivalent baseline |
 | **ACC-D** | 2 | 2 | target operating point |
+| **ACC-E** | 4 | 1 | current fix1 production reference |
 
-Run ACC-B on all three repos, then ACC-D on all three. No interleaving. The parity reference for D is B: both arms must have identical batch composition and per-mode prompt SHA-256. Historical CodeWiki/zep references are checked separately under §1.5 and cannot substitute for this same-implementation comparison.
+Run ACC-B on all three repos, then ACC-D on all three, then ACC-E on atopile only. No interleaving. The parity reference for D is B: both arms must have identical batch composition and per-mode prompt SHA-256. Historical CodeWiki/zep references are checked separately under §1.5 and cannot substitute for this same-implementation comparison. E prevents accepting D as an improvement over B while silently regressing relative to current production.
 
 ### 2.5 Budget
 
-| Repo | ACC-B | ACC-D | Total |
-|---|---|---|---|
-| atopile | ~450–670 s | ~450–670 s | ~15–22 min |
-| costrict | ~360–580 s | ~360–580 s | ~12–20 min |
-| CodeWiki | ~180 s | ~180 s | ~6 min |
-| **Total** | | | **~35–50 min** |
+| Repo | ACC-B | ACC-D | ACC-E | Total |
+|---|---|---|---|---|
+| atopile | ~450–670 s | ~450–670 s | ~450–670 s | ~22–33 min |
+| costrict | ~360–580 s | ~360–580 s | — | ~12–20 min |
+| CodeWiki | ~180 s | ~180 s | — | ~6 min |
+| **Total** | | | | **~42–60 min** |
 
-Overhead and scan time may push to ~60 min; the acceptance run is capped at 90 minutes. If it exceeds, the run is aborted and restarted with the same artifact label — no partial acceptance.
+Overhead and scan time may push to ~75 min; the acceptance run is capped at 90 minutes. If it exceeds, the run is aborted and restarted with the same artifact label — no partial acceptance.
 
 ### 2.6 Pre-registered gates
 
@@ -224,8 +225,9 @@ Written into the experiment artifact **before** the run; applied to raw data **a
 
 | Gate | Metric | Pass condition |
 |---|---|---|
-| **G1** | `speedup = wall(ACC-B) / wall(ACC-D)`, per repo | ≥ 1.15 → internal>1 justified |
-| **G2** | ACC-D vs ACC-B, per-repo P99 latency | D not worse by > 10% |
+| **G1a** | `speedup = wall(ACC-B) / wall(ACC-D)`, per repo | ≥ 1.15 → internal>1 justified |
+| **G1b** | ACC-D vs ACC-E wall on atopile | D no slower than E; otherwise current production E wins |
+| **G2** | per-repo P99 latency, D vs B and D vs E | D not worse than either by > 10% |
 | **G3** | verdict parity by `finding_id`, ACC-D vs ACC-B | drift = 0 |
 | **G4** | `failed_findings` (no terminal verdict / unhandled infrastructure failure; terminal model-failure NR excluded) | 0 |
 | **G5** | unique-finding coverage, including terminal `NEEDS_REVIEW(model_failed)` | 100% |
@@ -236,10 +238,11 @@ Written into the experiment artifact **before** the run; applied to raw data **a
 
 ### 2.7 Decision tree
 
-- **G1 pass, G2–G6 pass** → operating point accepted. `guided` with `internal_parallel=2`, `batch_sort=mode_major`, fixed 36864 becomes the production config. Scheduler mode removed permanently. ADR-0016 §8 marked superseded, §11 renamed to “guided tuning sweep”, §12 becomes baseline.
-- **G1 fail (< 1.05)** → `internal_parallel=1`. Design collapses to frozen guided + external p + reuse + mode-major. ADR-0016 shrinks.
-- **G1 ambiguous (1.05–1.15)** → run a third arm (`internal=4, external=1`) on atopile only (~10 min extra); use as tiebreaker.
-- **G2 fail** → keep ACC-B; internal parallelism not adopted.
+- **G1a/G1b pass, G2–G6 pass** → operating point accepted. `guided` with `internal_parallel=2`, `batch_sort=mode_major`, fixed 36864 becomes the production config. This is an explicit move from current E (4×1) to D (2×2), justified by measured wall/tail, not by treating 2 as intrinsically better. Scheduler mode removed permanently. ADR-0016 §8 marked superseded, §11 renamed to “guided tuning sweep”, §12 becomes baseline.
+- **G1a fail (< 1.05)** → `internal_parallel=1`. Design collapses to frozen guided + external p + reuse + mode-major. ADR-0016 shrinks.
+- **G1a ambiguous (1.05–1.15)** → E is the tiebreaker against D on atopile, using G1b and G2.
+- **G1b or G2 fails against E** → retain E as the operating point; D is not adopted.
+- **G2 fails only against B, but not E** → keep E and record that internal parallelism has no demonstrated benefit over the frozen baseline.
 - **G6a fail, G1–G5 pass** → operating point accepted with a documented NEEDS_REVIEW inflation; a follow-up task “is 32k sufficient?” goes into the full experiment as a separate arm.
 - **G6b fail** → fix/calibrate serving timeout and rerun the affected arm before interpreting wall time; this is not evidence that 32k is insufficient.
 - **G3–G5 fail** → stop, root-cause, do not proceed to corpus.
@@ -373,12 +376,14 @@ Per mode (sast / secret / sca / iac) and per repo class (heavy / small):
 | `completion_tokens` p50 / p90 / p99 | run logs |
 | prefill s / batch | `prompt_eval_duration` |
 | decode s / batch | `eval_duration` |
-| cold-start cost per mode (first batch) | first-batch subset |
+| cold-start cost per mode (first batch on each slot) | first-batch-on-slot subset |
 | share of batches ≤ 16k / ≤ 32k | run logs |
 
 ### 4.2 Model-failure breakdown
 
 `NEEDS_REVIEW(model_failed)` per mode, split by `failure_reason` (`context_overflow` / `timeout`). This is the direct measurement of “is 32k small?”. If `context_overflow` concentrates in one mode, that is the input for prefill reduction in that mode — not for increasing `num_ctx`, which would break the fixed-context design.
+
+Operational counters in the same passive report: `token_repeat_limit_reached`, `timed_out_calls`, split depth distribution (current maximum 5), and provider-reported versus unavailable usage. Free-mode iterations/restarts/compactions are out of scope and must not be mixed into guided metrics. `quote_mismatch` caused by quoting evidence outside the scanner snippet is reported as a **protocol limitation**, not as model-quality evidence (ADR-0018 Mode B remains off).
 
 ### 4.3 Cache analysis
 
@@ -386,7 +391,7 @@ Per mode, per arm (D1 vs D2):
 
 - `cache_hit_rate` overall and excluding cold-start;
 - amortization: how many batches per mode are needed before the cache pays back;
-- cold-start tax per mode (first batch always a miss).
+- cold-start tax per mode per slot (the first batch on a slot is a miss).
 
 This shows where the shared-prefix strategy actually pays. For tiny repos (2–3 batches per mode), it may never pay — that is an expected result, not a defect to fix.
 
@@ -413,6 +418,10 @@ The shared prefix is system + guided template + per-mode preamble (ADR-0018 §6)
 7. **Small repos may show nothing in tuning.** With few batches, internal parallelism has little to pipeline. Small repos belong to arms B/C/D and to cold-start analysis, not to G1. Extrapolating G1 from heavy to small would be wrong.
 
 8. **Acceptance is capped at 90 minutes.** If the run exceeds, it is aborted and restarted with the same artifact label — no partial acceptance.
+
+9. **Current error handling is run-fatal and has no SDK retries.** Before GD-9, a transient LiteLLM failure or timeout can abort the whole repository run. The redesign makes call errors batch-fatal and separately evaluates one transport retry for transient 5xx/connection-reset errors; it does not silently enable retries for timeouts or invalid model output.
+
+10. **Evidence-source limitation.** Current quote verification covers the scanner snippet, not arbitrary files read through `read_project_file`. Until the matching policy is extended, such mismatches are labeled as protocol limitations in analysis, never counted as model quality.
 
 ---
 
