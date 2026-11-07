@@ -222,7 +222,7 @@ def test_guided_evidence_reads_before_submit(monkeypatch, tmp_path):
     async def run():
         controller = AgentController(inventory)
         await controller.initialize("full")
-        return await triage_guided(_config(tmp_path), controller)
+        return await triage_guided(_config(tmp_path, mode_b=True), controller)
 
     result = asyncio.run(run())
 
@@ -247,7 +247,7 @@ def test_guided_evidence_loop_limit_fails_open(monkeypatch, tmp_path):
     async def run():
         controller = AgentController(inventory)
         await controller.initialize("full")
-        return await triage_guided(_config(tmp_path), controller)
+        return await triage_guided(_config(tmp_path, mode_b=True), controller)
 
     result = asyncio.run(run())
 
@@ -256,6 +256,35 @@ def test_guided_evidence_loop_limit_fails_open(monkeypatch, tmp_path):
     assert result.usage["model_failed_llm_error"] == 1
     assert result.usage["evidence_reads"] == 24
     assert result.verdicts[0].failure_reason == "llm_error"
+
+
+def test_guided_blocked_tool_is_rejected_without_mode_b(monkeypatch, tmp_path):
+    backend = _Backend(["fp-1"])
+
+    async def inventory(name, arguments):
+        if name == "read_project_file":
+            raise AssertionError("read_project_file must not execute without mode_b")
+        return await backend(name, arguments)
+
+    responses = iter(
+        [
+            _response([_call("read_project_file", '{"path": "src/app.py"}')]),
+            _response([_submit("fp-1")]),
+        ]
+    )
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", lambda *args: next(responses))
+
+    async def run():
+        controller = AgentController(inventory)
+        await controller.initialize("full")
+        return await triage_guided(_config(tmp_path), controller)
+
+    result = asyncio.run(run())
+
+    assert result.usage["missing"] == 0
+    assert result.usage["evidence_reads"] == 0
+    assert result.usage["blocked_tool_calls"] == 1
+    assert len(result.verdicts) == 1
 
 
 def test_guided_partial_omission_retries_single_finding(monkeypatch, tmp_path):

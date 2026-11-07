@@ -206,15 +206,24 @@ async def _triage_chunk(
         ]
         if not evidence_calls:
             break
+        allowed = {tool["function"]["name"] for tool in tools}
         messages.append(message.model_dump(exclude_none=True))
         for call in evidence_calls:
-            try:
-                call_arguments = json.loads(call.function.arguments or "{}")
-                if not isinstance(call_arguments, dict):
+            if call.function.name not in allowed:
+                stats["blocked_tool_calls"] += 1
+                result = {
+                    "status": "error",
+                    "reason": f"tool not available in this mode: {call.function.name}",
+                }
+            else:
+                try:
+                    call_arguments = json.loads(call.function.arguments or "{}")
+                    if not isinstance(call_arguments, dict):
+                        call_arguments = {}
+                except json.JSONDecodeError:
                     call_arguments = {}
-            except json.JSONDecodeError:
-                call_arguments = {}
-            result = await controller.execute(call.function.name, call_arguments)
+                result = await controller.execute(call.function.name, call_arguments)
+                stats["evidence_reads"] += 1
             messages.append(
                 {
                     "role": "tool",
@@ -223,7 +232,7 @@ async def _triage_chunk(
                     "content": json.dumps(result, ensure_ascii=False, default=str),
                 }
             )
-        stats["evidence_reads"] += len(evidence_calls)
+        # evidence_reads counted per executed call above
     accepted = 0
     if arguments is not None:
         result = await controller.execute("submit_verdicts", arguments)
@@ -331,6 +340,7 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         "model_failed_budget_exhausted": 0,
         "timed_out_calls": 0,
         "evidence_reads": 0,
+        "blocked_tool_calls": 0,
     }
     resumed = resume_from_journal(config, controller)
     if resumed:
