@@ -1,6 +1,9 @@
 # ADR-0021: SARIF import — external scanner reports into the findings funnel
 
-**Status: DRAFT, pending owner review (2026-11-07). Not committed.**
+**Status: ACCEPTED 2026-11-08 (owner sign-off).** Spec approved as written
+(reviewed 2026-11-07, amendments D1–D6 applied). Implementation and the
+fixture set from §8 (D2 duplication baseline, D3 multi-run, D5 E2E) are
+pending and are not a precondition of this acceptance.
 
 ## 1. Context
 
@@ -63,7 +66,7 @@ severity, short description as rule doc). From each `result`:
 `partialFingerprints` (kept as provenance, not used as identity).
 
 Mapping:
-
+`
 | SARIF | AppSecGate |
 |---|---|
 | `level=error` | high |
