@@ -78,8 +78,9 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
   на запрос. Не привязано к конкретной модели.
 - **Детерминированный prefetch:** `get_fix_context_batch` + dependency
   манифесты (до 400 строк, ≤20k chars) в каждый batch.
-- **Bounded evidence reads:** `read_project_file` и master knowledge доступны
-  до единственного `submit_verdicts` на finding, лимит 4 итерации на batch.
+- **Bounded evidence reads:** `read_project_file` (gated by `APPSECGATE_MODE_B=1`
+  since GD-13; master knowledge tools removed from guided after 0 calls in 40
+  runs) до единственного `submit_verdicts` на finding, лимит 4 итерации на batch.
   Verdicts не пересматриваются, журнал append-only (ADR-0015 §4, important).
 - **FP по неполноте доказательств запрещён** промптом; недостаток данных →
   NEEDS_REVIEW.
@@ -96,7 +97,7 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
   ~0,5M tokens). DeepSeek-4.1 guided: те же покрытия в ~2× быстрее.
 - **Инфраструктура:** `APPSECGATE_AGENT_MODE` проброшен в `invoke-docker.sh`;
   `BENCH_MODELS` переопределяем в `make experiment-dev-run`.
-- `make check` зелёный: 535 mcp-server + 148 master (2 skipped) + 8 agent.
+- `make check` зелёный: 590 mcp-server + 153 master (2 skipped) + 8 agent (2026-11-07, после GD-1…GD-17, REV-1, GD-14 resume).
 
 ## Перед основным корпусом 300 (зафиксировано 2026-11-05)
 

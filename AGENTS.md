@@ -45,7 +45,7 @@ Read the relevant docs section before any change.
 - `mcp-server/src/appsecgate_mcp/scanners/` — Semgrep, Gitleaks, TruffleHog, Trivy
 - `mcp-server/src/appsecgate_mcp/storage/` — SQLite schema, views; stores in
   `storage/stores/` (one class per module)
-- `mcp-server/tests/` — 535 tests, all green
+- `mcp-server/tests/` — 590 tests, all green
 - `config/default.yaml` — default config
 - `docs/` — architecture, ADRs, open tasks, reports
 
@@ -193,7 +193,7 @@ from scratch in its final form. Non-matching tables are recreated.
 Canonical image name: `moondoom/appsecgate-mcp:0.1.0` (set in `Makefile` and
 `docker-compose.yml`). Manual `docker build` with the wrong tag is forbidden.
 
-535 mcp-server + 150 appsecgate-master + 8 appsecgate-agent tests must be
+590 mcp-server + 153 appsecgate-master + 8 appsecgate-agent tests must be
 green. If a test fails — stop and investigate; NEVER "update the test to
 match the code".
 
@@ -237,7 +237,7 @@ references), with a justification comment in the test.
 ## Definition of Done
 Task is complete when:
 1. `make check` is green
-2. All 693 tests + new ones (if added) pass
+2. All 751 tests + new ones (if added) pass
 3. Changes match one roadmap stage (`docs/open-tasks.md`)
 4. No invariant violated
 5. No new production deps
