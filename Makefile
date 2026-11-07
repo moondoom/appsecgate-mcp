@@ -288,6 +288,9 @@ experiment-funnel-cost: ## Воронка × токены по серии runs (
 experiment-sweep-summary: ## GD-7 sweep analysis: гейты G1-G5 + gpu-per-arm + failure breakdown
 	cd experiments/tp-0001 && python3 collect_sweep_summary.py
 
+experiment-cve-signals: ## GD-12: deterministic CVE signals vs verdicts (measurement only)
+	cd experiments/tp-0001 && python3 measure_cve_signals.py
+
 clean: ## Удалить локальные артефакты uv всех пакетов
 	cd $(SERVER_DIR) && rm -rf .venv .pytest_cache .ruff_cache
 	cd $(MASTER_DIR) && rm -rf .venv .pytest_cache .ruff_cache
