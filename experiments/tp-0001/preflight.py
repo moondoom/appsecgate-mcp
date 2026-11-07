@@ -17,18 +17,21 @@ import json
 import os
 import sys
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
-EXPECTED_PROMETHEUS_METRICS = [
-    "DCGM_FI_DEV_SM_CLOCK",
-    "DCGM_FI_DEV_MEM_CLOCK",
-    "DCGM_FI_DEV_GPU_UTIL",
-    "DCGM_FI_DEV_FB_USED",
-    "DCGM_FI_DEV_POWER_USAGE",
-    "node_cpu_seconds_total",
-    "node_memory_MemAvailable_bytes",
-]
+UTC = timezone.utc
+
+# Each logical group accepts any of the listed exporter names (ADR-0019 §1.4.1).
+EXPECTED_PROMETHEUS_GROUPS = {
+    "gpu_clock": ["DCGM_FI_DEV_SM_CLOCK", "nvidia_smi_clocks_current_graphics_clock_hz"],
+    "memory_clock": ["DCGM_FI_DEV_MEM_CLOCK", "nvidia_smi_clocks_current_memory_clock_hz"],
+    "gpu_util": ["DCGM_FI_DEV_GPU_UTIL", "nvidia_smi_utilization_gpu_ratio"],
+    "vram_used": ["DCGM_FI_DEV_FB_USED", "nvidia_smi_memory_used_bytes"],
+    "gpu_power": ["DCGM_FI_DEV_POWER_USAGE", "nvidia_smi_power_draw_watts"],
+    "cpu": ["node_cpu_seconds_total"],
+    "host_ram": ["node_memory_MemAvailable_bytes"],
+}
 
 
 def _get_json(url: str, api_key: str = "", timeout: float = 10) -> Any:
@@ -78,23 +81,27 @@ def _check_prometheus(errors: list[str]) -> dict[str, Any]:
     if not base:
         errors.append("PROMETHEUS_URL is required")
         return {}
-    found: dict[str, bool] = {}
-    for metric in EXPECTED_PROMETHEUS_METRICS:
-        try:
-            payload = _get_json(f"{base}/api/v1/query?query={metric}")
-            found[metric] = bool(payload.get("data", {}).get("result"))
-        except Exception as exc:
-            errors.append(f"prometheus query failed for {metric}: {exc}")
-            found[metric] = False
-    missing = [name for name, ok in found.items() if not ok]
+    resolved: dict[str, str | None] = {}
+    for group, candidates in EXPECTED_PROMETHEUS_GROUPS.items():
+        resolved[group] = None
+        for metric in candidates:
+            try:
+                payload = _get_json(f"{base}/api/v1/query?query={metric}")
+            except Exception as exc:
+                errors.append(f"prometheus query failed for {metric}: {exc}")
+                continue
+            if payload.get("data", {}).get("result"):
+                resolved[group] = metric
+                break
+    missing = [group for group, metric in resolved.items() if metric is None]
     if missing:
-        errors.append(f"prometheus metrics missing: {missing}")
+        errors.append(f"prometheus metric groups missing: {missing}")
     if not scrape:
         errors.append("PROM_SCRAPE_INTERVAL_S must be recorded explicitly")
     attribution = "window_overlap" if scrape == "1" else "run_level_only"
     return {
         "prometheus_url": base,
-        "metrics": found,
+        "metrics": resolved,
         "scrape_interval_s": scrape or None,
         "gpu_attribution": attribution,
     }
