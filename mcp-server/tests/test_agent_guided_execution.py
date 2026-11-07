@@ -328,6 +328,23 @@ def test_guided_default_knobs_preserve_fixed_batching(monkeypatch, tmp_path):
     assert result.usage["adaptive_max_tokens"] == 0
 
 
+def test_guided_reserved_token_ledger(monkeypatch, tmp_path):
+    def fake_request(config, messages, tools, max_tokens=None):
+        payload = json.loads(messages[1]["content"])
+        return _response([_submit(*[item["finding_id"] for item in payload["findings"]])])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    result = asyncio.run(_run(tmp_path, _Backend(["fp-1", "fp-2", "fp-3"]), llm_max_tokens=200))
+
+    ledger_path = tmp_path / "data" / "reserved_tokens.ndjson"
+    records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
+    assert [record["fp"] for record in records] == ["fp-1", "fp-2", "fp-3"]
+    assert all(record["reserved_tokens"] > 0 for record in records)
+    assert result.usage["reserved_tokens_total"] == sum(r["reserved_tokens"] for r in records)
+    assert 0 < result.usage["reserved_tokens_p50"] <= result.usage["reserved_tokens_p95"]
+    assert result.usage["reserved_tokens_max"] == max(r["reserved_tokens"] for r in records)
+
+
 def test_guided_tool_list_gating(monkeypatch, tmp_path):
     seen_tools = []
 

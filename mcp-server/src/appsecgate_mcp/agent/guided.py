@@ -10,6 +10,7 @@ from typing import Any
 from appsecgate_mcp.agent.call_journal import CallJournal
 from appsecgate_mcp.agent.controller import AgentController
 from appsecgate_mcp.agent.guided_failures import mark_model_failed
+from appsecgate_mcp.agent.guided_ledger import charge_reserved, write_reserved_ledger
 from appsecgate_mcp.agent.guided_payload import _build_payload
 from appsecgate_mcp.agent.llm import (
     LlmError,
@@ -108,6 +109,7 @@ async def _triage_chunk(
     usage: dict[str, Any],
     stats: dict[str, Any],
     call_journal: CallJournal,
+    reserved: dict[str, int],
     depth: int,
     payload: dict[str, Any] | None = None,
     failure_reason: str | None = None,
@@ -150,6 +152,7 @@ async def _triage_chunk(
                     usage,
                     stats,
                     call_journal,
+                    reserved,
                     depth + 1,
                 )
             return
@@ -161,6 +164,7 @@ async def _triage_chunk(
         started_at = datetime.now(UTC)
         started = time.monotonic()
         call_usage: dict[str, Any] | None = None
+        charge_reserved(reserved, chunk, prompt_estimate + reserve)
         try:
             response = await asyncio.to_thread(_request, config, messages, tools, request_budget)
         except LlmTimeoutError as exc:
@@ -244,6 +248,7 @@ async def _triage_chunk(
             usage,
             stats,
             call_journal,
+            reserved,
             depth + 1,
             failure_reason=failure_reason,
             failure_detail=failure_detail,
@@ -261,6 +266,7 @@ async def _triage_chunk(
             usage,
             stats,
             call_journal,
+            reserved,
             depth + 1,
             failure_reason=failure_reason,
             failure_detail=failure_detail,
@@ -327,6 +333,7 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
     }
     await reuse_prior_verdicts(config, controller, stats)
     call_journal = CallJournal(config)
+    reserved: dict[str, int] = {}
     batch_size = _batch_size(config)
     prepared = await _prepare_batches(config, controller, project_context, findings, batch_size)
     semaphore = asyncio.Semaphore(max(1, config.internal_parallel))
@@ -343,12 +350,14 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
                 usage,
                 stats,
                 call_journal,
+                reserved,
                 0,
                 payload=payload,
             )
 
     if prepared:
         await asyncio.gather(*(_worker(chunk, payload) for _, _, _, chunk, payload in prepared))
+    stats.update(write_reserved_ledger(config, reserved))
     if call_journal.cache_metrics_unavailable:
         stats["cache_metrics_unavailable"] = 1
     result = controller.result()
