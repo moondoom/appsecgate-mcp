@@ -18,7 +18,7 @@ def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch a frozen OSV snapshot for report CVE/GHSA IDs")
     parser.add_argument(
         "--pattern",
-        default="artifacts/agent300-preflight-gemmaq3-p4-*/report.json",
+        default="artifacts/agent300-preflight-gemmaq3-p1-*/report.json",
     )
     parser.add_argument("--prefix", default="agent300")
     return parser.parse_args()
