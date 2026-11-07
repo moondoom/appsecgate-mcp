@@ -611,7 +611,28 @@ overlap and no head-of-line blocking, not raw throughput. The "2–4%
 CPU" in `ollama ps` is the idle vision encoder (mmproj ~1.1 GB)
 CPU-mapped, not compute layers — no perf impact for text-only runs.
 
-## 13. References (as cited in review)
+## 14. Planned: guided tuning sweep and timeout calibration (2026-11-07)
+
+`experiments/tp-0001/scenario_add.md` supersedes the proposed lane-switching
+design **only after its acceptance gates pass**; §8 is not retroactively
+marked accepted or superseded before that experiment. The target design is
+one `guided` mode with constant `num_ctx=36864`, `internal_parallel`,
+`batch_sort=mode_major`, and `internal × external ≤ 4` enforced by the
+launcher. Lanes remain telemetry only.
+
+Timeout rule for that experiment: **600 s provisional**, not 90 s. The §8.A
+p99=48 s distribution was measured at different concurrency and cannot cap
+four-slot traffic; at ~20 t/s per stream a legitimate 2048-token response
+takes ~102 s before prefill. Arm D at 600 s supplies a fresh distribution;
+the production timeout is then `p99 × 1.5` rounded to 30 s, after checking
+that slower calls are genuine failures. Acceptance separately gates
+`context_overflow ≤5%` and `timeout ≤1%`; only the former answers whether
+32k is sufficient. Wall-speed gates use `speedup = wall(baseline arm) /
+wall(candidate arm)`, and verdict parity compares arms with identical batch
+composition and prompt hashes. Cache-hit analysis requires explicit cache
+counters, never `(prompt_tokens − prompt_eval_count) / prompt_tokens`.
+
+## 15. References (as cited in review)
 
 - Beyond Prediction: Tail-Aware Scheduling (ICML 2026) — prediction-based
   schedulers are fragile to distribution shift; P99 tail degrades even

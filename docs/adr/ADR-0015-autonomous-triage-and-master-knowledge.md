@@ -55,6 +55,8 @@ In `guided` mode the harness drives a deterministic loop: it pages the inventory
 
 **Reuse validation (2026-11-06):** controlled rev1v3 runs validated fresh reuse and append-only revisions; see ADR-0017. Numeric confidence is the legacy protocol. ADR-0018 proposes categorical evidence-based confidence for new events, per-mode prompt-hash invalidation, and master-owned severity escalation. Historical numeric events remain unchanged but are excluded from the new protocol.
 
+**Guided-redesign addendum (2026-11-07, pending acceptance):** after the retry/split policy is exhausted, context overflow and call timeout will no longer leave a finding indefinitely pending. They produce terminal `NEEDS_REVIEW` with `failure_reason=context_overflow|timeout` and `failure_detail`, distinguishing model-judged review from model failure. Such terminal events count toward coverage but not `failed_findings`; missing findings and unhandled infrastructure failures remain pending/failed. This is a deliberate change to the paragraph above, not a silent relaxation of “missing findings are not converted into NEEDS_REVIEW”: only a measured model failure after retries qualifies. Acceptance uses a provisional 600 s call timeout; a smaller value requires calibration at the actual four-slot operating point. Implementation and gates: `experiments/tp-0001/scenario_add.md`; timeout/overflow evidence: ADR-0016 §12 and §14.
+
 ## 4. Controller
 
 The controller does not make security decisions. It owns:

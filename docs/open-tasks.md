@@ -88,8 +88,10 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
   явный pending (`failed_findings`, `guided_incomplete`), не NEEDS_REVIEW.
 - **Токен-бюджет:** превышение — ошибка только при pending; полный triage
   завершается с warning (ADR-0015 §10).
-- **Ollama:** `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q8_0` (принят по parity),
-  `PREFILL_CACHE=1`, `KEEP_ALIVE=-1`, `LOAD_TIMEOUT=20m`.
+- **Ollama:** `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q4_0` (2026-11-06 probes:
+  verdict/throughput parity with q8, ~2× lower KV memory), `PREFILL_CACHE=1`,
+  `KEEP_ALIVE=-1`, `LOAD_TIMEOUT=20m`, explicit `NUM_PARALLEL=4` (auto gave
+  one slot), per-request `num_ctx=36864` constant.
 - **Эталоны:** CodeWiki 85/85 (175–186 сек), zep 256/256 (582–650 сек,
   ~0,5M tokens). DeepSeek-4.1 guided: те же покрытия в ~2× быстрее.
 - **Инфраструктура:** `APPSECGATE_AGENT_MODE` проброшен в `invoke-docker.sh`;
@@ -103,10 +105,9 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
 - **Обязательно:** несколько валидационных прогонов с оптимизированной
   конфигурацией ollama до preflight. Раньше оптимизация была дефолтной,
   теперь параметры подобраны под конкретную модель (владелец стенда).
-- **Выбрать тип KV cache: q4 или q8.** Критерий — совпадение verdicts с
-  эталонными прогонами g2/g3b по finding_id (q4 дешевле по памяти, q8 точнее);
-  при расхождениях берём q8. Выбор фиксируется в frozen run config вместе с
-  параметрами ollama; timing-метрики до/после оптимизации несравнимы.
+- **KV cache: q4_0 принят 2026-11-06.** Salted-context probes показали
+  паритет q4/q8 на ctx 4k–32k и par 1–4; q4 экономит ~2× KV memory. Дополнительная
+  проверка verdicts относится к acceptance guided-redesign ниже.
 - Включение prefix caching влияет только на latency/cost, не на verdicts;
   в guided общий префикс мал (~10–15% prompt), поэтому это throughput-оптимизация,
   а не условие корректности эксперимента.
@@ -114,7 +115,8 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
   с запасом (zep ≈ 0,5M).
 - **Выполнено:** валидация ollama `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q8_0`,
   `PREFILL_CACHE=1`, `KEEP_ALIVE=-1` — g4/g5: verdicts совпали с эталоном
-  (CodeWiki 85/85, zep 256/256, 0 failed). q8_0 принят.
+  (CodeWiki 85/85, zep 256/256, 0 failed). Позднее q4_0 заменил q8_0 по
+  отдельным probe-замерам 2026-11-06.
 
 ## Ступени основного эксперимента и лимиты времени (2026-11-05)
 
@@ -131,9 +133,13 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
 | 4. Повторы | `experiment-agent300-repeat` (10 dev) | 1 ч | стабильность verdicts |
 | 5. Отчёт | funnel, blind review, итог | 2 ч | — |
 
-**Лимиты на уровне репозитория (уже реализованы, не менять без необходимости):**
-- agent `--timeout=1800` (30 мин), внешний `timeout 35m` контейнера в
-  `invoke-docker.sh`; превышение → явный `exit_reason=timeout`, не зависание.
+**Лимиты на уровне репозитория (обновлены 2026-11-06 после fix1):**
+- agent `--timeout` управляется `APPSECGATE_AGENT_TIMEOUT` (default 7200 s),
+  внешний `APPSECGATE_RUN_WALL_TIMEOUT` (default 130m); превышение → явный
+  `exit_reason=timeout`, не зависание. Старые 1800 s/35m оказались недостаточны
+  для bitcore. CLI-значения в launcher больше не перекрывают env молча.
+- Per-call LLM timeout `APPSECGATE_LLM_TIMEOUT=600`; guided-redesign вводит
+  отдельный `APPSECGATE_LLM_FAILURE_TIMEOUT_S` с калибровкой по scenario_add.
 - Токен-бюджет `APPSECGATE_AGENT_MAX_TOKENS`: ошибка только при pending.
 
 **Завершение ступени/эксперимента по лимиту времени:**
@@ -144,6 +150,24 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
   (`report_generated`/`gate_block`) пропускаются; timeout/error перезапускаются.
 - Каждая остановка фиксируется в отчёте ступени: сколько runs завершено,
   сколько перенесено, причина. Прерванный run не считается покрытым корпусом.
+
+## Guided redesign and acceptance (registered 2026-11-07)
+
+Source of truth: `experiments/tp-0001/scenario_add.md`; protocol changes:
+ADR-0015 §4 addendum, ADR-0016 §12/§14. These are planned tasks, not completed
+implementation. The earlier fixes (constant request `num_ctx`, four explicit
+ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
+
+| ID | Task | Status | Gate / blocker |
+|---|---|---|---|
+| GD-1 | Fold `guided_sched` into one `guided`; remove classifier/lane switching/lane affinity, retain lane counters as telemetry | open | ADR-0016 §8 remains proposed until GD-6 |
+| GD-2 | Add terminal `NEEDS_REVIEW(model_failed)` with `failure_reason=context_overflow|timeout` and `failure_detail` after retries; update journal queries/tests | open | ADR-0015 §4 addendum; coverage excludes these from `failed_findings` |
+| GD-3 | Pre-send exact-model tokenization including tools/template and `llm_max_tokens + output_safety_margin`; route overflow without LLM | open | tokenizer source/version must be chosen; no new production dependency without owner approval |
+| GD-4 | Add `internal_parallel`, `batch_sort=mode_major|none`; launcher fail-fast on `internal × external > 4` | open | external process count belongs to launcher, not agent |
+| GD-5 | Per-call journal telemetry + Prometheus GPU/clock/VRAM/RAM windows; explicit cache counters or `cache_metrics_unavailable` | open | verify metric names and 1 s scrape before measured runs; never infer cache hits from `prompt_eval_count` |
+| GD-6 | Acceptance ACC-B (1×2) vs ACC-D (2×2) on atopile/costrict/CodeWiki, reuse OFF, timeout 600 s | open, gates GD-1…GD-5 | G1 speedup ≥1.15; parity D vs B; overflow ≤5%; timeout ≤1%; 90 min cap |
+| GD-7 | Full A–E sweep, D1/D2 sorting, timeout calibration at arm D, ≥30 min sustained load | after GD-6 | derive timeout `p99×1.5` before reducing 600 s; results to ADR-0016 §14 |
+| GD-8 | Apply ADR-0016 status changes and decide corpus-300 production point | after GD-6/GD-7 and human calibration | no severity escalation, no Mode B, corpus remains a separate delivery |
 
 ## Прочие направления
 
@@ -251,18 +275,15 @@ deployment evidence. Решения не перезаписывают исход
 
 ### ADR-0018 follow-ups (зарегистрировано 2026-11-06, по итогам adr18smoke)
 
-- **open: перенести вычисление `quote_hash` с модели на edge** (addendum к
-  ADR-0018 §3.1). Сейчас промпты просят у модели SHA-256 цитаты, а edge
-  валидатор считает его сам и сравнивает — модель детерминированно не может
-  его угадать, поэтому 100% model-`high` с цитатой уходят в `medium` через
-  `quote_mismatch` (2/2 в adr18smoke). Модель должна отдавать только
-  `evidence_quote`; edge считает hash и проверяет вхождение raw-цитаты в
-  источник. Блокеров нет, ждёт решения владельца после spec-as-written baseline.
-- **open: заменить арифметическую проверку содержательной** — «quote appears in
-  source» (substring/fuzzy) как anti-hallucination check. Требует заранее
-  решить конфликт redaction vs matching для секретов: проверка raw до redaction,
-  двойной hash (raw + redacted) или отдельная secrets-политика. Решать до
-  фикса, иначе фикс будет половинчатым.
+- **done 2026-11-06 (commit e338f26): `quote_hash` вычисляет edge, не модель.**
+  Поле удалено из `submit_verdicts`; модель отдаёт только `evidence_quote`,
+  edge считает SHA-256. Baseline подтвердил дефект спецификации: 0 surviving
+  high, 632 arithmetic `quote_mismatch`.
+- **done 2026-11-06 (commit e338f26): арифметическая проверка заменена
+  содержательной** — whitespace-normalized substring «quote appears in source».
+  **Осталось open:** формальная политика redaction-vs-matching для секретов
+  (raw до redaction, двойной hash или отдельная secrets-политика) — отдельный
+  маленький ADR/addendum.
 - **Правило для будущих серий (третий повтор паттерна):** перед запуском серии
   измерений smoke обязан проверять, что измеряемая величина вообще может быть
   измерена данным протоколом. ADR-0016 мерил cache-hit вместо prefill, ADR-0017
