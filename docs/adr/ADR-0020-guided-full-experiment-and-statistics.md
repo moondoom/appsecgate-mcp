@@ -380,16 +380,24 @@ reliably. Free mode retains all master tools.
 
 ### 7.2 Data-gated actions
 
-**Executed 2026-11-07 (GD-13), provisional pending NR ablation
-(`artifacts/read-project-file-ablation.json`).** Removal is confirmed only
-if NR inflation is ≤10 percentage points on atopile; above that threshold
-`read_project_file` is restored under a dedicated flag. The frozen corpus
-config must not be finalized until this ablation is complete.
-`artifacts/master-tools-usage.json`: across 40
-guided runs (agent300fix1, agent300adr18, agent300review, accb/accb2/accd/acce)
-master tools were called **0 times**; model evidence usage is
-`read_project_file` (6232 calls) plus harness-side `get_fix_context_batch`.
-No verdict depends on master calls. Therefore:
+**Executed 2026-11-07 (GD-13), confirmed 2026-11-07 by NR ablation
+(`artifacts/read-project-file-ablation.json`).** Same-session atopile cells at
+operating point E, identical `inventory_hash` and `prompt_sha256`: Mode B on
+NR 5/167 (3.0 %) vs Mode B off NR 2/167 (1.2 %) — ΔNR = −1.8 pp, within the
+≤5 pp confirmation band and far below the 10 pp revert threshold. Verdict
+parity 162/167 (3.0 % drift, within the 5.4 % noise floor). Removal of
+model-visible `read_project_file` from the default guided tool set is
+**confirmed**.
+
+**Correction to the usage figure.** The earlier "6232 `read_project_file`
+calls across 40 runs (≈156/run)" came from `runner.action_log`, which logs
+harness-side manifest prefetch (`guided_payload._manifest_contents`)
+identically to model-driven calls. Model-driven evidence reads
+(`usage.evidence_reads`) are **0 across all guided runs** (fix1, adr18,
+review, acceptance, sweep, ablations) — the model never called
+`read_project_file` even when it was advertised. Master tools were likewise
+called **0 times** (`artifacts/master-tools-usage.json`, 40 runs). No verdict
+depends on either. Therefore:
 
 - `master_describe_schema` and `master_query_findings_db` are removed from the
   guided tool list (free mode unchanged);
@@ -399,8 +407,12 @@ No verdict depends on master calls. Therefore:
 
 Disclosure: the GD-6/GD-7 runs executed before this change had
 `read_project_file` model-visible (equivalent to Mode B on); the frozen
-corpus config runs with Mode B off, so a corpus smoke must confirm NR rates
-do not inflate without file reads.
+corpus config runs with Mode B off. The same-session NR ablation above
+measured exactly these two states and found no inflation. Additionally, the
+guided evidence loop now enforces the advertised tool allow-list at execution
+time (`blocked_tool_calls` stat): calls to tools hidden by Mode B are rejected
+instead of silently executed — the ablation confirmed 0 such attempts, so this
+is defense-in-depth, not a behavior change.
 
 Before removal, analyze fix1, agent300review and rev1v3 logs for master-call
 frequency, iterations/tokens spent and verdict differences. Artifact:

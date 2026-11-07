@@ -686,7 +686,7 @@ Raw aggregates: `artifacts/guided-tuning-summary.json`.
 |---|---|---|
 | G1 speedup D vs B (atopile) | 1.363 | pass, but G1b already rejected D |
 | G2 per-repo winners | heavy: E everywhere (714/508/251 s vs D 1370/1156/524); small: no signal | per-class: E for all measured classes |
-| G3 D1 vs D2 sorting | wall delta 36.7 % (D2 868 s vs D 1370 s), cache counters unavailable → wall-only rule | **provisional**: sorting retained pending a same-session ablation (`artifacts/sort-ablation-same-session.json`). The cross-session delta (accd in the acceptance window, swd2 in the sweep window) is not a valid basis for a keep/remove decision; the provisional default is `mode_major`, removal if a same-session rerun shows > 15 % wall in favor of `none` |
+| G3 D1 vs D2 sorting | cross-session wall delta 36.7 % (D2 868 s vs D 1370 s) refuted by same-session ablation | **confirmed: sorting retained.** Same-session ablation on atopile (`artifacts/sort-ablation-same-session.json`, asa-d vs asa-d2, identical inventory_hash and prompt_sha256): `mode_major` 738 s vs `none` 891 s — Δwall −17.2 % in favor of sorting, i.e. the cross-session delta was a confound, not a sorting cost. Verdict drift between cells 5/167 (3.0 %), within the 5.4 % noise floor |
 | G4 winner P99 vs A | E 0.74× (atopile), 0.70× (costrict) | pass |
 | G5 drift winner vs B | CodeWiki 0/85; structlog vacuous (0 findings) | pass |
 
