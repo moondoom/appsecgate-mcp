@@ -613,9 +613,9 @@ CPU-mapped, not compute layers — no perf impact for text-only runs.
 
 ## 14. Planned: guided tuning sweep and timeout calibration (2026-11-07)
 
-`experiments/tp-0001/scenario_add.md` supersedes the proposed lane-switching
-design **only after its acceptance gates pass**; §8 is not retroactively
-marked accepted or superseded before that experiment. The target design is
+ADR-0019 supersedes the proposed lane-switching design **only after its
+acceptance gates pass**; §8 is not retroactively marked accepted or
+superseded before that experiment. The target design is
 one `guided` mode with constant `num_ctx=36864`, `internal_parallel`,
 `batch_sort=mode_major`, and `internal × external ≤ 4` enforced by the
 launcher. Lanes remain telemetry only.

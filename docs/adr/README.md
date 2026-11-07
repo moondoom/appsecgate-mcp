@@ -18,3 +18,6 @@
 | [ADR-0014](ADR-0014-multi-mode-mcp-image.md) | Multi-mode MCP image (serve/sync/ci/agent ro+rw) | Proposed; изменяет G7 ADR-0004 |
 | [ADR-0015](ADR-0015-autonomous-triage-and-master-knowledge.md) | Autonomous triage agent and master knowledge | Accepted |
 | [ADR-0016](ADR-0016-llm-throughput-and-context-lanes.md) | LLM throughput, context lanes and dynamic parallelism | Proposed (замеры завершены; guided-sched не реализован) |
+| [ADR-0017](ADR-0017-ttl-verdict-reevaluation-experiment.md) | TTL verdict reuse and re-evaluation experiment | Proposed |
+| [ADR-0018](ADR-0018-evidence-based-confidence.md) | Evidence-based confidence and master-owned escalation | Proposed |
+| [ADR-0019](ADR-0019-guided-mode-redesign.md) | Guided mode redesign and operating-point acceptance | Proposed (acceptance required) |

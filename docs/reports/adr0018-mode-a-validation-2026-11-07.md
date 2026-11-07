@@ -143,6 +143,6 @@ retries. Raising that budget is an owner decision, not an automatic fix.
 - Open: quote-in-source matching policy for secrets (redaction conflict),
   bitcore sizing/token budget, AIWriteX minified-input handling, corpus 300
   remains frozen until calibration.
-- The next operating-point decision belongs to `scenario_add.md` GD-1…GD-9:
+- The next operating-point decision belongs to ADR-0019 (GD-1…GD-9):
   current production is arm E (4×1), and acceptance must compare D (2×2)
   against both B and E rather than assuming D is an improvement.

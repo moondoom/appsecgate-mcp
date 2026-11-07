@@ -1,10 +1,10 @@
-# AppSecGate Guided Mode Redesign — Full Specification
+# ADR-0019: Guided mode redesign and operating-point acceptance
 
 **Document type:** implementation brief + experiment protocol
-**Supersedes:** previous partial drafts (agent instructions, acceptance, full experiment)
+**Supersedes:** previous partial drafts (including `experiments/tp-0001/scenario_add.md`)
 **Related ADRs:** ADR-0015 (autonomous triage), ADR-0016 (LLM throughput), ADR-0017 (TTL reuse), ADR-0018 (evidence-based confidence)
 **Date:** 2026-11-07
-**Status:** draft for implementation
+**Status:** Proposed; adoption is gated by Part 2 acceptance
 
 ---
 

@@ -139,7 +139,7 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
   `exit_reason=timeout`, не зависание. Старые 1800 s/35m оказались недостаточны
   для bitcore. CLI-значения в launcher больше не перекрывают env молча.
 - Per-call LLM timeout `APPSECGATE_LLM_TIMEOUT=600`; guided-redesign вводит
-  отдельный `APPSECGATE_LLM_FAILURE_TIMEOUT_S` с калибровкой по scenario_add.
+  отдельный `APPSECGATE_LLM_FAILURE_TIMEOUT_S` с калибровкой по ADR-0019.
 - Токен-бюджет `APPSECGATE_AGENT_MAX_TOKENS`: ошибка только при pending.
 
 **Завершение ступени/эксперимента по лимиту времени:**
@@ -153,8 +153,8 @@ DeepSeek-сравнение, mock smoke T-01/T-04/T-07):
 
 ## Guided redesign and acceptance (registered 2026-11-07)
 
-Source of truth: `experiments/tp-0001/scenario_add.md`; protocol changes:
-ADR-0015 §4 addendum, ADR-0016 §12/§14. These are planned tasks, not completed
+Source of truth: ADR-0019; protocol changes: ADR-0015 §4 addendum,
+ADR-0016 §12/§14. These are planned tasks, not completed
 implementation. The earlier fixes (constant request `num_ctx`, four explicit
 ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 
