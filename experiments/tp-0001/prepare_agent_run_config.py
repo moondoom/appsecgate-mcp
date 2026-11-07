@@ -41,7 +41,9 @@ def main() -> None:
     knowledge_cutoff = datetime.now(timezone.utc).isoformat()
     config = {
         "agent_version": "agent-rc-v1",
-        "agent_mode": "guided-sched",
+        "agent_mode": "guided",
+        "internal_parallel": 2,
+        "batch_sort": "mode_major",
         "reuse_ttl": "1h",
         "generated_at": knowledge_cutoff,
         "model": freeze["model"],

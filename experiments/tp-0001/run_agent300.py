@@ -50,6 +50,8 @@ def main() -> None:
             "APPSECGATE_KNOWLEDGE_CUTOFF": knowledge_cutoff,
             "APPSECGATE_LLM_MODEL": config["model"]["litellm_model"],
             "APPSECGATE_AGENT_MODE": config.get("agent_mode", "guided"),
+            "APPSECGATE_AGENT_INTERNAL_PARALLEL": str(config.get("internal_parallel", 2)),
+            "APPSECGATE_AGENT_BATCH_SORT": config.get("batch_sort", "mode_major"),
             "APPSECGATE_AGENT_REUSE_TTL": args.reuse_ttl or config.get("reuse_ttl", "1w"),
             "APPSECGATE_LLM_NUM_CTX": os.environ.get(
                 "APPSECGATE_LLM_NUM_CTX"

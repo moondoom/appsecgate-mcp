@@ -122,10 +122,6 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
                     llm = controller.result()
                 elif config.agent_mode == "guided":
                     llm = await triage_guided(config, controller)
-                elif config.agent_mode == "guided-sched":
-                    from appsecgate_mcp.agent.guided_sched import triage_guided_sched
-
-                    llm = await triage_guided_sched(config, controller)
                 else:
                     llm = await triage(config, controller)
             finally:

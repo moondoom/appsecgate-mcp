@@ -41,8 +41,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mode", choices=["ro"], default="ro")
     parser.add_argument(
         "--agent-mode",
-        choices=["free", "guided", "guided-sched"],
-        default=os.environ.get("APPSECGATE_AGENT_MODE", "free"),
+        choices=["free", "guided"],
+        default=os.environ.get("APPSECGATE_AGENT_MODE", "guided"),
     )
     parser.add_argument("--scan", choices=["full", "diff"], default="full")
     parser.add_argument("--policy", choices=["warn", "block"], default="warn")
@@ -92,13 +92,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=float(os.environ.get("APPSECGATE_AGENT_TIMEOUT", "1800")),
     )
     parser.add_argument(
-        "--sched-parallel",
+        "--internal-parallel",
         type=int,
-        default=int(os.environ.get("APPSECGATE_AGENT_SCHED_PARALLEL", "2")),
+        default=int(os.environ.get("APPSECGATE_AGENT_INTERNAL_PARALLEL", "2")),
     )
     parser.add_argument(
-        "--sched-lanes",
-        default=os.environ.get("APPSECGATE_AGENT_SCHED_LANES", "8192,16384,32768"),
+        "--batch-sort",
+        choices=["mode_major", "none"],
+        default=os.environ.get("APPSECGATE_AGENT_BATCH_SORT", "mode_major"),
     )
     parser.add_argument(
         "--max-iterations",
@@ -208,8 +209,8 @@ def agent_main(argv: list[str] | None = None) -> int:
         llm_top_p=args.llm_top_p,
         llm_max_tokens=args.llm_max_tokens,
         llm_num_ctx=args.llm_num_ctx,
-        sched_parallel=args.sched_parallel,
-        sched_lanes=[int(v) for v in args.sched_lanes.split(",")],
+        internal_parallel=args.internal_parallel,
+        batch_sort=args.batch_sort,
         reuse_verdicts=args.reuse_verdicts,
         reuse_ttl_seconds=args.reuse_ttl,
         timeout=args.timeout,

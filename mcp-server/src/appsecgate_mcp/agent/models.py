@@ -16,7 +16,7 @@ class AgentConfig(BaseModel):
     data_dir: Path
     run_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     mode: Literal["ro"] = "ro"
-    agent_mode: Literal["free", "guided", "guided-sched"] = "free"
+    agent_mode: Literal["free", "guided"] = "guided"
     scan: Literal["full", "diff"] = "full"
     policy: Literal["warn", "block"] = "warn"
     output_format: Literal["markdown", "json"] = "markdown"
@@ -28,8 +28,8 @@ class AgentConfig(BaseModel):
     llm_top_p: float = 1
     llm_max_tokens: int = 2048
     llm_num_ctx: int = 32768
-    sched_parallel: int = 2
-    sched_lanes: list[int] = Field(default_factory=lambda: [8192, 16384, 32768])
+    internal_parallel: int = Field(default=2, ge=1)
+    batch_sort: Literal["mode_major", "none"] = "mode_major"
     timeout: float = 1800
     max_iterations: int = 50
     max_restarts: int = 3
@@ -47,7 +47,7 @@ class AgentConfig(BaseModel):
 
     @property
     def prompt_path(self) -> Path:
-        if self.agent_mode in ("guided", "guided-sched"):
+        if self.agent_mode == "guided":
             return self.guided_prompt_path
         return Path(__file__).parent / "prompts" / "agent_system.md"
 

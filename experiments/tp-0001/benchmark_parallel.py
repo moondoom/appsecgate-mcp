@@ -78,6 +78,12 @@ def run_one(
         APPSECGATE_PROJECT_ID=project_id,
         APPSECGATE_MASTER_API_KEY=keys.get(project_id, ""),
         APPSECGATE_LLM_MODEL=llm_model,
+        APPSECGATE_AGENT_INTERNAL_PARALLEL=os.environ.get(
+            "APPSECGATE_AGENT_INTERNAL_PARALLEL", "2"
+        ),
+        APPSECGATE_AGENT_BATCH_SORT=os.environ.get(
+            "APPSECGATE_AGENT_BATCH_SORT", "mode_major"
+        ),
         CACHE_DIR=str(ROOT / "runtime" / "data-gemma-docker-preflight-001"),
     )
     artifact = ROOT / "artifacts" / run_id
@@ -162,6 +168,15 @@ def main() -> None:
     keys = json.loads(os.environ.get("APPSECGATE_MASTER_API_KEYS", "{}"))
     selected = os.environ.get("BENCH_MODELS", ",".join(MODELS)).split(",")
     parallel_values = [int(value) for value in os.environ.get("BENCH_PARALLELISM", "1,2,4").split(",")]
+    internal_parallel = int(os.environ.get("APPSECGATE_AGENT_INTERNAL_PARALLEL", "2"))
+    num_parallel_max = int(os.environ.get("APPSECGATE_NUM_PARALLEL_MAX", "4"))
+    for parallelism in parallel_values:
+        if internal_parallel * parallelism > num_parallel_max:
+            raise SystemExit(
+                "slot budget exceeded: "
+                f"internal_parallel={internal_parallel} × external={parallelism} "
+                f"> verified_num_parallel_max={num_parallel_max}"
+            )
     projects = [p.strip() for p in os.environ.get("BENCH_PROJECTS", "").split(",") if p.strip()]
     run_count = int(os.environ.get("BENCH_RUNS", "4"))
     output = ROOT / "artifacts" / os.environ.get("BENCH_OUTPUT", "parallel-benchmark.json")

@@ -160,10 +160,10 @@ ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 
 | ID | Task | Status | Gate / blocker |
 |---|---|---|---|
-| GD-1 | Fold `guided_sched` into one `guided`; remove classifier/lane switching/lane affinity, retain lane counters as telemetry | open | ADR-0016 §8 remains proposed until GD-6 |
+| GD-1 | Fold `guided_sched` into one `guided`; remove classifier/lane switching/lane affinity, retain lane counters as telemetry | done | ADR-0016 §8 remains proposed until GD-6 |
 | GD-2 | Add terminal `NEEDS_REVIEW(model_failed)` with `failure_reason=context_overflow|timeout|llm_error` and `failure_detail` after retries; update journal queries/tests | open | ADR-0015 §4 addendum; coverage excludes these from `failed_findings` |
 | GD-3 | Pre-send exact-model tokenization including tools/template and `llm_max_tokens + output_safety_margin`; route overflow without LLM | open | tokenizer source/version must be chosen; no new production dependency without owner approval |
-| GD-4 | Add `internal_parallel`, `batch_sort=mode_major|none` with explicit `(mode,lane,fingerprint)` ordering; launcher fail-fast on `internal × external > 4` | open | external process count belongs to launcher, not agent |
+| GD-4 | Add `internal_parallel`, `batch_sort=mode_major|none` with explicit `(mode,lane,fingerprint)` ordering; launcher fail-fast on `internal × external > 4` | done | external process count belongs to launcher, not agent |
 | GD-5 | Per-call journal telemetry + Prometheus GPU/clock/VRAM/RAM windows; explicit cache counters or `cache_metrics_unavailable` | open | verify metric names and 1 s scrape before measured runs; never infer cache hits from `prompt_eval_count` |
 | GD-6 | Acceptance ACC-B (1×2) and ACC-D (2×2) on atopile/costrict/CodeWiki plus ACC-E (4×1, current production) on atopile; reuse OFF, timeout 600 s | open, gates GD-1…GD-5,GD-9 | D must beat B by ≥1.15 and not regress vs E on wall/P99; parity D vs B; overflow ≤5%; timeout ≤1%; 90 min cap |
 | GD-7 | Full A–E sweep, D1/D2 sorting, timeout calibration at arm D, ≥30 min sustained load | after GD-6 | derive timeout `p99×1.5` before reducing 600 s; results to ADR-0016 §14 |

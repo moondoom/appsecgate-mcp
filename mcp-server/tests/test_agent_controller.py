@@ -68,6 +68,7 @@ def _config(tmp_path, **overrides):
         "data_dir": tmp_path / "data",
         "llm_url": "http://llm.test/v1",
         "llm_model": "test-model",
+        "agent_mode": "free",
     }
     values.update(overrides)
     return AgentConfig(**values)

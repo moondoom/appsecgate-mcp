@@ -17,6 +17,7 @@ from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
 
 _MAX_SPLIT_DEPTH = 5
 _MAX_BATCH_ITERATIONS = 4
+_LANE_TELEMETRY_BUCKETS = (8192, 16384)
 _EVIDENCE_TOOLS = {
     "submit_verdicts",
     "read_project_file",
@@ -117,6 +118,31 @@ async def _manifest_contents(
     return contents
 
 
+async def _build_payload(
+    controller: AgentController,
+    project_context: dict[str, str],
+    chunk: list[str],
+    findings: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    contexts = await controller.call("get_fix_context_batch", {"finding_ids": chunk})
+    manifests = await _manifest_contents(controller, chunk, findings)
+    return {
+        "task": "Submit one verdict for every provided finding ID.",
+        "project_context": project_context,
+        "findings": [findings[fid] for fid in chunk if fid in findings],
+        "contexts": contexts,
+        "manifest_files": manifests,
+    }
+
+
+def _telemetry_lane(config: AgentConfig, payload: dict[str, Any]) -> int:
+    estimate = len(json.dumps(payload, ensure_ascii=False, default=str)) // 3
+    for lane in (*_LANE_TELEMETRY_BUCKETS, config.llm_num_ctx):
+        if estimate <= lane:
+            return lane
+    return config.llm_num_ctx
+
+
 async def _triage_chunk(
     config: AgentConfig,
     controller: AgentController,
@@ -128,9 +154,6 @@ async def _triage_chunk(
     usage: dict[str, Any],
     stats: dict[str, int],
     depth: int,
-    num_ctx: int | None = None,
-    lanes: list[int] | None = None,
-    lane_index: int = 0,
     payload: dict[str, Any] | None = None,
 ) -> None:
     chunk = [fid for fid in chunk if fid in controller.pending]
@@ -138,24 +161,9 @@ async def _triage_chunk(
         return
     stats["batches"] += 1
     if payload is None:
-        contexts = await controller.call("get_fix_context_batch", {"finding_ids": chunk})
-        manifests = await _manifest_contents(controller, chunk, findings)
-        payload = {
-            "task": "Submit one verdict for every provided finding ID.",
-            "project_context": project_context,
-            "findings": [findings[fid] for fid in chunk if fid in findings],
-            "contexts": contexts,
-            "manifest_files": manifests,
-        }
-    if lanes is not None:
-        estimate = len(json.dumps(payload, ensure_ascii=False, default=str)) // 3 + 4000
-        computed = next((i for i, lane in enumerate(lanes) if estimate <= lane), len(lanes) - 1)
-        lane_index = max(lane_index, computed)
-        lane_ctx = lanes[lane_index]
-        stats[f"lane_{lane_ctx}"] = stats.get(f"lane_{lane_ctx}", 0) + 1
-        # Keep request num_ctx constant (config.llm_num_ctx): per-lane num_ctx
-        # makes ollama reload the runner per lane, wiping the prefix cache.
-        num_ctx = None
+        payload = await _build_payload(controller, project_context, chunk, findings)
+    lane = _telemetry_lane(config, payload)
+    stats[f"lane_{lane}"] = stats.get(f"lane_{lane}", 0) + 1
     modes = {controller.finding_modes.get(finding_id, "sast") for finding_id in chunk}
     messages = [
         {"role": "system", "content": config.system_prompt_for_modes(modes)},
@@ -165,7 +173,9 @@ async def _triage_chunk(
     truncated = False
     for _ in range(_MAX_BATCH_ITERATIONS):
         try:
-            response = await asyncio.to_thread(_request, config, messages, tools, num_ctx)
+            response = await asyncio.to_thread(
+                _request, config, messages, tools, config.llm_num_ctx
+            )
         except LlmError as exc:
             if "token repeat limit reached" not in str(exc):
                 raise
@@ -173,10 +183,6 @@ async def _triage_chunk(
         if response is None:
             break
         _add_usage(usage, response)
-        if lanes is not None:
-            actual = getattr(getattr(response, "usage", None), "prompt_tokens", 0) or 0
-            if actual + config.llm_max_tokens > lane_ctx:
-                stats["lane_underestimated"] += 1
         message = _message(response)
         truncated = getattr(response.choices[0], "finish_reason", None) == "length"
         if truncated:
@@ -218,24 +224,6 @@ async def _triage_chunk(
         return
     if truncated or arguments is None or accepted == 0:
         stats["batch_retries"] += 1
-    if truncated and lanes is not None and lane_index + 1 < len(lanes):
-        stats["lane_escalations"] += 1
-        await _triage_chunk(
-            config,
-            controller,
-            system,
-            tools,
-            project_context,
-            remaining,
-            findings,
-            usage,
-            stats,
-            depth,
-            lanes[lane_index + 1],
-            lanes,
-            lane_index + 1,
-        )
-        return
     if depth >= _MAX_SPLIT_DEPTH or (len(remaining) == 1 and accepted == 0):
         stats["failed_findings"] += len(remaining)
         return
@@ -251,9 +239,6 @@ async def _triage_chunk(
             usage,
             stats,
             depth + 1,
-            num_ctx,
-            lanes,
-            lane_index,
         )
         return
     middle = len(remaining) // 2
@@ -269,10 +254,36 @@ async def _triage_chunk(
             usage,
             stats,
             depth + 1,
-            num_ctx,
-            lanes,
-            lane_index,
         )
+
+
+async def _prepare_batches(
+    config: AgentConfig,
+    controller: AgentController,
+    project_context: dict[str, str],
+    findings: dict[str, dict[str, Any]],
+    batch_size: int,
+) -> list[tuple[str, int, str, list[str], dict[str, Any]]]:
+    pending = [fid for fid in controller.finding_ids if fid in controller.pending]
+    grouped: list[list[str]] = []
+    if config.batch_sort == "none":
+        grouped = _chunks(pending, batch_size)
+    else:
+        by_mode: dict[str, list[str]] = {}
+        for finding_id in pending:
+            mode = controller.finding_modes.get(finding_id, "sast")
+            by_mode.setdefault(mode, []).append(finding_id)
+        for mode in sorted(by_mode):
+            grouped.extend(_chunks(by_mode[mode], batch_size))
+    prepared = []
+    for chunk in grouped:
+        payload = await _build_payload(controller, project_context, chunk, findings)
+        mode = controller.finding_modes.get(chunk[0], "sast")
+        lane = _telemetry_lane(config, payload)
+        prepared.append((mode, lane, min(chunk), chunk, payload))
+    if config.batch_sort == "mode_major":
+        prepared.sort(key=lambda item: (item[0], item[1], item[2]))
+    return prepared
 
 
 async def triage_guided(config: AgentConfig, controller: AgentController) -> LlmResult:
@@ -295,14 +306,35 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
             break
         cursor = page["next_cursor"]
     usage: dict[str, Any] = {}
-    stats = {"batches": 0, "batch_retries": 0, "failed_findings": 0, "evidence_reads": 0}
+    stats: dict[str, Any] = {
+        "batches": 0,
+        "batch_retries": 0,
+        "failed_findings": 0,
+        "evidence_reads": 0,
+    }
     await reuse_prior_verdicts(config, controller, stats)
     batch_size = _batch_size(config)
-    pending = [fid for fid in controller.finding_ids if fid in controller.pending]
-    for chunk in _chunks(pending, batch_size):
-        await _triage_chunk(
-            config, controller, system, tools, project_context, chunk, findings, usage, stats, 0
-        )
+    prepared = await _prepare_batches(config, controller, project_context, findings, batch_size)
+    semaphore = asyncio.Semaphore(max(1, config.internal_parallel))
+
+    async def _worker(chunk: list[str], payload: dict[str, Any]) -> None:
+        async with semaphore:
+            await _triage_chunk(
+                config,
+                controller,
+                system,
+                tools,
+                project_context,
+                chunk,
+                findings,
+                usage,
+                stats,
+                0,
+                payload=payload,
+            )
+
+    if prepared:
+        await asyncio.gather(*(_worker(chunk, payload) for _, _, _, chunk, payload in prepared))
     result = controller.result()
     result.usage = {
         **usage,
@@ -310,6 +342,8 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         **stats,
         "agent_mode": "guided",
         "batch_size": batch_size,
+        "batch_sort": config.batch_sort,
+        "internal_parallel": config.internal_parallel,
         "iterations": stats["batches"],
     }
     if controller.pending:

@@ -3,6 +3,57 @@ from __future__ import annotations
 from appsecgate_mcp.agent.cli import agent_main
 
 
+def test_agent_reads_guided_execution_parameters(monkeypatch, tmp_path):
+    captured = {}
+
+    async def fake_run(config):
+        captured.update(
+            agent_mode=config.agent_mode,
+            internal_parallel=config.internal_parallel,
+            batch_sort=config.batch_sort,
+        )
+        return {
+            "run_id": config.run_id,
+            "mode": "ro",
+            "model": config.llm_model,
+            "findings": [],
+            "verdicts": [],
+            "patches": [],
+            "GateSummary": {"should_fail": False},
+            "action_log": [],
+            "usage": {},
+            "warnings": [],
+            "exit_reason": "report_generated",
+        }
+
+    monkeypatch.setattr("appsecgate_mcp.agent.cli.run_agent", fake_run)
+    monkeypatch.setenv("APPSECGATE_AGENT_INTERNAL_PARALLEL", "2")
+    monkeypatch.setenv("APPSECGATE_AGENT_BATCH_SORT", "none")
+
+    result = agent_main(
+        [
+            "--project",
+            str(tmp_path),
+            "--data-dir",
+            str(tmp_path / "data"),
+            "--llm-url",
+            "http://llm.test/v1",
+            "--llm-model",
+            "test-model",
+            "--no-sync",
+            "--output-format",
+            "json",
+        ]
+    )
+
+    assert result == 0
+    assert captured == {
+        "agent_mode": "guided",
+        "internal_parallel": 2,
+        "batch_sort": "none",
+    }
+
+
 def test_empty_knowledge_cutoff_means_no_cutoff(monkeypatch, tmp_path, capsys):
     captured = {}
 
