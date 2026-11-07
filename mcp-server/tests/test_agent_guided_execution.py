@@ -345,6 +345,34 @@ def test_guided_reserved_token_ledger(monkeypatch, tmp_path):
     assert result.usage["reserved_tokens_max"] == max(r["reserved_tokens"] for r in records)
 
 
+def test_guided_resumes_from_journal(monkeypatch, tmp_path):
+    sent = []
+
+    def fake_request(config, messages, tools, max_tokens=None):
+        payload = json.loads(messages[1]["content"])
+        sent.extend(item["finding_id"] for item in payload["findings"])
+        return _response([_submit(*[item["finding_id"] for item in payload["findings"]])])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True)
+    prior = {
+        "event_type": "triage_verdicted",
+        "fp": "fp-1",
+        "verdict": "TRUE_POSITIVE",
+        "explanation": "done before crash",
+        "confidence_level": "high",
+    }
+    (data_dir / "triage_verdicts.ndjson").write_text(json.dumps(prior) + "\n")
+
+    result = asyncio.run(_run(tmp_path, _Backend(["fp-1", "fp-2", "fp-3"]), llm_max_tokens=200))
+
+    assert "fp-1" not in sent
+    assert sorted(sent) == ["fp-2", "fp-3"]
+    assert result.usage["resumed_verdicts"] == 1
+    assert result.usage["verdicts_returned"] == 3
+
+
 def test_guided_tool_list_gating(monkeypatch, tmp_path):
     seen_tools = []
 

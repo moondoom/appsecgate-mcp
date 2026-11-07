@@ -22,6 +22,7 @@ from appsecgate_mcp.agent.llm import (
     _response_usage,
 )
 from appsecgate_mcp.agent.models import AgentConfig, LlmResult
+from appsecgate_mcp.agent.resume import resume_from_journal
 from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
 
 _MAX_SPLIT_DEPTH = 5
@@ -331,6 +332,9 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         "timed_out_calls": 0,
         "evidence_reads": 0,
     }
+    resumed = resume_from_journal(config, controller)
+    if resumed:
+        stats["resumed_verdicts"] = resumed
     await reuse_prior_verdicts(config, controller, stats)
     call_journal = CallJournal(config)
     reserved: dict[str, int] = {}
