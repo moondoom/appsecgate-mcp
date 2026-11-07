@@ -184,6 +184,8 @@ ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 - AG-6/AG-9 относятся к отдельному `appsecgate-agent` и не заменяют MM-3.
 - Semantic dedup P1/P2, SonarQube, дашборды и MS-8 не блокируют TP-0001.
 - E2E classic CI-полигон ведётся отдельно от TP-0001 (ADR-0003 §9).
+- SARIF-импорт отчётов внешних сканеров: draft ADR-0021 на ревью у владельца
+  (2026-11-07, untracked до ревью).
 
 ## REV-1: Re-evaluation mode (зарегистрировано 2026-11-06, правила — открытый вопрос)
 
