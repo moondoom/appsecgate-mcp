@@ -282,6 +282,9 @@ experiment-kv-probe: ## Экспресс-проба ollama: контекст × 
 experiment-preflight: ## GD-11 fail-fast preflight: slot budget, model digest, Prometheus metrics
 	cd experiments/tp-0001 && python3 preflight.py --output artifacts/preflight-$(shell date +%Y%m%d-%H%M%S).json
 
+experiment-funnel-cost: ## Воронка × токены по серии runs (LABEL=accb|...)
+	cd experiments/tp-0001 && python3 collect_funnel_cost.py --label $(LABEL)
+
 clean: ## Удалить локальные артефакты uv всех пакетов
 	cd $(SERVER_DIR) && rm -rf .venv .pytest_cache .ruff_cache
 	cd $(MASTER_DIR) && rm -rf .venv .pytest_cache .ruff_cache
