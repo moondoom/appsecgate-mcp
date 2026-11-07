@@ -107,10 +107,14 @@ def test_guided_groups_prompts_by_mode_and_telemetry_lane(monkeypatch, tmp_path)
     backend = _Backend(["fp-sast", "fp-cve", "fp-iac"])
     seen = []
 
-    def fake_request(config, messages, tools, num_ctx=None):
+    def fake_request(config, messages, tools):
         payload = json.loads(messages[1]["content"])
         seen.append(
-            (num_ctx, messages[0]["content"], [item["finding_id"] for item in payload["findings"]])
+            (
+                config.llm_num_ctx,
+                messages[0]["content"],
+                [item["finding_id"] for item in payload["findings"]],
+            )
         )
         return _response([_submit(payload["findings"][0]["finding_id"])])
 
@@ -245,3 +249,30 @@ def test_guided_preflight_overflow_splits_batch(monkeypatch, tmp_path):
     assert result.usage["missing"] == 0
     assert result.usage["model_failed_findings"] == 0
     assert result.usage["batch_retries"] >= 1
+
+
+def test_guided_writes_per_call_journal(monkeypatch, tmp_path):
+    def fake_request(config, messages, tools):
+        finding_id = json.loads(messages[1]["content"])["findings"][0]["finding_id"]
+        return _response([_submit(finding_id)])
+
+    monkeypatch.setattr("appsecgate_mcp.agent.guided._request", fake_request)
+    config_overrides = {"llm_max_tokens": 200}
+    result = asyncio.run(_run(tmp_path, _Backend(["fp-1", "fp-2"]), **config_overrides))
+
+    journal_path = tmp_path / "data" / "llm_calls.ndjson"
+    records = [json.loads(line) for line in journal_path.read_text().splitlines()]
+    assert len(records) == 2
+    for record in records:
+        assert record["num_ctx"] == 32768
+        assert record["run_id"] == result.usage.get("run_id", record["run_id"])
+        assert record["batch_id"]
+        assert record["mode"] == "sast"
+        assert record["prompt_tokens"] is None or isinstance(record["prompt_tokens"], int)
+        assert record["cache_read_tokens"] is None
+        assert record["prompt_cache_hit_tokens"] is None
+        assert record["failure_reason"] is None
+        assert record["wall_ms"] >= 0
+        assert record["start_ts"] <= record["end_ts"]
+    assert result.usage["cache_metrics_unavailable"] == 1
+    assert result.usage["failure_timeout_s"] == 600

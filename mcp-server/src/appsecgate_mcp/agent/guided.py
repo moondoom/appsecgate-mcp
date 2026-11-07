@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import time
+from datetime import UTC, datetime
 from typing import Any
 
+from appsecgate_mcp.agent.call_journal import CallJournal
 from appsecgate_mcp.agent.controller import AgentController
 from appsecgate_mcp.agent.guided_failures import mark_model_failed
 from appsecgate_mcp.agent.guided_payload import _build_payload
@@ -14,6 +18,7 @@ from appsecgate_mcp.agent.llm import (
     _message,
     _project_context,
     _request,
+    _response_usage,
 )
 from appsecgate_mcp.agent.models import AgentConfig, LlmResult
 from appsecgate_mcp.agent.reuse import reuse_prior_verdicts
@@ -89,6 +94,7 @@ async def _triage_chunk(
     findings: dict[str, dict[str, Any]],
     usage: dict[str, Any],
     stats: dict[str, Any],
+    call_journal: CallJournal,
     depth: int,
     payload: dict[str, Any] | None = None,
     failure_reason: str | None = None,
@@ -103,6 +109,8 @@ async def _triage_chunk(
     lane = _telemetry_lane(config, payload)
     stats[f"lane_{lane}"] = stats.get(f"lane_{lane}", 0) + 1
     modes = {controller.finding_modes.get(finding_id, "sast") for finding_id in chunk}
+    batch_id = hashlib.sha256(",".join(sorted(chunk)).encode()).hexdigest()[:16]
+    mode = sorted(modes)[0]
     messages = [
         {"role": "system", "content": config.system_prompt_for_modes(modes)},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)},
@@ -127,6 +135,7 @@ async def _triage_chunk(
                     findings,
                     usage,
                     stats,
+                    call_journal,
                     depth + 1,
                 )
             return
@@ -135,14 +144,11 @@ async def _triage_chunk(
     arguments = None
     truncated = False
     for _ in range(_MAX_BATCH_ITERATIONS):
+        started_at = datetime.now(UTC)
+        started = time.monotonic()
+        call_usage: dict[str, Any] | None = None
         try:
-            response = await asyncio.to_thread(
-                _request,
-                config,
-                messages,
-                tools,
-                config.llm_num_ctx,
-            )
+            response = await asyncio.to_thread(_request, config, messages, tools)
         except LlmTimeoutError as exc:
             stats["timed_out_calls"] += 1
             failure_reason = "timeout"
@@ -152,6 +158,18 @@ async def _triage_chunk(
             failure_reason = "llm_error"
             failure_detail = str(exc)[:500]
             response = None
+        if response is not None:
+            call_usage = _response_usage(response)
+        call_journal.append(
+            batch_id=batch_id,
+            mode=mode,
+            started_monotonic=started,
+            ended_monotonic=time.monotonic(),
+            started_at=started_at,
+            usage=call_usage,
+            failure_reason=None if response is not None else failure_reason,
+            failure_detail=None if response is not None else failure_detail,
+        )
         if response is None:
             break
         _add_usage(usage, response)
@@ -211,6 +229,7 @@ async def _triage_chunk(
             findings,
             usage,
             stats,
+            call_journal,
             depth + 1,
             failure_reason=failure_reason,
             failure_detail=failure_detail,
@@ -227,6 +246,7 @@ async def _triage_chunk(
             findings,
             usage,
             stats,
+            call_journal,
             depth + 1,
             failure_reason=failure_reason,
             failure_detail=failure_detail,
@@ -294,6 +314,7 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         "evidence_reads": 0,
     }
     await reuse_prior_verdicts(config, controller, stats)
+    call_journal = CallJournal(config)
     batch_size = _batch_size(config)
     prepared = await _prepare_batches(config, controller, project_context, findings, batch_size)
     semaphore = asyncio.Semaphore(max(1, config.internal_parallel))
@@ -309,12 +330,15 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
                 findings,
                 usage,
                 stats,
+                call_journal,
                 0,
                 payload=payload,
             )
 
     if prepared:
         await asyncio.gather(*(_worker(chunk, payload) for _, _, _, chunk, payload in prepared))
+    if call_journal.cache_metrics_unavailable:
+        stats["cache_metrics_unavailable"] = 1
     result = controller.result()
     result.usage = {
         **usage,
@@ -324,6 +348,7 @@ async def triage_guided(config: AgentConfig, controller: AgentController) -> Llm
         "batch_size": batch_size,
         "batch_sort": config.batch_sort,
         "internal_parallel": config.internal_parallel,
+        "failure_timeout_s": config.llm_failure_timeout,
         "iterations": stats["batches"],
     }
     if controller.pending:

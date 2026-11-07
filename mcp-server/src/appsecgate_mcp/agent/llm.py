@@ -41,7 +41,6 @@ def _request(
     config: AgentConfig,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
-    num_ctx: int | None = None,
 ) -> Any:
     request_timeout = (
         config.llm_failure_timeout if config.agent_mode == "guided" else config.llm_timeout
@@ -58,7 +57,7 @@ def _request(
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            extra_body={"think": False, "num_ctx": num_ctx or config.llm_num_ctx},
+            extra_body={"think": False, "num_ctx": config.llm_num_ctx},
             temperature=config.llm_temperature,
             top_p=config.llm_top_p,
             max_tokens=config.llm_max_tokens,
@@ -77,13 +76,18 @@ def _message(response: Any) -> Any:
         raise LlmProtocolError("LLM returned no message") from exc
 
 
-def _add_usage(target: dict[str, Any], response: Any) -> None:
+def _response_usage(response: Any) -> dict[str, Any]:
     usage = getattr(response, "usage", None)
     if usage is None:
-        return
-    for key, value in usage.model_dump(mode="json").items():
-        if isinstance(value, int):
-            target[key] = target.get(key, 0) + value
+        return {}
+    return {
+        key: value for key, value in usage.model_dump(mode="json").items() if isinstance(value, int)
+    }
+
+
+def _add_usage(target: dict[str, Any], response: Any) -> None:
+    for key, value in _response_usage(response).items():
+        target[key] = target.get(key, 0) + value
 
 
 def _checkpoint_messages(
