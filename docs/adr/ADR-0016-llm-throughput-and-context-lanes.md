@@ -611,7 +611,7 @@ overlap and no head-of-line blocking, not raw throughput. The "2–4%
 CPU" in `ollama ps` is the idle vision encoder (mmproj ~1.1 GB)
 CPU-mapped, not compute layers — no perf impact for text-only runs.
 
-## 14. Planned: guided tuning sweep and timeout calibration (2026-11-07)
+## 14. Guided tuning sweep and timeout calibration (2026-11-07)
 
 ADR-0019 supersedes the proposed lane-switching design **only after its
 acceptance gates pass**; §8 is not retroactively marked accepted or
@@ -634,6 +634,65 @@ composition and prompt hashes. Acceptance includes current-production E
 on wall/P99, not merely because it beats B. Cache-hit analysis requires
 explicit cache counters, never `(prompt_tokens − prompt_eval_count) /
 prompt_tokens`.
+
+### 14.1 Acceptance (GD-6, 2026-11-07, done)
+
+Seven runs, wall 74 min under the 90-min cap, all exit 0. Results in
+`experiments/tp-0001/artifacts/acceptance-guided-gd6.json`.
+
+| Gate | Result | Verdict |
+|---|---|---|
+| G1a speedup D vs B | atopile 1.318, costrict 1.263, CodeWiki 1.089 | pass (CodeWiki in the 1.05–1.15 ambiguous zone) |
+| G1b E vs D on atopile | 0.522 — E is 1.9× faster per-repo | **D rejected, retain E (4×1)** |
+| G2 per-repo P99 | D worse than both B and E | fail |
+| G3' verdict parity B vs D (drift ≤ 2 % on judged intersection) | atopile 4/167, costrict 1/125, CodeWiki 0/85 | pass |
+| G4 context_overflow | 0 | pass |
+| G5 timeout share | 0 | pass |
+| G6 terminal model_failed | 1 llm_error of 377 findings | pass |
+
+G3 root-cause: repeat run `accb2` gives a self-drift noise floor of
+atopile 9/166 (5.4 %), costrict 1/125, CodeWiki 0 — scanner nondeterminism
+(distinct inventory_hash on the same commit) plus serving nondeterminism at
+temp=0. The 2 % drift tolerance (ADR-0019 §0.1.15) is read against this
+floor.
+
+### 14.2 Timeout calibration (arm D, 63 calls)
+
+p50 97 s, p95 130 s, p99 176–199 s; 57 % of calls exceed 90 s (the rejected
+cap), 1.6 % exceed 180 s. Derived production timeout: `p99 × 1.5 ≈ 300 s`
+(kept 600 s failure-timeout as the batch-fatal ceiling). Per-finding
+reserved-token cap is pending the §1.3.4 ledger (GD-15 backlog).
+
+### 14.3 Sweep arms (GD-7)
+
+| Arm | internal × external | Projects | Wall | Notes |
+|---|---|---|---|---|
+| A (swa) | 1×1 | atopile, costrict | TBD | |
+| B (accb, accb2) | 1×2 | heavy set | measured | baseline |
+| C (swc) | 1×4 | atopile, costrict | TBD | |
+| D (accd) | 2×2 | heavy set | measured | rejected by G1b |
+| D2 (swd2) | 2×2, batch_sort=none | atopile | TBD | sort ablation (G3) |
+| E (acce) | 4×1 | atopile | measured | current operating point |
+| E sustained (swe) | 4×1 | costrict, zep, CodeWiki | TBD | ≥30 min thermal/clock check |
+| F (swf) | 2×1 | atopile | TBD | |
+| V (swv) | 4×1 + mode_batch_sizes + adaptive_max_tokens | atopile | TBD | owner-approved variant |
+| B/D/C small (smb, smd, smc) | 1×2 / 2×2 / 1×4 | structlog, aitextgen (+CodeWiki) | TBD | small-repo class |
+
+### 14.4 Sweep gates G1–G5 (ADR-0020 §3.7)
+
+TBD — filled from `artifacts/guided-tuning-summary.json`
+(`make experiment-sweep-summary`) after the sweep completes.
+
+### 14.5 Sustained load
+
+TBD — GPU clock minima / VRAM max / power over the `swe` window
+(`artifacts/gpu-per-arm.json`). Closes §7.C.
+
+### 14.6 Operating-point decision
+
+TBD — per ADR-0020 Part 10: operating point retained at E (4×1) unless G2
+shows per-class winners; §8 marked superseded, §11 renamed prototype,
+§12 kept as the num_ctx baseline. 300-repo corpus is a separate delivery.
 
 ## 15. References (as cited in review)
 
