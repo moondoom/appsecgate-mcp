@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from appsecgate_mcp.agent.controller import AgentController
@@ -52,22 +53,33 @@ def _request(
         timeout=request_timeout,
         max_retries=0,
     )
-    try:
-        return client.chat.completions.create(
-            model=config.llm_model,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            extra_body={"think": False, "num_ctx": config.llm_num_ctx},
-            temperature=config.llm_temperature,
-            top_p=config.llm_top_p,
-            max_tokens=max_tokens or config.llm_max_tokens,
-        )
-    except Exception as exc:
-        marker = f"{type(exc).__name__} {exc}".lower()
-        if "timeout" in marker or "timed out" in marker:
-            raise LlmTimeoutError(f"LLM request timed out: {exc}") from exc
-        raise LlmError(f"LLM request failed: {exc}") from exc
+    for attempt in (0, 1):
+        try:
+            return client.chat.completions.create(
+                model=config.llm_model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                extra_body={"think": False, "num_ctx": config.llm_num_ctx},
+                temperature=config.llm_temperature,
+                top_p=config.llm_top_p,
+                max_tokens=max_tokens or config.llm_max_tokens,
+            )
+        except Exception as exc:
+            marker = f"{type(exc).__name__} {exc}".lower()
+            if "timeout" in marker or "timed out" in marker:
+                raise LlmTimeoutError(f"LLM request timed out: {exc}") from exc
+            # GD-15: one transient transport retry (5xx / connection reset);
+            # never on timeout or invalid output (ADR-0019 GD-9).
+            status_code = getattr(exc, "status_code", None)
+            transient = (isinstance(status_code, int) and status_code >= 500) or (
+                "connection" in marker or "reset" in marker
+            )
+            if attempt == 0 and transient:
+                time.sleep(1)
+                continue
+            raise LlmError(f"LLM request failed: {exc}") from exc
+    raise LlmError("unreachable")
 
 
 def _message(response: Any) -> Any:

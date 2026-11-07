@@ -128,7 +128,7 @@ def test_agent_wrapped_llm_failure_is_exit_2(monkeypatch, tmp_path, capsys):
     assert output["error"] == "request timed out"
 
 
-def test_agent_sync_failure_is_exit_2(monkeypatch, tmp_path):
+def test_agent_sync_failure_is_exit_2(monkeypatch, tmp_path, capsys):
     async def fake_run(config):
         return _report(config)
 
@@ -136,6 +136,7 @@ def test_agent_sync_failure_is_exit_2(monkeypatch, tmp_path):
     monkeypatch.setattr("appsecgate_mcp.agent.cli._sync", lambda config: 1)
 
     assert agent_main(_args(tmp_path) + ["--master-url", "http://master.test"]) == 2
+    assert json.loads(capsys.readouterr().out)["exit_reason"] == "sync_error"
 
 
 class _Message:

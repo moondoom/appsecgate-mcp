@@ -134,8 +134,6 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
         usage["master_knowledge_unavailable"] = 1
     total_tokens = usage.get("total_tokens")
     budget_exceeded = isinstance(total_tokens, int) and total_tokens > config.max_tokens
-    if budget_exceeded and controller.pending:
-        raise AgentError(f"LLM token limit exceeded: {total_tokens}>{config.max_tokens}")
     verdicts = [item.model_dump(mode="json") for item in llm.verdicts]
     warnings = []
     if master_unavailable:
@@ -170,6 +168,12 @@ async def run_agent(config: AgentConfig) -> dict[str, Any]:
         "usage": usage,
         "warnings": warnings,
         "duration_sec": round(time.monotonic() - started, 3),
-        "exit_reason": "gate_block" if gate.get("should_fail") else "report_generated",
+        "exit_reason": (
+            "budget_partial"
+            if budget_exceeded and controller.pending
+            else "gate_block"
+            if gate.get("should_fail")
+            else "report_generated"
+        ),
         "generated_at": datetime.now(UTC).isoformat(),
     }

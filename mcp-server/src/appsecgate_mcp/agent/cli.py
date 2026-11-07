@@ -13,7 +13,7 @@ from pathlib import Path
 from appsecgate_mcp.agent.llm import LlmError
 from appsecgate_mcp.agent.models import AgentConfig
 from appsecgate_mcp.agent.report import format_report
-from appsecgate_mcp.agent.runner import AgentError, run_agent
+from appsecgate_mcp.agent.runner import run_agent
 
 
 def _duration_seconds(value: str) -> int:
@@ -263,7 +263,12 @@ def agent_main(argv: list[str] | None = None) -> int:
         sync_code = _sync(config)
         report["action_log"].append({"tool": "sync", "status": "ok" if sync_code == 0 else "error"})
         if sync_code != 0:
-            raise AgentError(f"sync failed with exit code {sync_code}")
+            # GD-15: sync failure is distinct from MCP/LLM errors; the triage
+            # report is still delivered (verdicts are journaled locally).
+            report["exit_reason"] = "sync_error"
+            report["warnings"].append(f"sync failed with exit code {sync_code}")
+            print(format_report(report, config.output_format))
+            return 2
     except TimeoutError:
         _error(config, started, "timeout", f"agent exceeded timeout={config.timeout}s")
         return 2
