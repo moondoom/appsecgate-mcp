@@ -106,6 +106,8 @@ The event contains:
 
 Similarity is deterministic in this stage: exact fingerprint/logical ID, rule and normalized finding kind, CVE/package/ecosystem, then scanner/category/CWE. Historical verdicts are evidence, not authoritative answers. Embeddings are out of scope.
 
+**Guided access amendment (2026-11-07, GD-13, data-gated):** direct guided access to `describe_schema` and `query_findings_db` will be removed only after `artifacts/master-tools-usage.json` demonstrates near-zero usage and no verdict dependency. Guided would then consume these views through deterministic pre-fetch (ADR-0019 Part 6); free mode retains direct read-only tools. Until that measurement and implementation, the current tool behavior remains unchanged.
+
 ## 8. CVE ingestion
 
 `cve_records` and `cve_affected_ranges` are separate from append-only finding events. An administrative ingestion job or CLI imports OSV/NVD data, validates the schema, and stores provenance and content hashes. Scanner and LLM do not call external CVE APIs.

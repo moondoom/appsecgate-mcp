@@ -45,6 +45,11 @@ The main 300-repository corpus was not resumed for this experiment.
 - `--force-reevaluate` is deferred. It should bypass freshness while preserving
   prior verdict reads, `supersedes_verdict_id`, and `revision_reason=manual`; it is
   distinct from `--no-reuse-verdicts`.
+- **Freshness amendment (2026-11-07, GD-10, not yet implemented):** matching
+  `prompt_sha256` is not sufficient because scanner rules can change underneath
+  an unchanged prompt. Reuse must additionally match the effective `ruleset_hash`
+  recorded in §3, and must never replace a human-sourced verdict. Per-mode TTLs
+  are proposed in ADR-0019 Part 5.3 but remain unadopted until measured.
 
 Severity escalation is not enabled by this candidate.
 

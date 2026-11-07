@@ -1,0 +1,32 @@
+{
+  "snapshot_date": "2026-11-07",
+  "repos": [
+    {
+      "id": "atopile",
+      "class": "heavy",
+      "findings": 167,
+      "commit_sha": "619eda7f777558a3e500dbad9cc2941712881495",
+      "inventory_hash": "7fdc01438bd7884fd276d7e0e66fac84e0c386fae27630af5f28ffa99e621083",
+      "public": true,
+      "source_run": "agent300-preflight-gemmaq3-p1-atopile"
+    },
+    {
+      "id": "costrict",
+      "class": "heavy",
+      "findings": 115,
+      "commit_sha": "dd38f540d3c3171eee179792168a994d30a78292",
+      "inventory_hash": "61857a99bc93ef9ede51dc458fabf8f1098df6e1732e99c3d2c6e776feb2c6da",
+      "public": true,
+      "source_run": "agent300-gemmaq3-p2-costrict"
+    },
+    {
+      "id": "CodeWiki",
+      "class": "middle",
+      "findings": 85,
+      "commit_sha": "1b4af43d6d20c8dbd758fe1d5f888cc6947ed11d",
+      "inventory_hash": "5e4f10be35f6f748d07f7ef55f33235c304363c4d767ea2500b498d2e2f16f83",
+      "public": true,
+      "source_run": "agent-sched-v3-gemmaq3-p1-CodeWiki"
+    }
+  ]
+}

@@ -71,10 +71,11 @@ checks quote-in-source (whitespace-normalized substring);
 anti-hallucination check. Redaction-vs-matching policy for secrets deferred
 to a separate small ADR (see open-tasks).
 
-## 4. Infrastructure findings (ollama host 10.0.0.222, RTX 4060 Ti 16 GB)
+## 4. Infrastructure findings (ollama host `appsecgate-lab`, RTX 4060 Ti 16 GB)
 
 Measured with salted-context probes (`kv_probe.py`, artifacts
-`kv-probe-*.json`; runtime notes in `runtime/llm-host.md`, not committed):
+`kv-probe-*.json`; runtime notes in the gitignored runtime directory, not
+committed):
 
 1. **`OLLAMA_NUM_PARALLEL=auto` silently gave 1 slot.** Auto sizes slots from
    the trained context (262144), so all client-side parallelism serialized on

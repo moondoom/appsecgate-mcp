@@ -83,3 +83,4 @@ experiments/tp-0001/artifacts/
 experiments/tp-0001/progress.json
 experiments/tp-0001/stage2-freeze.json
 
+experiments/tp-0001/fixtures/private-map.json

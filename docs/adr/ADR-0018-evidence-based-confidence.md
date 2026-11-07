@@ -155,6 +155,13 @@ cannot prove credential validity. Secret excerpts are redacted before journaling
 | `cve_reference_only` | Only CVE/package reference | no → medium | forbidden |
 | `vex_upstream` | External VEX/OSV assertion with source | yes, with provenance | source-dependent |
 | `manifest_absent` | All relevant manifests/lockfiles checked; component absent | yes for FP | — |
+| `version_out_of_range` | Proposed: deterministic installed-version exclusion | yes for FP after matcher verification | — |
+| `dependency_scope_only` | Proposed: dev/transitive scope under explicit organizational policy | no → medium | only with confirmed policy |
+
+`version_out_of_range` and `dependency_scope_only` are **proposed in ADR-0019
+Part 6, not active**. They require a deterministic pre-fetch measurement arm,
+matcher name/version provenance, validator tests, and explicit scope policy.
+The model never computes version-range membership itself.
 
 `reachability_unverified` does not change TP to NEEDS_REVIEW: vulnerable component
 presence and project-specific criticality are different claims. FP with `low` is
@@ -257,7 +264,11 @@ Mode A is the initial cheap configuration:
 - CVE: `manifest_version_match`;
 - IaC: `policy_rule_direct`.
 
-It does not require additional file reads and does not increase prefill.
+It does not require additional file reads and does not increase prefill. After
+the GD-13 usage measurement, guided Mode A is also planned to exclude direct
+`master_describe_schema` and `master_query_findings_db` calls in favor of
+deterministic pre-fetch; this is not current behavior and free mode is
+unaffected.
 
 Mode B enables `file_verified` and `reachability_verified` after a separate
 experiment. These can add 5–20k tokens per finding and require the complete

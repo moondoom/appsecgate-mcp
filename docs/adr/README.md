@@ -21,3 +21,21 @@
 | [ADR-0017](ADR-0017-ttl-verdict-reevaluation-experiment.md) | TTL verdict reuse and re-evaluation experiment | Proposed |
 | [ADR-0018](ADR-0018-evidence-based-confidence.md) | Evidence-based confidence and master-owned escalation | Proposed |
 | [ADR-0019](ADR-0019-guided-mode-redesign.md) | Guided mode redesign and operating-point acceptance | Proposed (acceptance required) |
+
+## Publication policy
+
+ADR files are published as written, so they must be safe to publish:
+
+- **No RFC1918 addresses** (`10/8`, `172.16/12`, `192.168/16`) and no raw internal
+  hostnames. Use placeholders: `<llm-host>`, `<mgmt-host>`, `<runner-host>`.
+  The owner-approved logical alias `appsecgate-lab` is allowed for the lab.
+- **No credentials**, tokens, Bearer secrets, API keys, or connection strings.
+- **Public OSS repositories** may be named only with the workload-fixture
+  disclaimer (see ADR-0019 §2.2). They are fixtures, not assessments.
+- **Private/internal repositories** are replaced by stable identifiers
+  (`repo-heavy-1`); the mapping lives only in
+  `experiments/tp-0001/fixtures/private-map.json` (gitignored).
+- **Artifacts** under `experiments/` follow the same rules; raw logs with
+  internal identifiers are written to gitignored `runtime/` and summarized.
+
+Enforced by `scripts/check-no-private-infra.sh` via pre-commit.

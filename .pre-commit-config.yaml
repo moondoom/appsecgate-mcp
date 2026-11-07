@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: no-private-infra
+        name: Reject private infra identifiers and credentials
+        entry: scripts/check-no-private-infra.sh
+        language: system
+        pass_filenames: false
+        stages: [commit]

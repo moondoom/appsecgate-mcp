@@ -35,7 +35,7 @@ PostgreSQL master) remains the functional reference.
 
 ## 2. Test stand
 
-- **LLM host (mgmt, 10.0.0.222):** single NVIDIA GPU, 16 GiB VRAM
+- **LLM host (`appsecgate-lab`):** single NVIDIA GPU, 16 GiB VRAM
   (17 175 674 880 bytes), 23.4 GiB host RAM, 8 CPU cores.
 - **Model:** `hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q3_K_M` (Q3_K_M,
   ~13 GiB weights), ollama runner `llamacpp`, `CONTEXT=32768`,
@@ -173,7 +173,7 @@ The agent itself is unaffected: its requests carry
 `APPSECGATE_LLM_NUM_CTX=32768` explicitly, and ClickHouse
 `litellm.spend_logs` confirms full prompts of 10k–30k tokens.
 
-The proxy config (`~/appsecgate-lab/litellm/config.yaml` on mgmt) also
+The proxy config (`~/appsecgate-lab/litellm/config.yaml` on `appsecgate-lab`) also
 enables a `hide_secrets` pre-call guardrail and has no `model_list` entry
 for the gemma model (pass-through provider routing); neither affects the
 measurements once `num_ctx` is set.

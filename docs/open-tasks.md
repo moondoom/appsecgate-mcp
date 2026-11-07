@@ -161,7 +161,7 @@ ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 | ID | Task | Status | Gate / blocker |
 |---|---|---|---|
 | GD-1 | Fold `guided_sched` into one `guided`; remove classifier/lane switching/lane affinity, retain lane counters as telemetry | open | ADR-0016 §8 remains proposed until GD-6 |
-| GD-2 | Add terminal `NEEDS_REVIEW(model_failed)` with `failure_reason=context_overflow|timeout` and `failure_detail` after retries; update journal queries/tests | open | ADR-0015 §4 addendum; coverage excludes these from `failed_findings` |
+| GD-2 | Add terminal `NEEDS_REVIEW(model_failed)` with `failure_reason=context_overflow|timeout|llm_error` and `failure_detail` after retries; update journal queries/tests | open | ADR-0015 §4 addendum; coverage excludes these from `failed_findings` |
 | GD-3 | Pre-send exact-model tokenization including tools/template and `llm_max_tokens + output_safety_margin`; route overflow without LLM | open | tokenizer source/version must be chosen; no new production dependency without owner approval |
 | GD-4 | Add `internal_parallel`, `batch_sort=mode_major|none` with explicit `(mode,lane,fingerprint)` ordering; launcher fail-fast on `internal × external > 4` | open | external process count belongs to launcher, not agent |
 | GD-5 | Per-call journal telemetry + Prometheus GPU/clock/VRAM/RAM windows; explicit cache counters or `cache_metrics_unavailable` | open | verify metric names and 1 s scrape before measured runs; never infer cache hits from `prompt_eval_count` |
@@ -169,6 +169,12 @@ ollama slots, LLM timeout 600 s, agent timeout 7200 s) are already committed.
 | GD-7 | Full A–E sweep, D1/D2 sorting, timeout calibration at arm D, ≥30 min sustained load | after GD-6 | derive timeout `p99×1.5` before reducing 600 s; results to ADR-0016 §14 |
 | GD-8 | Apply ADR-0016 status changes and decide corpus-300 production point | after GD-6/GD-7 and human calibration | no severity escalation, no Mode B, corpus remains a separate delivery |
 | GD-9 | Move LLM timeout/call errors from run-fatal to batch-fatal; only then emit terminal model-failure NR. Count `timed_out_calls`; never invent token usage for timed-out calls | open, required before GD-6 | evaluate one transport retry for transient 5xx/connection-reset; no silent retry on timeout/invalid output |
+| GD-10 | Add `ruleset_hash` to reuse freshness and reject reuse of human-sourced verdicts; log reuse reasons and known saved tokens | open, P0 correctness | ADR-0017 amendment + reuse tests |
+| GD-11 | Pre-flight environment check: slot budget, constant `num_ctx`, model digest, Prometheus names/interval | open, P0 before GD-6 | fail-fast before any LLM call |
+| GD-12 | Measure deterministic CVE signals on existing findings (`in_range`, fixed, dependency scope); propose `version_out_of_range` and `dependency_scope_only` to ADR-0018 | open, measurement before integration | integrate only if ≥30–40% CVE FPs explained; matcher name/version and disagreements recorded |
+| GD-13 | Measure guided master-tool usage; if ≈0 and no verdict depends on it, remove `master_describe_schema`/`master_query_findings_db`; gate `read_project_file` behind `APPSECGATE_MODE_B=1` | open, data-gated | `artifacts/master-tools-usage.json`; ADR-0015 §3/§7 and ADR-0018 §8 updates on execution |
+| GD-14 | Checkpoint/resume per accepted batch; adaptive run timeout; inventory page/cache improvements | open, P1 | required before corpus if timeout still loses completed work |
+| GD-15 | Measured P1 batching/reuse/robustness: per-mode batch size and TTL, capacity-aware packing, one transient transport retry, adaptive `max_tokens`, split-depth 3 vs 5, sync retry, `budget_partial`, distinct sync/MCP errors | open, P1 | no adoption without parity, overflow and wall measurements |
 
 ## Прочие направления
 

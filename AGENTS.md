@@ -1,5 +1,15 @@
 # AGENTS.md — AppSecGate MCP
 
+## Before writing to any tracked file
+
+- No RFC1918 addresses, raw internal hostnames, credentials, or secrets.
+  The owner-approved logical alias `appsecgate-lab` is allowed.
+- Public OSS repos may be named only with "workload fixture, not security
+  assessment" disclaimer (ADR-0019 §2.2).
+- Internal repos → stable identifier + gitignored mapping.
+- See `docs/adr/README.md` for the full policy. The pre-commit hook rejects
+  violations.
+
 ## Project
 AppSecGate MCP — local security scanner for AI agents and developers.
 Python 3.12+, FastMCP, Pydantic 2.7, SQLite. The server finds, stores, tracks,
